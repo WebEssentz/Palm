@@ -20,6 +20,7 @@ type TabProps = {
 
 const Navbar = () => {
     const params = useSearchParams()
+    const me = useAppSelector((state) => state.profile)
     const projectId = params.get('project')
 
 
@@ -32,21 +33,21 @@ const Navbar = () => {
     const tabs: TabProps[] = [
         {
             label: "Canvas",
-            href: `/dashboard//canvas?project=${projectId}`,
+            href: `/dashboard/${me.name}/canvas?project=${projectId}`,
             icon: <Hash className='w-4 h-4' />
         },
         {
             label: "Style Guide",
-            href: `/dashboard//style-guide?project=${projectId}`,
+            href: `/dashboard/${me.name}/style-guide?project=${projectId}`,
             icon: <LayoutTemplate className='w-4 h-4' />
         }
     ]
 
-    const me = useAppSelector((state) => state.profile)
+
     const pathname = usePathname()
     const hasCanvas = pathname.includes('canvas')
     const hasStyleGuide = pathname.includes('style-guide')
-    
+
 
     return (
         <div className='grid grid-cols-2 lg:grid-cols-3 p-6 fixed top-0 left-0 right-0 z-50'>
