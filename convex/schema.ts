@@ -4,7 +4,7 @@ import { v } from "convex/values";
 
 const schema = defineSchema({
   ...authTables,
-  
+
   subscriptions: defineTable({
     userId: v.id("users"),
     polarCustomerId: v.string(),
@@ -56,7 +56,9 @@ const schema = defineSchema({
     isPublic: v.optional(v.boolean()),
     tags: v.optional(v.array(v.string())),
     projectNumber: v.number(),
-  }).index("by_userId", ["userId"]),
+  })
+    .index("by_userId", ["userId"])
+    .index("by_userId_lastModified", ["userId", "lastModified"]),
 
   project_counters: defineTable({
     userId: v.id("users"),

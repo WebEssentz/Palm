@@ -23,11 +23,12 @@ const Navbar = () => {
     const me = useAppSelector((state) => state.profile)
     const projectId = params.get('project')
 
-
+    // Validate projectId is not null, undefined, or the string "null"
+    const isValidProjectId = projectId && projectId !== 'null' && projectId !== 'undefined'
 
     const project = useQuery(
         api.projects.getProject,
-        projectId ? { projectId: projectId as Id<'projects'> } : 'skip'
+        isValidProjectId ? { projectId: projectId as Id<'projects'> } : 'skip'
     )
 
     const tabs: TabProps[] = [

@@ -1,20 +1,28 @@
 import { ThemeContent } from "@/components/style/theme"
 import StyleGuideTypography from "@/components/style/typography"
+import MoodBoard from "@/components/style/mood-board"
 import { TabsContent } from "@/components/ui/tabs"
 import { MoodBoardImagesQuery, StyleGuideQuery } from "@/convex/query.config"
 import { MoodBoardImage } from "@/hooks/use-styles"
 import { StyleGuide } from "@/redux/api/style-guide"
 import { Palette } from "lucide-react"
 import React from "react"
+import { redirect } from "next/navigation"
 
 type Props = {
     searchParams: Promise<{
-        project: string
+        project?: string
     }>
 }
 
 const Page = async ({ searchParams }: Props) => {
     const projectId = (await searchParams).project
+    
+    // Validate that projectId is provided and not the string "null"
+    if (!projectId || projectId === "null" || projectId === "undefined") {
+        redirect("/dashboard")
+    }
+    
     const existingStyleGuide = await StyleGuideQuery(projectId)
 
     const guide = existingStyleGuide.styleGuide?._valueJSON as unknown as StyleGuide
@@ -53,6 +61,10 @@ const Page = async ({ searchParams }: Props) => {
 
             <TabsContent value="typography">
                 <StyleGuideTypography typographyGuide={typographyGuide} />
+            </TabsContent>
+
+            <TabsContent value="moodboard">
+                <MoodBoard guideImages={guideImages} />
             </TabsContent>
         </div>
     )
