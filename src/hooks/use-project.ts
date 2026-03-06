@@ -9,36 +9,29 @@ import { api } from "../../convex/_generated/api";
 
 const generateGradientThumbnail = () => {
     const gradients = [
-        "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
-        "linear-gradient(135deg, #f093fb 0%, #f5576c 100%)",
-        "linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)",
-        "linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)",
-        "linear-gradient(135deg, #fa709a 0%, #fee140 100%)",
-        "linear-gradient(135deg, #a8edea 0%, #fed6e3 100%)",
-        "linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%)",
-        "linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%)",
-    ];
-
-    const randomGradient =
-        gradients[Math.floor(Math.random() * gradients.length)];
-    const svgContent = `
-    <svg width="300" height="200" xmlns="http://www.w3.org/2000/svg">
+        ["#667eea", "#764ba2"],
+        ["#f093fb", "#f5576c"],
+        ["#4facfe", "#00f2fe"],
+        ["#43e97b", "#38f9d7"],
+        ["#fa709a", "#fee140"],
+        ["#a8edea", "#fed6e3"],
+        ["#ff9a9e", "#fecfef"],
+        ["#ffecd2", "#fcb69f"],
+    ]
+    const [color1, color2] = gradients[Math.floor(Math.random() * gradients.length)]
+    
+    return `<svg width="300" height="200" xmlns="http://www.w3.org/2000/svg">
       <defs>
         <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" style="stop-color:${randomGradient.match(/#[a-fA-F0-9]{6}/g)?.[0] || "#667eea"
-        }" />
-          <stop offset="100%" style="stop-color:${randomGradient.match(/#[a-fA-F0-9]{6}/g)?.[1] || "#764ba2"
-        }" />
+          <stop offset="0%" style="stop-color:${color1}" />
+          <stop offset="100%" style="stop-color:${color2}" />
         </linearGradient>
       </defs>
       <rect width="100%" height="100%" fill="url(#grad)" />
       <circle cx="150" cy="100" r="30" fill="white" opacity="0.8" />
       <path d="M140 90 L160 90 L160 110 L140 110 Z" fill="white" opacity="0.6" />
-    </svg>
-  `;
-
-    return `data:image/svg+xml;base64,${btoa(svgContent)}`;
-};
+    </svg>`
+}
 
 
 export const useProjectCreation = () => {
@@ -50,11 +43,26 @@ export const useProjectCreation = () => {
     const createProject = async (name?: string) => {
         if (!user?.id) {
             toast.error('Please sign in to create projects')
+            return
         }
         dispatch(createProjectStart())
         try {
-            const thumbnail = generateGradientThumbnail()
+            // 1. Generate SVG
+            const svgContent = generateGradientThumbnail()
+            const svgBlob = new Blob([svgContent], { type: 'image/svg+xml' })
 
+            // 2. Get Convex upload URL
+            const uploadUrl = await fetchMutation(api.files.generateUploadUrl)
+
+            // 3. Upload blob to Convex storage
+            const uploadResponse = await fetch(uploadUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'image/svg+xml' },
+                body: svgBlob,
+            })
+            const { storageId } = await uploadResponse.json()
+
+            // 4. Create project with storageId
             const result = await fetchMutation(api.projects.createProject, {
                 userId: user.id as Id<'users'>,
                 name: name || undefined,
@@ -64,24 +72,13 @@ export const useProjectCreation = () => {
                     selected: shapesState.selected,
                     framerCounter: shapesState.framerCounter,
                 },
-                thumbnail,
+                thumbnail: storageId,
             })
-
-            dispatch(
-                addProject({
-                    _id: result.projectId,
-                    name: result.name,
-                    projectNumber: result.projectNumber,
-                    thumbnail,
-                    lastModified: Date.now(),
-                    createdAt: Date.now(),
-                    isPublic: false,
-                })
-            )
 
             dispatch(createProjectSuccess())
         } catch (error) {
             dispatch(createProjectFailure('Failed to create project'))
+            toast.error('Failed to create project')
         }
     }
 

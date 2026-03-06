@@ -39,17 +39,21 @@ export const createProject = mutation({
             userId,
             name: projectName,
             sketchesData,
+            // Store thumbnail as-is, but we'll regenerate if needed
             thumbnail,
             projectNumber,
             lastModified: Date.now(),
             createdAt: Date.now(),
             isPublic: false,
         })
+        
+        console.log('[CONVEX] Project created with thumbnail:', !!thumbnail, 'length:', thumbnail?.length)
 
         return {
             projectId,
             name: projectName,
             projectNumber,
+            thumbnail,
         }
     },
 })
@@ -82,22 +86,23 @@ export const getUserProjects = query({
         limit: v.optional(v.number()),
     },
     handler: async (ctx, { userId, limit = 20 }) => {
-        const allProjects = await ctx.db
+        const projects = await ctx.db
             .query('projects')
             .withIndex('by_userId_lastModified', (q: any) => q.eq('userId', userId))
             .order('desc')
-            .collect()
+            .take(limit ?? 20)
 
-        const projects = allProjects.slice(0, limit)
-
-        return projects.map((project) => ({
+        return await Promise.all(projects.map(async (project) => ({
             _id: project._id,
             name: project.name,
             projectNumber: project.projectNumber,
+            thumbnail: project.thumbnail 
+                ? await ctx.storage.getUrl(project.thumbnail as any) 
+                : undefined,
             lastModified: project.lastModified,
             createdAt: project.createdAt,
             isPublic: project.isPublic,
-        }))
+        })))
     },
 })
 

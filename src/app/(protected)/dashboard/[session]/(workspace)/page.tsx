@@ -6,7 +6,7 @@ import ProjectsList from '@/components/projects/list'
 const Page = async () => {
   const { projects, profile } = await ProjectsQuery()
 
-  if (!profile) {
+  if (!profile || !projects) {
     return (
       <div className='container mx-auto py-8'>
         <div className='text-center'>
@@ -21,11 +21,13 @@ const Page = async () => {
     )
   }
 
-  return <ProjectsProvider initialProjects={projects}>
-    <div className='container mx-auto py-36 px-4'>
-      <ProjectsList />
-    </div>
-  </ProjectsProvider>
+  return (
+    <ProjectsProvider initialProjects={projects}>
+      <div className='container mx-auto py-36 px-4'>
+        <ProjectsList />
+      </div>
+    </ProjectsProvider>
+  )
 }
 
 export default Page

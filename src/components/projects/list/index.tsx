@@ -1,14 +1,14 @@
 "use client"
 import { useProjectCreation } from '@/hooks/use-project'
+import { useProjects } from './provider'
 import { useAppSelector } from '@/redux/store'
 import { Plus } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
-import Image from 'next/image'
 import Link from 'next/link'
-import React from 'react'
 
 const ProjectsList = () => {
-    const { projects, canCreate } = useProjectCreation()
+    const { canCreate } = useProjectCreation()
+    const projects = useProjects()
     const user = useAppSelector((state) => state.profile)
 
     if (!canCreate) {
@@ -54,11 +54,10 @@ const ProjectsList = () => {
                             <div className='space-y-3'>
                                 <div className='aspect-[4/3] rounded-lg overflow-hidden bg-muted'>
                                     {project.thumbnail ? (
-                                        <Image
+                                        // eslint-disable-next-line @next/next/no-img-element
+                                        <img
                                             src={project.thumbnail}
                                             alt={project.name}
-                                            width={300}
-                                            height={200}
                                             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
                                         />
                                     ) : (

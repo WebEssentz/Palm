@@ -1,29 +1,34 @@
 "use client"
+import { usePreloadedQuery } from 'convex/react'
+import { api } from '../../../../convex/_generated/api'
+import type { Preloaded } from 'convex/react'
+import React, { createContext, useContext, type ReactNode } from 'react'
 
-import { fetchProjectsSuccess } from '@/redux/slice/projects'
-import { useAppDispatch } from '@/redux/store'
-import React, { useEffect } from 'react'
+type Project = {
+    _id: string
+    name: string
+    projectNumber: number
+    thumbnail?: string
+    lastModified: number
+    createdAt: number
+    isPublic?: boolean
+}
+
+const ProjectsContext = createContext<Project[]>([])
+export const useProjects = () => useContext(ProjectsContext)
 
 type Props = {
-    children: React.ReactNode
-    initialProjects: any
+    children: ReactNode
+    initialProjects: Preloaded<typeof api.projects.getUserProjects>
 }
 
 const ProjectsProvider = ({ children, initialProjects }: Props) => {
-    const dispatch = useAppDispatch()
-
-    useEffect(() => {
-        if (initialProjects?._valueJSON){
-            const projectsData = initialProjects._valueJSON
-            dispatch(
-                fetchProjectsSuccess({
-                    projects: projectsData,
-                    total: projectsData.length,
-                })
-            )
-        }
-    }, [dispatch, initialProjects])
-    return <>{children}</>
+    const projects = usePreloadedQuery(initialProjects)
+    return (
+        <ProjectsContext.Provider value={projects as Project[]}>
+            {children}
+        </ProjectsContext.Provider>
+    )
 }
 
 export default ProjectsProvider

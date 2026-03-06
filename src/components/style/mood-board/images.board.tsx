@@ -56,7 +56,7 @@ const ImagesBoard = ({
     marginLeft,
     marginTop,
 }: Props) => {
-    const [loaded, setLoaded] = useState(false)
+    const [loaded, setLoaded] = useState(image.isFromServer ?? false)
 
     return (
         <div
