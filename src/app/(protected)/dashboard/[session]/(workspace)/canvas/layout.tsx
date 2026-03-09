@@ -1,11 +1,17 @@
+'use client'
+
+import Toolbar from "@/components/canvas/toolbar"
 import React from "react"
 
-type Props = {}
+type Props = {
+    children: React.ReactNode
+}
 
 const Layout = (props: Props) => {
     return (
-        <div>
-            Layout
+        <div className="w-full h-screen">
+            {props.children}
+            <Toolbar />
         </div>
     )
 }

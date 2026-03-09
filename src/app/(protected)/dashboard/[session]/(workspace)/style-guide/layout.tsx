@@ -40,14 +40,14 @@ const Layout = ({ children }: Props) => {
                             </p>
                         </div>
 
-                        <TabsList className="grid w-full sm:w-fit h-auto grid-cols-3 rounded-full backdrop-blur-xl bg-white/[0.08] border border-white/[0.12] saturate-150 p-2">
+                        <TabsList className="grid w-full sm:w-fit h-auto grid-cols-3 rounded-full backdrop-blur-xl bg-muted border border-border dark:bg-white/[0.08] dark:border-white/[0.12] saturate-150 p-2">
                             {tabs.map((tab) => {
                                 const Icon = tab.icon
                                 return (
                                     <TabsTrigger
                                         key={tab.value}
                                         value={tab.value}
-                                        className="flex items-center gap-2 rounded-xl data-[state=active]:bg-white/[0.15] data-[state=active]:backdrop-blur-xl data-[state=active]:border data-[state=active]:border-white/[0.2] transition-all duration-200 text-xs sm:text-sm"
+                                        className="flex items-center gap-2 rounded-xl data-[state=active]:bg-accent data-[state=active]:border data-[state=active]:border-border dark:data-[state=active]:bg-white/[0.15] dark:data-[state=active]:border-white/[0.2] data-[state=active]:backdrop-blur-xl transition-all duration-200 text-xs sm:text-sm"
                                     >
                                         <Icon className="w-4 h-4" />
                                         <span className="hidden sm:inline">{tab.label}</span>

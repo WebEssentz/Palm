@@ -6,7 +6,6 @@ import { MoodBoardImagesQuery, StyleGuideQuery } from "@/convex/query.config"
 import { MoodBoardImage } from "@/hooks/use-styles"
 import { StyleGuide } from "@/redux/api/style-guide"
 import { Palette } from "lucide-react"
-import React from "react"
 import { redirect } from "next/navigation"
 
 type Props = {

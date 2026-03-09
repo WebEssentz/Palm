@@ -91,6 +91,15 @@ export interface GeneratedUIShape extends BaseShape {
   isWorkflowPage?: boolean; // Flag to identify workflow pages
 }
 
+export interface GroupShape extends BaseShape {
+  type: "group";
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  childIds: string[];
+}
+
 export type Shape =
   | FrameShape
   | RectShape
@@ -99,7 +108,8 @@ export type Shape =
   | ArrowShape
   | LineShape
   | TextShape
-  | GeneratedUIShape;
+  | GeneratedUIShape
+  | GroupShape;
 
 const shapesAdapter = createEntityAdapter<Shape, string>({
   selectId: (s) => s.id,
@@ -121,7 +131,7 @@ const initialState: ShapesState = {
   frameCounter: 0,
 };
 
-const DEFAULTS = { stroke: "#ffff", strokeWidth: 2 as const };
+const DEFAULTS = { stroke: "#888888", strokeWidth: 2 as const };
 
 const makeFrame = (p: {
   x: number;
@@ -272,7 +282,7 @@ const makeText = (p: {
   textTransform: p.textTransform ?? "none",
   stroke: p.stroke ?? DEFAULTS.stroke,
   strokeWidth: p.strokeWidth ?? DEFAULTS.strokeWidth,
-  fill: p.fill ?? "#ffffff",
+  fill: p.fill ?? null,
 });
 
 const makeGeneratedUI = (p: {
@@ -399,6 +409,67 @@ const shapesSlice = createSlice({
       if (ids.length) shapesAdapter.removeMany(state.shapes, ids);
       state.selected = {};
     },
+    groupSelected(state) {
+      const ids = Object.keys(state.selected);
+      if (ids.length < 2) return;
+
+      // Compute bounding box of all selected shapes
+      let minX = Infinity,
+        minY = Infinity,
+        maxX = -Infinity,
+        maxY = -Infinity;
+
+      ids.forEach((id) => {
+        const shape = state.shapes.entities[id];
+        if (!shape) return;
+        if ("x" in shape && "w" in shape) {
+          minX = Math.min(minX, shape.x);
+          minY = Math.min(minY, shape.y);
+          maxX = Math.max(maxX, shape.x + shape.w);
+          maxY = Math.max(maxY, shape.y + shape.h);
+        } else if (shape.type === "freedraw") {
+          shape.points.forEach((p) => {
+            minX = Math.min(minX, p.x);
+            minY = Math.min(minY, p.y);
+            maxX = Math.max(maxX, p.x);
+            maxY = Math.max(maxY, p.y);
+          });
+        } else if (shape.type === "arrow" || shape.type === "line") {
+          minX = Math.min(minX, shape.startX, shape.endX);
+          minY = Math.min(minY, shape.startY, shape.endY);
+          maxX = Math.max(maxX, shape.startX, shape.endX);
+          maxY = Math.max(maxY, shape.startY, shape.endY);
+        }
+      });
+
+      const group: GroupShape = {
+        id: nanoid(),
+        type: "group",
+        x: minX,
+        y: minY,
+        w: maxX - minX,
+        h: maxY - minY,
+        childIds: ids,
+        stroke: "transparent",
+        strokeWidth: 0,
+      };
+
+      shapesAdapter.addOne(state.shapes, group);
+      state.selected = { [group.id]: true };
+    },
+    ungroupSelected(state) {
+      const ids = Object.keys(state.selected);
+      ids.forEach((id) => {
+        const shape = state.shapes.entities[id];
+        if (shape?.type !== "group") return;
+        // Select the children instead
+        shape.childIds.forEach((childId) => {
+          state.selected[childId] = true;
+        });
+        shapesAdapter.removeOne(state.shapes, id);
+        delete state.selected[id];
+      });
+    },
     loadProject(
       state,
       action: PayloadAction<{
@@ -435,6 +506,8 @@ export const {
   clearSelection,
   selectAll,
   deleteSelected,
+  groupSelected,
+  ungroupSelected,
   loadProject,
 } = shapesSlice.actions;
 

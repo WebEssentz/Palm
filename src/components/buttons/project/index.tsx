@@ -2,7 +2,7 @@
 
 import { Button } from '@/components/ui/button'
 import { useProjectCreation } from '@/hooks/use-project'
-import { Loader2, PlusIcon } from 'lucide-react'
+import { Loader2, LayoutGrid } from 'lucide-react'
 import React from 'react'
 
 const CreateProject = () => {
@@ -17,7 +17,7 @@ const CreateProject = () => {
       {isCreating ? (
         <Loader2 className='h-4 w-4 animate-spin' />
       ): (
-        <PlusIcon className='h-4 w-4' />
+        <LayoutGrid className='h-4 w-4' />
       )}
       {isCreating ? 'Creating...' : 'New Project'}
     </Button>
