@@ -12,6 +12,8 @@ import { ArrowPreview } from './shapes/arrow/preview'
 import { LinePreview } from './shapes/line/preview'
 import { FreeDrawStrokePreview } from './shapes/stroke/preview'
 import { SelectionOverlay } from './shapes/selection'
+import { HoverOverlay } from './hover-overlay'
+import { MarqueeOverlay } from './shapes/marquee'
 
 type Props = {}
 
@@ -28,13 +30,18 @@ const InfiniteCanvas = (props: Props) => {
     attachCanvasRef,
     getDraftShape,
     getFreeDrawPoints,
+    getMarquee,
+    getPointToPoint,
     isSidebarOpen,
-    hasSelectedText
+    hasSelectedText,
+    hoveredShapeId
   } = useInfiniteCanvas()
 
 
   const draftShape = getDraftShape()
   const freeDrawPoints = getFreeDrawPoints()
+  const marquee = getMarquee()
+  const pointToPoint = getPointToPoint()
 
 
   return (
@@ -81,6 +88,7 @@ const InfiniteCanvas = (props: Props) => {
             <ShapeRenderer
               key={shape.id}
               shape={shape}
+              selectedShapes={selectedShapes}
             // toggleInspiration={toogleInspiration}
             // toggleChat={toogleChat}
             // generateWorkflow={generateWorkflow}
@@ -92,9 +100,19 @@ const InfiniteCanvas = (props: Props) => {
             <SelectionOverlay
               key={`selection-${shape.id}`}
               shape={shape}
-              isSelected={!!selectedShapes[shape.id]}
+              isSelected={
+                !!selectedShapes[shape.id] && 
+                !(shape.type === 'text' && hasSelectedText)
+              }
             />
           ))}
+
+          {/* Hover overlay — only show when not selected */}
+          {hoveredShapeId && (() => {
+            const shape = shapes.find(s => s.id === hoveredShapeId)
+            if (!shape || selectedShapes[hoveredShapeId]) return null
+            return <HoverOverlay key={`hover-${shape.id}`} shape={shape} />
+          })()}
 
           {draftShape && draftShape.type === 'rect' && (
             <RectanglePreview
@@ -133,6 +151,42 @@ const InfiniteCanvas = (props: Props) => {
 
           {currentTool === 'freedraw' && freeDrawPoints.length > 1 && (
             <FreeDrawStrokePreview points={freeDrawPoints}/>
+          )}
+
+          {pointToPoint && pointToPoint.type === 'line' && (
+            <LinePreview
+              startWorld={pointToPoint.startWorld}
+              currentWorld={pointToPoint.currentWorld}
+            />
+          )}
+
+          {pointToPoint && pointToPoint.type === 'arrow' && (
+            <ArrowPreview
+              startWorld={pointToPoint.startWorld}
+              currentWorld={pointToPoint.currentWorld}
+            />
+          )}
+
+          {pointToPoint && (
+            <div
+              className="absolute pointer-events-none"
+              style={{
+                left: pointToPoint.startWorld.x - 4,
+                top: pointToPoint.startWorld.y - 4,
+                width: 8,
+                height: 8,
+                borderRadius: '50%',
+                backgroundColor: '#3b82f6',
+                zIndex: 100,
+              }}
+            />
+          )}
+
+          {marquee && (
+            <MarqueeOverlay
+              startWorld={marquee.start}
+              currentWorld={marquee.current}
+            />
           )}
         </div>
       </div>

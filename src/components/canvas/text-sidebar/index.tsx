@@ -61,7 +61,10 @@ const TextSidebar = ({ isOpen }: Props) => {
     if (!isOpen || !selectedTextShape) return null
 
   return (
-    <div className={cn(
+    <div 
+      data-text-sidebar="true"
+      onMouseDown={(e) => e.preventDefault()}
+      className={cn(
         'fixed right-5 top-1/2 transform -translate-y-1/2 w-80 backdrop-blur-xl bg-muted border-border dark:bg-white/[0.08] dark:border-white/[0.12] gap-2 p-3 saturate-150 border rounded-lg z-50 transition-transform duration-300',
         isOpen ? 'translate-x-0' : 'translate-x-full'
     )}>
@@ -72,14 +75,21 @@ const TextSidebar = ({ isOpen }: Props) => {
                     value={selectedTextShape.fontFamily}
                     onValueChange={(value) => updateTextProperty('fontFamily', value)}
                 >
-                    <SelectTrigger className='bg-accent border-border dark:bg-white/5 dark:border-white/10 w-full text-foreground'>
+                    <SelectTrigger 
+                        onMouseDown={(e) => e.preventDefault()}
+                        className='bg-accent border-border dark:bg-white/5 dark:border-white/10 w-full text-foreground'
+                    >
                         <SelectValue />
                     </SelectTrigger>
-                    <SelectContent className='bg-background border-border dark:bg-black/90 dark:border-white/10'>
+                    <SelectContent 
+                        onMouseDown={(e) => e.preventDefault()}
+                        className='bg-background border-border dark:bg-black/90 dark:border-white/10'
+                    >
                         {fontFamilies.map((font) => (
                             <SelectItem
                                 key={font}
                                 value={font}
+                                onMouseDown={(e) => e.preventDefault()}
                                 className='text-foreground hover:bg-accent dark:hover:bg-white/10'
                             >
                                 <span style={{ fontFamily: font }}>{font.split(',')[0]}</span>
@@ -96,6 +106,7 @@ const TextSidebar = ({ isOpen }: Props) => {
                 <Slider
                     value={[selectedTextShape?.fontSize]}
                     onValueChange={([value]) => updateTextProperty('fontSize', value)}
+                    onMouseDown={(e) => e.preventDefault()}
                     min={8}
                     max={120}
                     step={1}
@@ -110,6 +121,7 @@ const TextSidebar = ({ isOpen }: Props) => {
                 <Slider
                     value={[selectedTextShape?.fontWeight]}
                     onValueChange={([value]) => updateTextProperty('fontWeight', value)}
+                    onMouseDown={(e) => e.preventDefault()}
                     min={100}
                     max={900}
                     step={100}
@@ -123,6 +135,7 @@ const TextSidebar = ({ isOpen }: Props) => {
                 </Label>
                 <div className='flex gap-2'>
                     <Toggle
+                        onMouseDown={(e) => e.preventDefault()}
                         pressed={selectedTextShape.fontWeight >= 600}
                         onPressedChange={(pressed) => 
                             updateTextProperty("fontWeight", pressed ? 700 : 400)
@@ -133,6 +146,7 @@ const TextSidebar = ({ isOpen }: Props) => {
                     </Toggle>
 
                     <Toggle
+                        onMouseDown={(e) => e.preventDefault()}
                         pressed={selectedTextShape.fontStyle === "italic"}
                         onPressedChange={(pressed) => 
                             updateTextProperty("fontStyle", pressed ? "italic" : "normal")
@@ -143,6 +157,7 @@ const TextSidebar = ({ isOpen }: Props) => {
                     </Toggle>
 
                     <Toggle
+                        onMouseDown={(e) => e.preventDefault()}
                         pressed={selectedTextShape.textDecoration === 'underline'}
                         onPressedChange={(pressed) => 
                             updateTextProperty("textDecoration", pressed ? "underline" : "none")
@@ -153,6 +168,7 @@ const TextSidebar = ({ isOpen }: Props) => {
                     </Toggle>
 
                     <Toggle
+                        onMouseDown={(e) => e.preventDefault()}
                         pressed={selectedTextShape.textDecoration === 'line-through'}
                         onPressedChange={(pressed) => 
                             updateTextProperty("textDecoration", pressed ? "line-through" : "none")
@@ -173,6 +189,7 @@ const TextSidebar = ({ isOpen }: Props) => {
                     onValueChange={([value]) => 
                         updateTextProperty('letterSpacing', value)
                     }
+                    onMouseDown={(e) => e.preventDefault()}
                     min={-2}
                     max={10}
                     step={0.1}
@@ -196,6 +213,7 @@ const TextSidebar = ({ isOpen }: Props) => {
                     <div
                         className='w-10 h-10 rounded border border-border dark:border-white/10 flex-1'
                         style={{ backgroundColor: selectedTextShape.fill || '#ffffff' }}
+                        onMouseDown={(e) => e.preventDefault()}
                         onClick={() => {
                             const input = document.createElement('input')
                             input.type = 'color'

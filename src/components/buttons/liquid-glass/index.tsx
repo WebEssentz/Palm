@@ -29,9 +29,9 @@ export const LiquidGlassButton: React.FC<LiquidGlassButtonProps> = ({
 
     const variantClasses = {
         default:
-            'backdrop-blur-xl bg-white/[0.08] border border-white/[0.12] saturate-150',
+            'backdrop-blur-xl bg-foreground/[0.08] border border-foreground/[0.12] saturate-150',
         subtle: 
-            'backdrop-blur-lg bg-white/[0.05] border border-white/[0.08] saturate-125',
+            'backdrop-blur-lg bg-foreground/[0.08] border border-foreground/[0.12] saturate-125',
     }
 
     return (
@@ -41,7 +41,7 @@ export const LiquidGlassButton: React.FC<LiquidGlassButtonProps> = ({
             style={style}
             className={cn(
                 'relative transition-all duration-200 ease-out whitespace-nowrap',
-                'text-white/90 font-medium',
+                'text-foreground/90 font-medium',
                 'flex items-center gap-2',
                 'pointer-events-auto cursor-pointer',
 
@@ -49,13 +49,13 @@ export const LiquidGlassButton: React.FC<LiquidGlassButtonProps> = ({
 
                 sizeClasses[size],
 
-                'hover:bg-white/[0.12] hover:border-white/[0.16]',
-                'active:bg-white/[0.06] active-scale-[0.90]',
-                'focus:outline-none focus:ring-2 focus:ring-white/20',
+                'hover:bg-foreground/[0.12] hover:border-foreground/[0.16]',
+                'active:bg-foreground/[0.06] active-scale-[0.90]',
+                'focus:outline-none focus:ring-2 focus:ring-foreground/20',
                 'focus:ring-offset-2 focus:ring-offset-transparent',
 
                 disabled &&
-                    'opacity-50 cursor-not-allowed hover:bg-white/[0.08] hover:border-white/[0.12] active:scale-100',
+                    'opacity-50 cursor-not-allowed hover:bg-foreground/[0.08] hover:border-foreground/[0.12] active:scale-100',
 
                 className
             )}

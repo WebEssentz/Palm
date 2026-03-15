@@ -10,12 +10,13 @@ export const Frame = ({
   shape: FrameShape;
   toggleInspiration: () => void;
 }) => {
+
   const { isGenerating, handleGenerateDesign } = useFrame(shape);
 
   return (
     <>
       <div
-        className="absolute pointer-events-none backdrop-blur-xl bg-white/[0.08] border border-white/[0.12] saturate-150"
+        className="absolute pointer-events-none backdrop-blur-xl bg-foreground/[0.06] border border-foreground/[0.12] saturate-150"
         style={{
           left: shape.x,
           top: shape.y,
@@ -25,14 +26,14 @@ export const Frame = ({
         }}
       />
       <div
-        className="absolute pointer-events-none whitespace-nowrap text-xs font-medium text-white/80 select-none"
+        className="absolute pointer-events-none whitespace-nowrap text-xs font-medium text-foreground/60 select-none"
         style={{
           left: shape.x,
           top: shape.y - 24, // Position above the frame
           fontSize: "11px",
           lineHeight: "1.2",
         }}>
-        Frame {shape.frameNumber}
+        Frame {Number.isFinite(shape.frameNumber) ? shape.frameNumber : '—'}
       </div>
       <div
         className="absolute pointer-events-auto flex gap-4"

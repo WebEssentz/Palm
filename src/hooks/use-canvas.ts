@@ -1,5 +1,7 @@
 "use client"
 
+import { downloadBlob, generateFrameSnapshot } from "@/lib/frame-snapshot"
+import { measureText } from "@/lib/measure-text"
 import {
     addArrow,
     addEllipse,
@@ -16,17 +18,25 @@ import {
     Tool,
     updateShape,
     groupSelected,
-    ungroupSelected
+    ungroupSelected,
+    duplicateSelected,
+    deleteSelected,
+    FrameShape
 } from "@/redux/slice/shapes"
 import { handToolDisable, handToolEnable, panEnd, panMove, panStart, Point, screenToWorld, wheelPan, wheelZoom } from "@/redux/slice/viewport"
-import { AppDispatch, useAppSelector } from "@/redux/store"
+import { AppDispatch, useAppDispatch, useAppSelector } from "@/redux/store"
 import { RefreshCcwDot } from "lucide-react"
 import { getRSCModuleInformation } from "next/dist/build/analysis/get-page-static-info"
+import { Headland_One } from "next/font/google"
 import React from "react"
 import { useDispatch } from "react-redux"
 
 
 const RAF_INTERNAL_MS = 8
+
+// Module-level handlers to prevent StrictMode listener stacking
+let _keydownHandler: ((e: KeyboardEvent) => void) | null = null
+let _keyupHandler: ((e: KeyboardEvent) => void) | null = null
 
 interface TouchPointer {
     id: number
@@ -48,17 +58,30 @@ export const useInfiniteCanvas = () => {
     const shapeList: Shape[] = entityState.ids
         .map((id: string) => entityState.entities[id])
         .filter((s: Shape | undefined): s is Shape => Boolean(s))
+        .sort((a: Shape, b: Shape) => {
+            // Frames always at the bottom
+            if (a.type === 'frame' && b.type !== 'frame') return -1
+            if (a.type !== 'frame' && b.type === 'frame') return 1
+            // Groups just above frames
+            if (a.type === 'group' && b.type !== 'group' && b.type !== 'frame') return -1
+            if (a.type !== 'group' && a.type !== 'frame' && b.type === 'group') return 1
+            // Everything else keeps original order
+            return 0
+        })
 
     const currentTool = useAppSelector((s) => s.shapes.tool)
     const selectedShapes = useAppSelector((s) => s.shapes.selected)
 
-    const [isSidebarOpen, setIsSidebarOpen] = React.useState(false)
-    const shapesEntities = useAppSelector((state) => state.shapes.shapes.entities)
+    const selectedShapesRef = React.useRef(selectedShapes)
+    React.useEffect(() => {
+        selectedShapesRef.current = selectedShapes
+    }, [selectedShapes])
 
-    const hasSelectedText = Object.keys(selectedShapes).some((id) => {
-        const shape = shapesEntities[id]
-        return shape?.type === 'text'
-    })
+    const [isSidebarOpen, setIsSidebarOpen] = React.useState(false)
+    const [isEditingText, setIsEditingText] = React.useState(false)
+    const [hoveredShapeId, setHoveredShapeId] = React.useState<string | null>(null)
+
+    const hasSelectedText = isEditingText
 
     React.useEffect(() => {
         if (hasSelectedText && !isSidebarOpen) {
@@ -68,11 +91,27 @@ export const useInfiniteCanvas = () => {
         }
     }, [hasSelectedText, isSidebarOpen])
 
+    React.useEffect(() => {
+        const handler = (e: Event) => {
+            const custom = e as CustomEvent
+            setIsEditingText(custom.detail.editing)
+            isEditingTextRef.current = custom.detail.editing
+        }
+        window.addEventListener('text-editing-change', handler)
+        return () => window.removeEventListener('text-editing-change', handler)
+    }, [])
+
     const canvasRef = React.useRef<HTMLDivElement | null>(null)
     const touchMapRef = React.useRef<Map<number, TouchPointer>>(new Map())
 
     const draftShapeRef = React.useRef<DraftShape | null>(null)
     const freeDrawPointsRef = React.useRef<Point[]>([])
+    const clipboardRef = React.useRef<Shape[]>([])
+    const pointToPointRef = React.useRef<{
+        type: 'line' | 'arrow'
+        startWorld: Point
+        currentWorld: Point
+    } | null>(null)
 
     const isSpacedPressed = React.useRef(false)
     const isDrawingRef = React.useRef(false)
@@ -97,17 +136,28 @@ export const useInfiniteCanvas = () => {
     const isErasingRef = React.useRef(false)
     const erasedShapeRef = React.useRef<Set<string>>(new Set())
     const isResizingRef = React.useRef(false)
+    const isShiftPressedRef = React.useRef(false)
     const resizeDataRef = React.useRef<{
         shapeId: string
         corner: string
         initialBounds: { x: number; y: number; w: number; h: number }
         startPoint: { x: number; y: number }
+        aspectRatio: number
     } | null>(null)
 
     const lastFreehandFrameRef = React.useRef(0)
     const freehandRafRef = React.useRef<number | null>(null)
     const panRafRef = React.useRef<number | null>(null)
     const pendingPanPointRef = React.useRef<Point | null>(null)
+
+    const isEditingTextRef = React.useRef(false)
+
+    const marqueeStartRef = React.useRef<Point | null>(null)
+    const marqueeCurrentRef = React.useRef<Point | null>(null)
+    const isMarqueeingRef = React.useRef(false)
+
+    const lastClickTimeRef = React.useRef(0)
+    const lastClickShapeIdRef = React.useRef<string | null>(null)
 
     const [, force] = React.useState(0)
     const requestRender = (): void => {
@@ -141,6 +191,27 @@ export const useInfiniteCanvas = () => {
             }
         }
         return null
+    }
+
+    const snapToNearestEndpoint = (point: Point): Point => {
+        const SNAP_THRESHOLD = 15
+        for (const shape of shapeList) {
+            if (shape.type === 'line' || shape.type === 'arrow') {
+                const endpoints = [
+                    { x: shape.startX, y: shape.startY },
+                    { x: shape.endX, y: shape.endY }
+                ]
+                for (const ep of endpoints) {
+                    const dx = point.x - ep.x
+                    const dy = point.y - ep.y
+                    const dist = Math.sqrt(dx * dx + dy * dy)
+                    if (dist <= SNAP_THRESHOLD) {
+                        return ep
+                    }
+                }
+            }
+        }
+        return point
     }
 
     const isPointInShape = (point: Point, shape: Shape): boolean => {
@@ -180,25 +251,53 @@ export const useInfiniteCanvas = () => {
 
 
             case 'text':
-                const textWidth = Math.max(
-                    shape.text.length * (shape.fontSize * 0.6),
-                    100
-                )
-
-                const textHeight = shape.fontSize * 1.2
-                const padding = 8
-
+                const { width, height } = measureText(shape)
                 return (
                     point.x >= shape.x - 2 &&
-                    point.x <= shape.x + textWidth + padding + 2 &&
+                    point.x <= shape.x + width + 12 &&
                     point.y >= shape.y - 2 &&
-                    point.y <= shape.y + textHeight + padding + 2
+                    point.y <= shape.y + height + 8
                 )
             case 'group':
                 return (
                     point.x >= shape.x && point.x <= shape.x + shape.w &&
                     point.y >= shape.y && point.y <= shape.y + shape.h
                 )
+            default:
+                return false
+        }
+    }
+
+    const isShapeInMarquee = (
+        shape: Shape,
+        x1: number, y1: number,
+        x2: number, y2: number
+    ): boolean => {
+        switch (shape.type) {
+            case 'frame':
+            case 'rect':
+            case 'ellipse':
+            case 'generatedui':
+                // Shape's center must be inside marquee
+                const cx = shape.x + shape.w / 2
+                const cy = shape.y + shape.h / 2
+                return cx >= x1 && cx <= x2 && cy >= y1 && cy <= y2
+            case 'text':
+                return shape.x >= x1 && shape.x <= x2 && shape.y >= y1 && shape.y <= y2
+            case 'arrow':
+            case 'line':
+                return (
+                    shape.startX >= x1 && shape.startX <= x2 &&
+                    shape.startY >= y1 && shape.startY <= y2 &&
+                    shape.endX >= x1 && shape.endX <= x2 &&
+                    shape.endY >= y1 && shape.endY <= y2
+                )
+            case 'freedraw':
+                return shape.points.every(p => p.x >= x1 && p.x <= x2 && p.y >= y1 && p.y <= y2)
+            case 'group':
+                const gcx = shape.x + shape.w / 2
+                const gcy = shape.y + shape.h / 2
+                return gcx >= x1 && gcx <= x2 && gcy >= y1 && gcy <= y2
             default:
                 return false
         }
@@ -275,26 +374,33 @@ export const useInfiniteCanvas = () => {
 
     const onPointerDown: React.PointerEventHandler<HTMLDivElement> = (e) => {
         const target = e.target as HTMLElement
+        const isButton = target.tagName === 'BUTTON' || !!target.closest('button')
+        if (isButton) return
 
-        // Let double-clicks on text shapes through for editing
-        if (e.detail === 2 && target.closest('[data-text-shape]')) return
-
-        const isButton =
-            target.tagName === "BUTTON" ||
-            target.closest('button')
-
-        if (!isButton) {
-            e.preventDefault
-        } else {
-            console.log(
-                'Not preventing default - clicked an interactive element',
-                target
-            )
-            return
-        }
+        e.preventDefault()
 
         const local = getLocalPointFromPtr(e.nativeEvent)
         const world = screenToWorld(local, viewport.translate, viewport.scale)
+
+        if (e.button === 0) {
+            const now = Date.now()
+            const hitShape = getShapeAtPoint(world)
+
+            // Timestamp-based double-click detection — reliable regardless of pointer capture
+            const isDoubleClick =
+                now - lastClickTimeRef.current < 300 &&
+                hitShape?.id === lastClickShapeIdRef.current
+
+            lastClickTimeRef.current = now
+            lastClickShapeIdRef.current = hitShape?.id ?? null
+
+            if (isDoubleClick && hitShape?.type === 'text') {
+                window.dispatchEvent(new CustomEvent('text-enter-edit', {
+                    detail: { id: hitShape.id }
+                }))
+                return
+            }
+        }
 
         if (touchMapRef.current.size <= 1) {
             canvasRef.current?.setPointerCapture?.(e.pointerId)
@@ -456,10 +562,13 @@ export const useInfiniteCanvas = () => {
                             })
                         }
                     } else {
-                        if (!e.shiftKey) {
-                            dispatch(clearSelection())
-                            blurActiveTextInput()
-                        }
+                        // No shape hit — start marquee instead of just clearing
+                        if (!e.shiftKey) dispatch(clearSelection())
+                        blurActiveTextInput()
+                        isMarqueeingRef.current = true
+                        marqueeStartRef.current = world
+                        marqueeCurrentRef.current = world
+                        requestRender()
                     }
                 } else if (currentTool === 'eraser') {
                     isErasingRef.current = true
@@ -474,18 +583,50 @@ export const useInfiniteCanvas = () => {
                 } else if (currentTool === 'text') {
                     dispatch(addText({ x: world.x, y: world.y }))
                     dispatch(setTool('select'))
+                } else if (currentTool === 'line' || currentTool === 'arrow') {
+                    if (!pointToPointRef.current) {
+                        // First click — set start point
+                        pointToPointRef.current = {
+                            type: currentTool,
+                            startWorld: world,
+                            currentWorld: world
+                        }
+                        requestRender()
+                    } else {
+                        // Second click — commit the line
+                        const start = pointToPointRef.current.startWorld
+                        const end = world
+                        const snappedStart = snapToNearestEndpoint(start)
+                        const snappedEnd = snapToNearestEndpoint(end)
+
+                        if (currentTool === 'line') {
+                            dispatch(addLine({
+                                startX: snappedStart.x,
+                                startY: snappedStart.y,
+                                endX: snappedEnd.x,
+                                endY: snappedEnd.y
+                            }))
+                        } else {
+                            dispatch(addArrow({
+                                startX: snappedStart.x,
+                                startY: snappedStart.y,
+                                endX: snappedEnd.x,
+                                endY: snappedEnd.y
+                            }))
+                        }
+                        pointToPointRef.current = null
+                        requestRender()
+                    }
                 } else {
                     isDrawingRef.current = true
                     if (
                         currentTool === 'frame' ||
                         currentTool === 'rect' ||
-                        currentTool === 'ellipse' ||
-                        currentTool === 'arrow' ||
-                        currentTool === 'line'
+                        currentTool === 'ellipse'
                     ) {
                         console.log('Starting to draw: ', currentTool, 'at: ', world)
                         draftShapeRef.current = {
-                            type: currentTool,
+                            type: currentTool as 'frame' | 'rect' | 'ellipse' | 'line' | 'arrow',
                             startWorld: world,
                             currentWorld: world
                         }
@@ -504,6 +645,12 @@ export const useInfiniteCanvas = () => {
     const onPointerMove: React.PointerEventHandler<HTMLDivElement> = (e) => {
         const local = getLocalPointFromPtr(e.nativeEvent)
         const world = screenToWorld(local, viewport.translate, viewport.scale)
+
+        // Track hover for all shape types
+        if (!isMovingRef.current && !isDrawingRef.current && !isMarqueeingRef.current) {
+            const hit = getShapeAtPoint(world)
+            setHoveredShapeId(hit?.id ?? null)
+        }
 
         if (viewport.mode === 'panning' || viewport.mode === 'shiftPanning') {
             schedulePanMove(local)
@@ -671,6 +818,16 @@ export const useInfiniteCanvas = () => {
             })
         }
 
+        if (isMarqueeingRef.current && marqueeStartRef.current) {
+            marqueeCurrentRef.current = world
+            requestRender()
+        }
+
+        if (pointToPointRef.current) {
+            pointToPointRef.current.currentWorld = world
+            requestRender()
+        }
+
         if (isDrawingRef.current) {
             if (draftShapeRef.current) {
                 draftShapeRef.current.currentWorld = world
@@ -706,21 +863,25 @@ export const useInfiniteCanvas = () => {
                 } else if (draft.type === 'ellipse') {
                     dispatch(addEllipse({ x, y, w, h }))
                 } else if (draft.type === 'arrow') {
+                    const snappedStart = snapToNearestEndpoint(draft.startWorld)
+                    const snappedEnd = snapToNearestEndpoint(draft.currentWorld)
                     dispatch(
                         addArrow({
-                            startX: draft.startWorld.x,
-                            startY: draft.startWorld.y,
-                            endX: draft.currentWorld.x,
-                            endY: draft.currentWorld.y
+                            startX: snappedStart.x,
+                            startY: snappedStart.y,
+                            endX: snappedEnd.x,
+                            endY: snappedEnd.y
                         })
                     )
                 } else if (draft.type === 'line') {
+                    const snappedStart = snapToNearestEndpoint(draft.startWorld)
+                    const snappedEnd = snapToNearestEndpoint(draft.currentWorld)
                     dispatch(
                         addLine({
-                            startX: draft.startWorld.x,
-                            startY: draft.startWorld.y,
-                            endX: draft.currentWorld.x,
-                            endY: draft.currentWorld.y
+                            startX: snappedStart.x,
+                            startY: snappedStart.y,
+                            endX: snappedEnd.x,
+                            endY: snappedEnd.y
                         })
                     )
                 }
@@ -754,6 +915,28 @@ export const useInfiniteCanvas = () => {
             erasedShapeRef.current.clear()
         }
 
+        if (isMarqueeingRef.current && marqueeStartRef.current && marqueeCurrentRef.current) {
+            isMarqueeingRef.current = false
+
+            const x1 = Math.min(marqueeStartRef.current.x, marqueeCurrentRef.current.x)
+            const y1 = Math.min(marqueeStartRef.current.y, marqueeCurrentRef.current.y)
+            const x2 = Math.max(marqueeStartRef.current.x, marqueeCurrentRef.current.x)
+            const y2 = Math.max(marqueeStartRef.current.y, marqueeCurrentRef.current.y)
+
+            // Only select if dragged a meaningful distance
+            if (x2 - x1 > 4 && y2 - y1 > 4) {
+                shapeList.forEach((shape) => {
+                    if (isShapeInMarquee(shape, x1, y1, x2, y2)) {
+                        dispatch(selectShape(shape.id))
+                    }
+                })
+            }
+
+            marqueeStartRef.current = null
+            marqueeCurrentRef.current = null
+            requestRender()
+        }
+
         finalizeDrawingIfAny()
     }
 
@@ -761,41 +944,104 @@ export const useInfiniteCanvas = () => {
         onPointerUp(e)
     }
 
-    const onKeyDown = (e: globalThis.KeyboardEvent): void => {
-        if ((e.code === 'ShiftKey' || e.code === 'ShiftRight' && !e.repeat)) {
-            e.preventDefault()
-            isSpacedPressed.current = true
-            dispatch(handToolEnable())
-        }
-        
-        // Group/Ungroup shortcuts
-        if ((e.metaKey || e.ctrlKey) && e.key === 'g') {
-            e.preventDefault()
-            if (e.shiftKey) dispatch(ungroupSelected())
-            else dispatch(groupSelected())
-        }
-    }
-
-    const onKeyUp = (e: globalThis.KeyboardEvent): void => {
-        if ((e.code === 'ShiftKey' || e.code === 'ShiftRight')) {
-            e.preventDefault()
-            isSpacedPressed.current = false
-            dispatch(handToolDisable())
-        }
-    }
-
     React.useEffect(() => {
-        document.addEventListener('keydown', onKeyDown)
-        document.addEventListener('keyup', onKeyUp)
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.repeat) return
+
+            if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') {
+                isShiftPressedRef.current = true
+                isSpacedPressed.current = true
+                dispatch(handToolEnable())
+            }
+
+            if ((e.metaKey || e.ctrlKey) && e.key === 'd') {
+                e.preventDefault()
+                dispatch(duplicateSelected())
+            }
+
+            if ((e.metaKey || e.ctrlKey) && e.key === 'g') {
+                e.preventDefault()
+                if (e.shiftKey) dispatch(ungroupSelected())
+                else dispatch(groupSelected())
+            }
+
+            if ((e.metaKey || e.ctrlKey) && e.key === 'c') {
+                e.preventDefault()
+                const selected = Object.keys(selectedShapesRef.current)
+                if (selected.length > 0) {
+                    clipboardRef.current = selected
+                        .map(id => entityState.entities[id])
+                        .filter((s): s is Shape => Boolean(s))
+                }
+            }
+
+            if ((e.metaKey || e.ctrlKey) && e.key === 'v') {
+                e.preventDefault()
+                if (clipboardRef.current.length === 0) return
+
+                // Temporarily select the clipboard shapes then duplicate them
+                dispatch(clearSelection())
+                clipboardRef.current.forEach(shape => {
+                    dispatch(selectShape(shape.id))
+                })
+                dispatch(duplicateSelected())
+            }
+
+            if (e.key === 'Delete' || e.key === 'Backspace') {
+                if (isEditingTextRef.current) return  // text input owns this key, bail immediately
+
+                const activeElement = document.activeElement
+                const isTyping =
+                    activeElement instanceof HTMLInputElement ||
+                    activeElement instanceof HTMLTextAreaElement ||
+                    (activeElement as HTMLElement)?.isContentEditable
+
+                if (!isTyping) {
+                    e.preventDefault()
+                    const selected = Object.keys(selectedShapesRef.current)
+                    if (selected.length > 0) {
+                        selected.forEach(id => dispatch(removeShape(id)))
+                        dispatch(clearSelection())
+                    }
+                }
+            }
+
+            if (e.key === 'Escape') {
+                if (pointToPointRef.current) {
+                    pointToPointRef.current = null
+                    requestRender()
+                    return
+                }
+            }
+        }
+
+        const handleKeyUp = (e: KeyboardEvent) => {
+            if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') {
+                isShiftPressedRef.current = false
+                isSpacedPressed.current = false
+                dispatch(handToolDisable())
+            }
+        }
+
+        // Nuke any previously registered handlers before adding new ones
+        if (_keydownHandler) document.removeEventListener('keydown', _keydownHandler, { capture: true })
+        if (_keyupHandler) document.removeEventListener('keyup', _keyupHandler, { capture: true })
+
+        _keydownHandler = handleKeyDown
+        _keyupHandler = handleKeyUp
+
+        document.addEventListener('keydown', _keydownHandler, { capture: true })
+        document.addEventListener('keyup', _keyupHandler, { capture: true })
+
         return () => {
-            document.removeEventListener('keydown', onKeyDown)
-            document.removeEventListener('keyup', onKeyUp)
-            if (freehandRafRef.current)
-                window.cancelAnimationFrame(freehandRafRef.current)
+            if (_keydownHandler) document.removeEventListener('keydown', _keydownHandler, { capture: true })
+            if (_keyupHandler) document.removeEventListener('keyup', _keyupHandler, { capture: true })
+            _keydownHandler = null
+            _keyupHandler = null
+            if (freehandRafRef.current) window.cancelAnimationFrame(freehandRafRef.current)
             if (panRafRef.current) window.cancelAnimationFrame(panRafRef.current)
         }
-    }, [])
-
+    }, [dispatch])
 
     React.useEffect(() => {
         const handleResizeStart = (e: CustomEvent) => {
@@ -805,7 +1051,8 @@ export const useInfiniteCanvas = () => {
                 shapeId,
                 corner,
                 initialBounds: bounds,
-                startPoint: { x: e.detail.clientX || 0, y: e.detail.clientY || 0 }
+                startPoint: { x: e.detail.clientX || 0, y: e.detail.clientY || 0 },
+                aspectRatio: bounds.h > 0 ? bounds.w / bounds.h : 1
             }
         }
         const handleResizeMove = (e: CustomEvent) => {
@@ -861,6 +1108,58 @@ export const useInfiniteCanvas = () => {
                     newBounds.w = Math.max(10, world.x - initialBounds.x)
                     newBounds.h = Math.max(10, world.y - initialBounds.y)
                     break
+                case 'n':
+                    newBounds.h = Math.max(
+                        10,
+                        initialBounds.h + (initialBounds.y - world.y)
+                    )
+                    newBounds.y = world.y
+                    break
+                case 's':
+                    newBounds.h = Math.max(10, world.y - initialBounds.y)
+                    break
+                case 'e':
+                    newBounds.w = Math.max(10, world.x - initialBounds.x)
+                    break
+                case 'w':
+                    newBounds.w = Math.max(
+                        10,
+                        initialBounds.w + (initialBounds.x - world.x)
+                    )
+                    newBounds.x = world.x
+                    break
+            }
+
+            // Apply aspect ratio constraint when shift is pressed
+            if (isShiftPressedRef.current && (corner === 'nw' || corner === 'ne' || corner === 'sw' || corner === 'se')) {
+                // Figure out which dimension changed more (proportionally)
+                const wRatio = newBounds.w / initialBounds.w
+                const hRatio = newBounds.h / initialBounds.h
+
+                // Drive both axes by whichever changed more
+                const dominantRatio = Math.max(wRatio, hRatio)
+                const constrainedW = initialBounds.w * dominantRatio
+                const constrainedH = initialBounds.h * dominantRatio
+
+                // Re-anchor x/y for corners that pull from top or left
+                switch (corner) {
+                    case 'nw':
+                        newBounds.x = (initialBounds.x + initialBounds.w) - constrainedW
+                        newBounds.y = (initialBounds.y + initialBounds.h) - constrainedH
+                        break
+                    case 'ne':
+                        newBounds.y = (initialBounds.y + initialBounds.h) - constrainedH
+                        break
+                    case 'sw':
+                        newBounds.x = (initialBounds.x + initialBounds.w) - constrainedW
+                        break
+                    case 'se':
+                        // x and y stay anchored at top-left, no adjustment needed
+                        break
+                }
+
+                newBounds.w = constrainedW
+                newBounds.h = constrainedH
             }
 
             if (
@@ -1044,6 +1343,50 @@ export const useInfiniteCanvas = () => {
         getFreeDrawPoints,
         isSidebarOpen,
         hasSelectedText,
-        setIsSidebarOpen
+        setIsSidebarOpen,
+        hoveredShapeId,
+        getPointToPoint: () => pointToPointRef.current,
+        getMarquee: () => isMarqueeingRef.current
+            ? { start: marqueeStartRef.current!, current: marqueeCurrentRef.current! }
+            : null
+    }
+}
+
+
+export const useFrame = (shape: FrameShape) => {
+    const [isGenerating, setIsGenerating] = React.useState(false);
+    const dispatch = useAppDispatch()
+
+    const allShapes = useAppSelector((state) => 
+        Object.values(state.shapes.shapes?.entities || {}).filter(
+            (shape): shape is Shape => shape !== undefined
+        )
+    )
+
+    const handleGenerateDesign = async () => {
+        try {
+            setIsGenerating(true)
+            const snapshot = await generateFrameSnapshot(shape, allShapes)
+
+            downloadBlob(snapshot, `frame-${shape.frameNumber}-snapshot.png`)
+
+            const formData = new FormData()
+            formData.append('image', snapshot, `frame-${shape.frameNumber}.png`)
+            formData.append('frameNumber', shape.frameNumber.toString())
+
+            const urlParams = new URLSearchParams(window.location.search)
+            const projectId = urlParams.get('project')
+            if (projectId) {
+                formData.append('projectId', projectId)
+            }
+            
+        } catch (error) {
+            
+        }
+    }
+
+    return {
+        isGenerating,
+        handleGenerateDesign
     }
 }

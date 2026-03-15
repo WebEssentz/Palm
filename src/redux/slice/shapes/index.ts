@@ -327,7 +327,7 @@ const shapesSlice = createSlice({
         Omit<Parameters<typeof makeFrame>[0], "frameNumber">
       >
     ) {
-      state.frameCounter += 1;
+      state.frameCounter = (state.frameCounter ?? 0) + 1;
       const frameWithNumber = {
         ...action.payload,
         frameNumber: state.frameCounter,
@@ -379,7 +379,7 @@ const shapesSlice = createSlice({
       const id = action.payload;
       const shape = state.shapes.entities[id];
       if (shape?.type === "frame") {
-        state.frameCounter = Math.max(0, state.frameCounter - 1);
+        state.frameCounter = Math.max(0, (state.frameCounter ?? 1) - 1);
       }
       shapesAdapter.removeOne(state.shapes, id);
       delete state.selected[id];
@@ -406,7 +406,15 @@ const shapesSlice = createSlice({
     },
     deleteSelected(state) {
       const ids = Object.keys(state.selected);
-      if (ids.length) shapesAdapter.removeMany(state.shapes, ids);
+      if (ids.length) {
+        ids.forEach(id => {
+          const shape = state.shapes.entities[id];
+          if (shape?.type === "frame") {
+            state.frameCounter = Math.max(0, state.frameCounter - 1);
+          }
+        });
+        shapesAdapter.removeMany(state.shapes, ids);
+      }
       state.selected = {};
     },
     groupSelected(state) {
@@ -470,6 +478,105 @@ const shapesSlice = createSlice({
         delete state.selected[id];
       });
     },
+    duplicateSelected(state) {
+      const ids = Object.keys(state.selected);
+      if (ids.length === 0) return;
+
+      const OFFSET = 20; // nudge so duplicate is visibly offset
+      const newIds: string[] = [];
+
+      ids.forEach((id) => {
+        const shape = state.shapes.entities[id];
+        if (!shape) return;
+
+        const newId = nanoid();
+        newIds.push(newId);
+
+        if (
+          shape.type === "frame" ||
+          shape.type === "rect" ||
+          shape.type === "ellipse" ||
+          shape.type === "text" ||
+          shape.type === "generatedui"
+        ) {
+          const dupe = {
+            ...shape,
+            id: newId,
+            x: shape.x + OFFSET,
+            y: shape.y + OFFSET,
+            ...(shape.type === "frame" && {
+              frameNumber: (state.frameCounter += 1),
+            }),
+          };
+          shapesAdapter.addOne(state.shapes, dupe as Shape);
+        } else if (shape.type === "freedraw") {
+          const dupe = {
+            ...shape,
+            id: newId,
+            points: shape.points.map((p) => ({ x: p.x + OFFSET, y: p.y + OFFSET })),
+          };
+          shapesAdapter.addOne(state.shapes, dupe as Shape);
+        } else if (shape.type === "arrow" || shape.type === "line") {
+          const dupe = {
+            ...shape,
+            id: newId,
+            startX: shape.startX + OFFSET,
+            startY: shape.startY + OFFSET,
+            endX: shape.endX + OFFSET,
+            endY: shape.endY + OFFSET,
+          };
+          shapesAdapter.addOne(state.shapes, dupe as Shape);
+        } else if (shape.type === "group") {
+          // Duplicate children first
+          const newChildIds: string[] = [];
+          shape.childIds.forEach((childId) => {
+            const child = state.shapes.entities[childId];
+            if (!child) return;
+            const newChildId = nanoid();
+            newChildIds.push(newChildId);
+            // same offset logic per child type
+            if ("x" in child && "y" in child) {
+              shapesAdapter.addOne(state.shapes, {
+                ...child,
+                id: newChildId,
+                x: (child as any).x + OFFSET,
+                y: (child as any).y + OFFSET,
+              } as Shape);
+            } else if (child.type === "freedraw") {
+              shapesAdapter.addOne(state.shapes, {
+                ...child,
+                id: newChildId,
+                points: (child as any).points.map((p: any) => ({
+                  x: p.x + OFFSET,
+                  y: p.y + OFFSET,
+                })),
+              } as Shape);
+            } else if (child.type === "arrow" || child.type === "line") {
+              shapesAdapter.addOne(state.shapes, {
+                ...child,
+                id: newChildId,
+                startX: (child as any).startX + OFFSET,
+                startY: (child as any).startY + OFFSET,
+                endX: (child as any).endX + OFFSET,
+                endY: (child as any).endY + OFFSET,
+              } as Shape);
+            }
+          });
+          shapesAdapter.addOne(state.shapes, {
+            ...shape,
+            id: newId,
+            x: shape.x + OFFSET,
+            y: shape.y + OFFSET,
+            childIds: newChildIds,
+          } as Shape);
+        }
+      });
+
+      // Select only the new duplicates
+      state.selected = Object.fromEntries(
+        newIds.map((id) => [id, true as const])
+      );
+    },
     loadProject(
       state,
       action: PayloadAction<{
@@ -483,7 +590,21 @@ const shapesSlice = createSlice({
       state.shapes = action.payload.shapes;
       state.tool = action.payload.tool;
       state.selected = action.payload.selected;
-      state.frameCounter = action.payload.frameCounter;
+      state.frameCounter = action.payload.frameCounter ?? 0;
+
+      // Heal any existing NaN frameNumbers
+      let maxFrameNumber = state.frameCounter;
+      (state.shapes.ids as string[]).forEach((id) => {
+        const shape = state.shapes.entities[id];
+        if (shape?.type === "frame" && !Number.isFinite(shape.frameNumber)) {
+          maxFrameNumber += 1;
+          shape.frameNumber = maxFrameNumber;
+        }
+        if (shape?.type === "frame") {
+          maxFrameNumber = Math.max(maxFrameNumber, shape.frameNumber);
+        }
+      });
+      state.frameCounter = maxFrameNumber;
     },
   },
 });
@@ -508,6 +629,7 @@ export const {
   deleteSelected,
   groupSelected,
   ungroupSelected,
+  duplicateSelected,
   loadProject,
 } = shapesSlice.actions;
 

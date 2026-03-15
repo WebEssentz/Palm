@@ -13,12 +13,13 @@ export const Line = ({ shape }: { shape: LineShape }) => {
   
   return (
     <svg
-      className="absolute pointer-events-none z-10"
+      className="absolute pointer-events-none"
       style={{
         left: minX,
         top: minY,
         width,
         height,
+        zIndex: 10,
       }}
       aria-hidden>
       <line

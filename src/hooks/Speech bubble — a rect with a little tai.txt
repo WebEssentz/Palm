@@ -1,0 +1,7 @@
+Speech bubble — a rect with a little tail pointing somewhere. Used to annotate wireframes like "this button says Login". Designers use these constantly to leave notes on mockups.
+Table — one shape that looks like a spreadsheet grid. Instead of drawing 20 rectangles for a data table, you place one table shape and set rows/columns.
+Component — you design a button once, mark it as a component. Now you place it 10 times. Change the original → all 10 update. Figma's most powerful feature.
+Image shape — a rectangle that holds an image inside it. Drag from Assets → drops into a frame, stays bounded. No more floating images.
+Auto-layout — a frame where children stack automatically. Add a new button → the frame grows. Remove one → it shrinks. Like CSS flexbox but visual.
+Variables — set brand-color = #6366f1 once. Every shape using that variable updates when you change it. Design systems live here.
+Constraints — tell a button "always stay 20px from the right edge". Resize the frame → button follows. Responsive design without code.

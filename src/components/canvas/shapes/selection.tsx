@@ -1,4 +1,5 @@
 import { Shape } from '@/redux/slice/shapes'
+import { measureText } from '@/lib/measure-text'
 
 interface SelectionOverlayProps {
   shape: Shape
@@ -51,19 +52,14 @@ export const SelectionOverlay = ({
           h: lineMaxY - lineMinY + 10,
         }
       case 'text':
-        // Account for text padding (px-2 py-1 = 8px horizontal, 4px vertical)
-        const textWidth = Math.max(
-          shape.text.length * (shape.fontSize * 0.6),
-          100
-        ) // Min width for empty/short text
-        const textHeight = shape.fontSize * 1.2
-        const paddingX = 8 // px-2 = 8px padding
-        const paddingY = 4 // py-1 = 4px padding
+        const { width, height } = measureText(shape)
+        const paddingX = 8
+        const paddingY = 4
         return {
-          x: shape.x - 2, // Small margin around the text box
+          x: shape.x - 2,
           y: shape.y - 2,
-          w: textWidth + paddingX + 4, // Include padding + margin
-          h: textHeight + paddingY + 4,
+          w: width + paddingX + 4,
+          h: height + paddingY + 4,
         }
       default:
         return { x: 0, y: 0, w: 0, h: 0 }
@@ -156,6 +152,35 @@ export const SelectionOverlay = ({
             style={{ bottom: -6, right: -6 }}
             onPointerDown={(e) => handlePointerDown(e, 'se')}
             onPointerMove={(e) => handlePointerMove(e, 'se')}
+            onPointerUp={handlePointerUp}
+          />
+          {/* Midpoint handles */}
+          <div
+            className="absolute w-3 h-3 bg-blue-500 border border-white rounded-full cursor-n-resize pointer-events-auto"
+            style={{ top: -6, left: '50%', marginLeft: -6 }}
+            onPointerDown={(e) => handlePointerDown(e, 'n')}
+            onPointerMove={(e) => handlePointerMove(e, 'n')}
+            onPointerUp={handlePointerUp}
+          />
+          <div
+            className="absolute w-3 h-3 bg-blue-500 border border-white rounded-full cursor-s-resize pointer-events-auto"
+            style={{ bottom: -6, left: '50%', marginLeft: -6 }}
+            onPointerDown={(e) => handlePointerDown(e, 's')}
+            onPointerMove={(e) => handlePointerMove(e, 's')}
+            onPointerUp={handlePointerUp}
+          />
+          <div
+            className="absolute w-3 h-3 bg-blue-500 border border-white rounded-full cursor-e-resize pointer-events-auto"
+            style={{ top: '50%', right: -6, marginTop: -6 }}
+            onPointerDown={(e) => handlePointerDown(e, 'e')}
+            onPointerMove={(e) => handlePointerMove(e, 'e')}
+            onPointerUp={handlePointerUp}
+          />
+          <div
+            className="absolute w-3 h-3 bg-blue-500 border border-white rounded-full cursor-w-resize pointer-events-auto"
+            style={{ top: '50%', left: -6, marginTop: -6 }}
+            onPointerDown={(e) => handlePointerDown(e, 'w')}
+            onPointerMove={(e) => handlePointerMove(e, 'w')}
             onPointerUp={handlePointerUp}
           />
         </>

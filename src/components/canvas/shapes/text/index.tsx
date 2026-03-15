@@ -3,84 +3,117 @@ import { useDispatch } from "react-redux";
 import { updateShape, removeShape } from "@/redux/slice/shapes";
 import { useState, useRef, useEffect } from "react";
 
-export const Text = ({ shape }: { shape: TextShape }) => {
+export const Text = ({ shape, isSelected }: { shape: TextShape; isSelected: boolean }) => {
   const dispatch = useDispatch();
-  const [isEditing, setIsEditing] = useState(shape.text === "Type here...");
-  const [tempText, setTempText] = useState(shape.text);
+  const [isEditing, setIsEditing] = useState(false);
+  const [isHovered, setIsHovered] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
-  const justCreated = useRef(shape.text === "Type here...");
+  const originalTextRef = useRef(shape.text);
+  const blurTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Auto-focus when text is newly created (placeholder text)
+  // Auto-enter edit on fresh creation
   useEffect(() => {
-    if (shape.text === "Type here..." && inputRef.current) {
-      inputRef.current.focus();
-      inputRef.current.select(); // Select all placeholder text
-      setIsEditing(true);
+    if (shape.text === "Type here...") {
+      startEditing()
     }
-  }, [shape.text]);
+  }, [])
 
+  // Focus input whenever isEditing becomes true
   useEffect(() => {
     if (isEditing && inputRef.current) {
-      inputRef.current.focus();
-      if (shape.text === "Type here...") {
-        inputRef.current.select(); // Select placeholder text
+      inputRef.current.focus()
+      inputRef.current.select()
+    }
+  }, [isEditing])
+
+  // Listen for double-click signal from canvas
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const custom = e as CustomEvent
+      if (custom.detail.id === shape.id) {
+        startEditing()
       }
     }
-  }, [isEditing, shape.text]);
+    window.addEventListener('text-enter-edit', handler)
+    return () => window.removeEventListener('text-enter-edit', handler)
+  }, [shape.id, shape.text])
 
-  const handleDoubleClick = () => {
-    setIsEditing(true);
-    setTempText(shape.text);
-  };
+  // Reset hover when selection changes
+  useEffect(() => {
+    if (isSelected) setIsHovered(false)
+  }, [isSelected])
+
+  // Clean up blur timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (blurTimeoutRef.current) clearTimeout(blurTimeoutRef.current)
+    }
+  }, [])
+
+  const startEditing = () => {
+    originalTextRef.current = shape.text
+    setIsEditing(true)
+    window.dispatchEvent(new CustomEvent('text-editing-change', { detail: { editing: true } }))
+  }
+
+  const stopEditing = (save: boolean) => {
+    setIsEditing(false)
+    window.dispatchEvent(new CustomEvent('text-editing-change', { detail: { editing: false } }))
+
+    const current = inputRef.current?.value ?? shape.text
+
+    if (!save) {
+      if (originalTextRef.current === 'Type here...') {
+        dispatch(removeShape(shape.id))
+      } else {
+        dispatch(updateShape({ id: shape.id, patch: { text: originalTextRef.current } }))
+      }
+      return
+    }
+
+    const final = current.trim()
+    if (!final || final === 'Type here...') {
+      dispatch(removeShape(shape.id))
+    } else {
+      dispatch(updateShape({ id: shape.id, patch: { text: final } }))
+    }
+  }
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    e.stopPropagation()
+    if (e.key === 'Enter') stopEditing(true)
+    if (e.key === 'Escape') stopEditing(false)
+  }
 
   const handleBlur = () => {
-    setIsEditing(false);
-    
-    if (justCreated.current) {
-      justCreated.current = false;
-      // Don't delete on first blur — user just created it
-      if (tempText.trim() !== "Type here...") {
-        dispatch(updateShape({ id: shape.id, patch: { text: tempText.trim() } }));
-      }
-      return;
-    }
-    
-    if (tempText.trim() === "" || tempText.trim() === "Type here...") {
-      // Delete empty or unchanged placeholder text box
-      dispatch(removeShape(shape.id));
-    } else if (tempText.trim() !== shape.text) {
-      dispatch(
-        updateShape({
-          id: shape.id,
-          patch: { text: tempText.trim() },
-        })
-      );
-    }
-  };
+    blurTimeoutRef.current = setTimeout(() => {
+      const active = document.activeElement as HTMLElement
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter") {
-      handleBlur();
-    } else if (e.key === "Escape") {
-      if (shape.text === "Type here...") {
-        // Delete placeholder text box on escape
-        dispatch(removeShape(shape.id));
+      // Only keep editing if focus is inside sidebar or Radix portal
+      const isInSidebar =
+        active?.closest('[data-text-sidebar]') !== null ||
+        active?.closest('[data-radix-popper-content-wrapper]') !== null
+
+      if (!isInSidebar) {
+        stopEditing(true)
       } else {
-        setIsEditing(false);
-        setTempText(shape.text);
+        // Focus went to sidebar — pull it back so user can keep typing
+        inputRef.current?.focus()
       }
-    }
-  };
+    }, 150)
+  }
 
   if (isEditing) {
     return (
       <input
         ref={inputRef}
+        data-text-editing="true"
         type="text"
-        className="absolute pointer-events-auto bg-transparent outline-none text-white rounded px-2 py-1"
+        className="absolute pointer-events-auto bg-transparent outline-none"
         style={{
           left: shape.x,
           top: shape.y,
+          padding: '4px 8px',
           fontSize: shape.fontSize,
           fontFamily: shape.fontFamily,
           fontWeight: shape.fontWeight,
@@ -90,26 +123,32 @@ export const Text = ({ shape }: { shape: TextShape }) => {
           lineHeight: shape.lineHeight,
           letterSpacing: shape.letterSpacing,
           textTransform: shape.textTransform,
-          color: shape.fill || "currentColor",
-          minWidth: "100px",
-          whiteSpace: "nowrap",
+          color: shape.fill || 'currentColor',
+          minWidth: '100px',
+          whiteSpace: 'nowrap',
+          border: '1.5px dashed #3b82f6',
+          borderRadius: 4,
+          zIndex: 9999,
         }}
-        value={tempText}
-        onChange={(e) => setTempText(e.target.value)}
+        defaultValue={shape.text}
+        onChange={(e) => {
+          dispatch(updateShape({ id: shape.id, patch: { text: e.target.value } }))
+        }}
         onBlur={handleBlur}
         onKeyDown={handleKeyDown}
-        placeholder=""
         autoComplete="off"
       />
-    );
+    )
   }
 
   return (
     <div
-      className="absolute cursor-text select-none rounded px-2 py-1"
+      data-text-shape="true"
+      className="absolute select-none"
       style={{
         left: shape.x,
         top: shape.y,
+        padding: '4px 8px',
         fontSize: shape.fontSize,
         fontFamily: shape.fontFamily,
         fontWeight: shape.fontWeight,
@@ -119,18 +158,22 @@ export const Text = ({ shape }: { shape: TextShape }) => {
         lineHeight: shape.lineHeight,
         letterSpacing: shape.letterSpacing,
         textTransform: shape.textTransform,
-        color: shape.fill || "currentColor",
-        userSelect: "none",
-        whiteSpace: "nowrap",
+        color: shape.fill || 'currentColor',
+        userSelect: 'none',
+        whiteSpace: 'nowrap',
+        cursor: 'default',
       }}
-      title="Double-click to edit">
-      <span
-        data-text-shape="true"
-        className="pointer-events-auto"
-        style={{ display: "block", minWidth: "20px", minHeight: "1em" }}
-        onDoubleClick={handleDoubleClick}>
-        {shape.text}
-      </span>
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+    >
+      {isHovered && !isSelected && !isEditing && (
+        <div className="absolute pointer-events-none" style={{
+          inset: '-4px',
+          border: '1px dashed rgba(59,130,246,0.5)',
+          borderRadius: 4,
+        }} />
+      )}
+      {shape.text}
     </div>
-  );
+  )
 };
