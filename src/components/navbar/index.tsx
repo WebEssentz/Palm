@@ -12,6 +12,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar'
 import { useAppSelector } from '@/redux/store'
 import CreateProject from '../buttons/project'
 import { ThemeToggle } from '../theme/toggle'
+import AutoSave from '../canvas/autosave'
 
 type TabProps = {
     label: string
@@ -30,6 +31,11 @@ const Navbar = () => {
     const project = useQuery(
         api.projects.getProject,
         isValidProjectId ? { projectId: projectId as Id<'projects'> } : 'skip'
+    )
+
+    const creditBalance = useQuery(
+        api.subscription.getCreditsBalance,
+        me?.id ? { userId: me.id as Id<"users"> } : 'skip'
     )
 
     const tabs: TabProps[] = [
@@ -91,9 +97,25 @@ const Navbar = () => {
             </div>
 
             <div className='flex items-center justify-end gap-4'>
-                <span className='text-sm text-muted-foreground'>
-                    TODO: CREDITS
-                </span>
+                <div className='flex items-center gap-1.5 bg-muted/50 border border-border backdrop-blur-xl rounded-full px-3 py-1.5'>
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        {/* Trunk */}
+                        <path d="M8 14V8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                        {/* Left leaf */}
+                        <path d="M8 8C8 8 4 7 3 4C5.5 3.5 8 5 8 8Z" fill="currentColor" opacity="0.8" />
+                        {/* Right leaf */}
+                        <path d="M8 8C8 8 12 7 13 4C10.5 3.5 8 5 8 8Z" fill="currentColor" opacity="0.8" />
+                        {/* Top leaf */}
+                        <path d="M8 8C8 8 7 4 9 2C10.5 3.5 10 6 8 8Z" fill="currentColor" opacity="0.9" />
+                        {/* Small left leaf */}
+                        <path d="M8 9C8 9 5 9.5 4 7.5C6 6.5 8 8 8 9Z" fill="currentColor" opacity="0.6" />
+                        {/* Small right leaf */}
+                        <path d="M8 9C8 9 11 9.5 12 7.5C10 6.5 8 8 8 9Z" fill="currentColor" opacity="0.6" />
+                    </svg>
+                    <span className='text-sm font-medium tabular-nums'>
+                        {creditBalance ?? 0}
+                    </span>
+                </div>
                 <ThemeToggle />
                 <Button
                     variant="secondary"
@@ -107,6 +129,7 @@ const Navbar = () => {
                         <User className='size-5' />
                     </AvatarFallback>
                 </Avatar>
+                {hasCanvas && <AutoSave />}
                 {!hasCanvas && !hasStyleGuide && <CreateProject />}
             </div>
         </div>

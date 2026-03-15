@@ -13,12 +13,13 @@ interface AutosaveProjectRequest {
         scale: number
         translate: { x:number, y:number }
     }
+    isPro?: boolean
 }
 
 interface AutosaveProjectResponse {
     success: boolean
-    message: string
-    eventId: string
+    via?: 'inngest' | 'direct'
+    eventId?: string
 }
 
 export const ProjectApi = createApi({
@@ -38,3 +39,5 @@ export const ProjectApi = createApi({
     }),
    }),
 })
+
+export const { useAutosaveProjectMutation } = ProjectApi

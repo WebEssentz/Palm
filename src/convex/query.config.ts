@@ -1,5 +1,5 @@
 import { convexAuthNextjsToken } from "@convex-dev/auth/nextjs/server"
-import { preloadQuery } from "convex/nextjs"
+import { fetchQuery, preloadQuery } from "convex/nextjs"
 import { api } from "../../convex/_generated/api"
 import { normalizeProfile, ConvexUserRaw } from "@/types/user"
 import { Id } from "../../convex/_generated/dataModel"
@@ -13,50 +13,68 @@ export const ProfileQuery = async () => {
 }
 
 export const SubscriptionEntitlementQuery = async () => {
-    const rawProfile = await ProfileQuery()
-    const profile = normalizeProfile(
-        rawProfile._valueJSON as unknown as ConvexUserRaw | null
+    const token = await convexAuthNextjsToken()
+    
+    // Get profile
+    const rawProfile = await fetchQuery(
+        api.user.getCurrentUser,
+        {},
+        { token }
+    )
+    const profile = normalizeProfile(rawProfile as unknown as ConvexUserRaw | null)
+
+    if (!profile?.id) return { entitlement: false, profileName: 'User' }
+
+    // Get entitlement as actual value, not preloaded
+    const entitlement = await fetchQuery(
+        api.subscription.hasEntitlement,
+        { userId: profile.id as Id<'users'> },
+        { token }
     )
 
-    const entitlement = await preloadQuery(
-        api.subscription.hasEntitlement,
-        { userId: profile?.id as Id <'users'> },
-        { token: await convexAuthNextjsToken() }
-    )
-    return { entitlement, profileName: profile?.name || 'User' }
+    return { 
+        entitlement: !!entitlement,
+        profileName: profile?.name || 'User' 
+    }
 }
 
 export const ProjectQuery = async (projectId: string) => {
-    const rawProfile = await ProfileQuery()
-    const profile = normalizeProfile(
-        rawProfile._valueJSON as unknown as ConvexUserRaw | null
+    const token = await convexAuthNextjsToken()
+    const rawProfile = await fetchQuery(
+        api.user.getCurrentUser,
+        {},
+        { token }
     )
+    const profile = normalizeProfile(rawProfile as unknown as ConvexUserRaw | null)
 
-    if (!profile?.id || !projectId) {
+    if (!profile?.id || !projectId || projectId === 'null') {
         return { project: null, profile: null }
     }
 
     const project = await preloadQuery(
         api.projects.getProject,
         { projectId: projectId as Id<'projects'> },
-        { token: await convexAuthNextjsToken() }
+        { token }
     )
 
     return { project, profile }
 }
 
 export const ProjectsQuery = async () => {
-    const rawProfile = await ProfileQuery()
-    const profile = normalizeProfile(
-        rawProfile._valueJSON as unknown as ConvexUserRaw | null
+    const token = await convexAuthNextjsToken()
+    const rawProfile = await fetchQuery(
+        api.user.getCurrentUser,
+        {},
+        { token }
     )
+    const profile = normalizeProfile(rawProfile as unknown as ConvexUserRaw | null)
     if (!profile?.id) {
         return { projects: null, profile: null }
     }
     const projects = await preloadQuery(
         api.projects.getUserProjects,
         { userId: profile.id as Id<'users'> },
-        { token: await convexAuthNextjsToken() }
+        { token }
     )
     return { projects, profile }
 }

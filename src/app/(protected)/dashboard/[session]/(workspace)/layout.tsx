@@ -14,8 +14,8 @@ const Layout = async ({ children, params }: Props) => {
   const { profileName, entitlement } = await SubscriptionEntitlementQuery()
   const target = combinedSlug(profileName || 'User')
   // Only redirect when the computed target slug differs from the current session
-  if (!entitlement?._valueJSON && session !== target) {
-    redirect(`/dashboard/${target}`)
+  if (!entitlement) {
+    redirect(`/billing/${target}`)
   }
   return (
     <div className='grid grid-cols-1'>

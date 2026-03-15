@@ -1,0 +1,29 @@
+feat: billing, payments, subscriptions & brand polish
+
+Payments & monetization:
+- Polar.sh integration (sandbox + production)
+- Palm Pro $20/month subscription with 1 week trial
+- Checkout API with userId metadata passthrough
+- Polar webhook verification + Inngest event pipeline
+- Fixed webhook event name typo (webhooks → webhook)
+- Subscription upsert in Convex with credits ledger
+- hasEntitlement query (active + trialing status)
+- Credits balance display in navbar with palm icon
+- Free tier: 3 projects, manual save only
+- Pro tier: unlimited projects, Inngest autosave
+
+Canvas improvements:
+- Hover overlay for all shape types
+- Text selection/hover state isolation (isPro split)
+- Frame render order (frames always below shapes)
+- Copy/paste Ctrl+C / Ctrl+V
+- Point-to-point line drawing with live preview
+- Marquee rubber band selection
+- measureText utility for accurate text bounds
+- SelectionOverlay hidden during text editing
+
+Architecture:
+- Debounced fetch for free user saves (sendBeacon on close)
+- Inngest only for Pro users (justified cost split)
+- Module-level keyboard handlers (StrictMode fix)
+- isPro flag threaded through AutoSave → API → Inngest

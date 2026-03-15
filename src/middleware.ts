@@ -14,6 +14,16 @@ export default convexAuthNextjsMiddleware(async (request, { convexAuth }) => {
   if (ProtectedMatcher(request) && !authed) {
     return nextjsMiddlewareRedirect(request, `/auth/sign-in`)
   }
+  // Check subscription for protected routes
+  if (ProtectedMatcher(request) && authed) {
+    try {
+      const hasSubscription = await convexAuth.isAuthenticated()
+      // TODO: Check actual subscription status via Convex query
+      // For now, allow access - pro-only features use direct checks
+    } catch (error) {
+      console.error('Error checking subscription:', error)
+    }
+  }
   return
 },
   {
