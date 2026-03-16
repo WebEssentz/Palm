@@ -227,3 +227,55 @@ export const getCreditsBalance = query({
         return sub?.creditsBalance ?? 0
     }
 })
+
+export const consumeCredits = mutation({
+    args: {
+        userId: v.id('users'),
+        amount: v.number(),
+        reason: v.optional(v.string()),
+        idempotencyKey: v.string()
+    },
+    handler: async (ctx, args) => {
+        const { userId, amount, reason, idempotencyKey } = args
+
+        if (amount <= 0) return { ok: false, error: 'no-credits' }
+
+        if (idempotencyKey) {
+            const dupe = await ctx.db
+                .query('credits_ledger')
+                .withIndex('by_idempotencyKey', (q) => q.eq('idempotencyKey', idempotencyKey))
+                .first()
+                
+            if (dupe) return { ok: true, idempotent: true }
+        }
+
+        const sub = await ctx.db
+            .query("subscriptions")
+            .withIndex("by_userId", (q) => q.eq("userId", userId))
+            .first()
+
+        if (!sub) return { ok: false, error: 'subscription-not-found' }
+
+        if(!ENTITLED.has(sub.status)) return { ok: false, error: 'not-entitled' }
+
+        if (sub.creditsBalance < amount) return { ok: false, error: 'insufficient-credits', balance: sub.creditsBalance }
+
+        const next = sub.creditsBalance - amount
+
+        await ctx.db.patch(sub._id, {
+            creditsBalance: next,
+        })
+
+        await ctx.db.insert("credits_ledger", {
+            userId,
+            subscriptionId: sub._id,
+            idempotencyKey,
+            type: 'consume',
+            meta: { prev: sub.creditsBalance, next },
+            amount: -amount,
+            reason: reason ?? 'usage',
+        })
+
+        return { ok: true, balance: next }
+    }
+})

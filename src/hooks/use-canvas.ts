@@ -21,15 +21,18 @@ import {
     ungroupSelected,
     duplicateSelected,
     deleteSelected,
-    FrameShape
+    FrameShape,
+    addGeneratedUI
 } from "@/redux/slice/shapes"
 import { handToolDisable, handToolEnable, panEnd, panMove, panStart, Point, screenToWorld, wheelPan, wheelZoom } from "@/redux/slice/viewport"
 import { AppDispatch, useAppDispatch, useAppSelector } from "@/redux/store"
+import { nanoid } from "@reduxjs/toolkit"
 import { RefreshCcwDot } from "lucide-react"
 import { getRSCModuleInformation } from "next/dist/build/analysis/get-page-static-info"
 import { Headland_One } from "next/font/google"
 import React from "react"
 import { useDispatch } from "react-redux"
+import { toast } from "sonner"
 
 
 const RAF_INTERNAL_MS = 8
@@ -374,8 +377,17 @@ export const useInfiniteCanvas = () => {
 
     const onPointerDown: React.PointerEventHandler<HTMLDivElement> = (e) => {
         const target = e.target as HTMLElement
-        const isButton = target.tagName === 'BUTTON' || !!target.closest('button')
-        if (isButton) return
+        const isInteractive = 
+            target.tagName === 'BUTTON' || 
+            target.tagName === 'INPUT' || 
+            target.tagName === 'TEXTAREA' || 
+            (target as HTMLElement).isContentEditable ||
+            !!target.closest('button') ||
+            !!target.closest('input') ||
+            !!target.closest('textarea') ||
+            !!target.closest('[contenteditable="true"]')
+
+        if (isInteractive) return
 
         e.preventDefault()
 
@@ -858,10 +870,13 @@ export const useInfiniteCanvas = () => {
                 if (draft.type === 'frame') {
                     console.log('Adding frame shape: ', { x, y, w, h })
                     dispatch(addFrame({ x, y, w, h }))
+                    dispatch(setTool('select'))
                 } else if (draft.type === 'rect') {
                     dispatch(addRect({ x, y, w, h }))
+                    dispatch(setTool('select'))
                 } else if (draft.type === 'ellipse') {
                     dispatch(addEllipse({ x, y, w, h }))
+                    dispatch(setTool('select'))
                 } else if (draft.type === 'arrow') {
                     const snappedStart = snapToNearestEndpoint(draft.startWorld)
                     const snappedEnd = snapToNearestEndpoint(draft.currentWorld)
@@ -954,49 +969,53 @@ export const useInfiniteCanvas = () => {
                 dispatch(handToolEnable())
             }
 
-            if ((e.metaKey || e.ctrlKey) && e.key === 'd') {
-                e.preventDefault()
-                dispatch(duplicateSelected())
-            }
-
-            if ((e.metaKey || e.ctrlKey) && e.key === 'g') {
-                e.preventDefault()
-                if (e.shiftKey) dispatch(ungroupSelected())
-                else dispatch(groupSelected())
-            }
-
-            if ((e.metaKey || e.ctrlKey) && e.key === 'c') {
-                e.preventDefault()
-                const selected = Object.keys(selectedShapesRef.current)
-                if (selected.length > 0) {
-                    clipboardRef.current = selected
-                        .map(id => entityState.entities[id])
-                        .filter((s): s is Shape => Boolean(s))
-                }
-            }
-
-            if ((e.metaKey || e.ctrlKey) && e.key === 'v') {
-                e.preventDefault()
-                if (clipboardRef.current.length === 0) return
-
-                // Temporarily select the clipboard shapes then duplicate them
-                dispatch(clearSelection())
-                clipboardRef.current.forEach(shape => {
-                    dispatch(selectShape(shape.id))
-                })
-                dispatch(duplicateSelected())
-            }
-
-            if (e.key === 'Delete' || e.key === 'Backspace') {
-                if (isEditingTextRef.current) return  // text input owns this key, bail immediately
-
                 const activeElement = document.activeElement
                 const isTyping =
-                    activeElement instanceof HTMLInputElement ||
-                    activeElement instanceof HTMLTextAreaElement ||
+                    activeElement?.tagName === 'INPUT' ||
+                    activeElement?.tagName === 'TEXTAREA' ||
                     (activeElement as HTMLElement)?.isContentEditable
 
-                if (!isTyping) {
+                if (isTyping) return
+
+                const isMac = typeof window !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.userAgent)
+                const isModKey = isMac ? e.metaKey : e.ctrlKey
+
+                if (isModKey && e.key === 'd') {
+                    e.preventDefault()
+                    dispatch(duplicateSelected())
+                }
+
+                if (isModKey && e.key === 'g') {
+                    e.preventDefault()
+                    if (e.shiftKey) dispatch(ungroupSelected())
+                    else dispatch(groupSelected())
+                }
+
+                if (isModKey && e.key === 'c') {
+                    e.preventDefault()
+                    const selected = Object.keys(selectedShapesRef.current)
+                    if (selected.length > 0) {
+                        clipboardRef.current = selected
+                            .map(id => entityState.entities[id])
+                            .filter((s): s is Shape => Boolean(s))
+                    }
+                }
+
+                if (isModKey && e.key === 'v') {
+                    e.preventDefault()
+                    if (clipboardRef.current.length === 0) return
+
+                    // Temporarily select the clipboard shapes then duplicate them
+                    dispatch(clearSelection())
+                    clipboardRef.current.forEach(shape => {
+                        dispatch(selectShape(shape.id))
+                    })
+                    dispatch(duplicateSelected())
+                }
+
+                if (e.key === 'Delete' || e.key === 'Backspace') {
+                    if (isEditingTextRef.current) return  // text input owns this key, bail immediately
+                    
                     e.preventDefault()
                     const selected = Object.keys(selectedShapesRef.current)
                     if (selected.length > 0) {
@@ -1004,7 +1023,6 @@ export const useInfiniteCanvas = () => {
                         dispatch(clearSelection())
                     }
                 }
-            }
 
             if (e.key === 'Escape') {
                 if (pointToPointRef.current) {
@@ -1368,25 +1386,129 @@ export const useFrame = (shape: FrameShape) => {
             setIsGenerating(true)
             const snapshot = await generateFrameSnapshot(shape, allShapes)
 
-            downloadBlob(snapshot, `frame-${shape.frameNumber}-snapshot.png`)
+            // Get shapes INSIDE this frame only
+            const shapesInsideFrame = allShapes.filter(s => 
+                s.id !== shape.id &&
+                s.type !== 'frame' &&
+                s.x >= shape.x && s.x + (s.w || 0) <= shape.x + shape.w &&
+                s.y >= shape.y && s.y + (s.h || 0) <= shape.y + shape.h
+            )
 
             const formData = new FormData()
             formData.append('image', snapshot, `frame-${shape.frameNumber}.png`)
             formData.append('frameNumber', shape.frameNumber.toString())
+            formData.append('shapes', JSON.stringify(shapesInsideFrame))
 
             const urlParams = new URLSearchParams(window.location.search)
             const projectId = urlParams.get('project')
             if (projectId) {
                 formData.append('projectId', projectId)
             }
-            
-        } catch (error) {
-            
+
+            const response = await fetch('/api/generate', {
+                method: 'POST',
+                body: formData
+            })
+
+            if (!response.ok) {
+                const err = await response.json().catch(() => ({ error: 'Unknown error' }))
+                throw new Error(err.error || 'Failed to generate UI')
+            }
+
+            const generatedUIPosition = {
+                x: shape.x + shape.w + 50,
+                y: shape.y,
+                w: Math.max(400, shape.w),
+                h: Math.max(300, shape.h)
+            }
+
+            const generatedUIId = nanoid()
+
+            dispatch(
+                addGeneratedUI({
+                    ...generatedUIPosition,
+                    id: generatedUIId,
+                    uiSpecData: null,
+                    sourceFrameId: shape.id
+                })
+            )
+
+            const reader = response.body?.getReader()
+            const decoder = new TextDecoder()
+            let accumulatedMarkup = ''
+
+            let lastUpdateTime = 0
+            const UPDATE_THROTTLE_MS = 200
+
+            if (reader) {
+                try {
+                    while (true) {
+                        const { done, value } = await reader.read()
+                        if (done) {
+                            dispatch(
+                                updateShape({
+                                    id: generatedUIId,
+                                    patch: {
+                                        uiSpecData: accumulatedMarkup,
+                                    }
+                                })
+                            )
+                            break
+                        }
+
+                        const chunk = decoder.decode(value)
+                        accumulatedMarkup += chunk
+
+                        const now = Date.now()
+                        if (now - lastUpdateTime >= UPDATE_THROTTLE_MS) {
+                            dispatch(
+                                updateShape({
+                                    id: generatedUIId,
+                                    patch: {
+                                        uiSpecData: accumulatedMarkup,
+                                    }
+                                })
+                            )
+                            lastUpdateTime = now
+                        }
+                    }
+            } finally {
+                reader.releaseLock()
+            }
         }
+        
+    } catch (error) {
+        toast.error(`Failed to generate: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    } finally {
+        setIsGenerating(false)
     }
+}
 
     return {
         isGenerating,
         handleGenerateDesign
+    }
+}
+
+export const useInspiration = () => {
+    const [isinspirationOpen, setIsInspirationOpen] = React.useState(false)
+
+    const toggleInspiration = () => {
+        setIsInspirationOpen(!isinspirationOpen)
+    }
+
+    const openInspiration = () => {
+        setIsInspirationOpen(true)
+    }
+
+    const closeInspiration = () => {
+        setIsInspirationOpen(false)
+    }
+
+    return {
+        isinspirationOpen,
+        toggleInspiration,
+        openInspiration,
+        closeInspiration,
     }
 }

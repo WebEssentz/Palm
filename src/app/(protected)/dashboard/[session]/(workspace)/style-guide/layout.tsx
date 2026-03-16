@@ -40,7 +40,7 @@ const Layout = ({ children }: Props) => {
                             </p>
                         </div>
 
-                        <TabsList className="grid w-full sm:w-fit h-auto grid-cols-3 rounded-full backdrop-blur-xl bg-muted border border-border dark:bg-white/[0.08] dark:border-white/[0.12] saturate-150 p-2">
+                        <TabsList className="grid w-full sm:w-fit h-auto grid-cols-3 rounded-full backdrop-blur-xl bg-muted border border-border/60 dark:border-white/[0.12] dark:bg-white/[0.08] dark:border-white/[0.12] saturate-150 p-2">
                             {tabs.map((tab) => {
                                 const Icon = tab.icon
                                 return (

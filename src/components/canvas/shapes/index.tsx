@@ -6,6 +6,7 @@ import { Arrow } from './arrow'
 import { Line } from './line'
 import { Text } from './text'
 import { Ellipse } from './ellipse'
+import GeneratedUI from './generatedui'
 
 const ShapeRenderer = ({
     shape,
@@ -37,6 +38,8 @@ const ShapeRenderer = ({
             return <Text shape={shape} isSelected={!!selectedShapes[shape.id]}/>
         case 'ellipse':
             return <Ellipse shape={shape}/>
+        case 'generatedui':
+            return <GeneratedUI shape={shape} toggleInspiration={toggleInspiration} toggleChat={toggleChat} generateWorkflow={generateWorkflow} exportDesign={exportDesign}/>
         default:
             break;
     }

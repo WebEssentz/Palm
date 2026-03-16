@@ -34,7 +34,7 @@ const StyleGuideTypography = ({ typographyGuide }: Props) => {
                         {section.styles?.map((style: any, styleIndex: number) => (
                             <div
                               key={styleIndex}
-                              className='p-6 rounded-2xl blackdrop-blur-xl bg-white/[0.02] border border-white/[0.08] saturate-150'
+                              className='p-6 rounded-2xl backdrop-blur-xl bg-background border border-border saturate-150'
                             >
                               <div className='space-y-4'>
                                 <h4 className='text-sm font-medium text-foreground'>

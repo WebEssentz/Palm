@@ -94,7 +94,10 @@ const ImagesBoard = ({
                 />
 
                 <button
-                    onClick={() => removeImage(image.id)}
+                    onClick={(e) => {
+                        e.stopPropagation()
+                        removeImage(image.id)
+                    }}
                     className="absolute top-2 right-2 w-6 h-6 bg-black/50 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
                 >
                     <X className="w-4 h-4 text-white" />

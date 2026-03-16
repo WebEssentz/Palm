@@ -124,9 +124,12 @@
 @layer base {
   * {
     @apply border-border outline-ring/50;
-    scrollbar-width: thin; /* Firefox */
-    scrollbar-color: oklch(0.5 0 0 / 30%) transparent; /* Firefox */
+    scrollbar-width: thin;
+    /* Firefox */
+    scrollbar-color: oklch(0.5 0 0 / 30%) transparent;
+    /* Firefox */
   }
+
   body {
     @apply bg-background text-foreground;
   }
