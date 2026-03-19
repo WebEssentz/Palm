@@ -130,7 +130,15 @@ export async function POST(req: NextRequest) {
         const result = await generateObject({
             model: google('gemini-3.1-flash-lite-preview'),  // best price/quality
             schema: StyleGuideSchema,
-            system: systemPrompt,
+            temperature: 0,
+            providerOptions: {
+                google: {
+                    thinkingConfig: {
+                        thinkingLevel: 'medium',
+                        includeThoughts: false,
+                    }
+                }
+            },
             messages: [
                 {
                     role: 'user',

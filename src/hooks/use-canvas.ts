@@ -1,7 +1,8 @@
 "use client"
 
-import { downloadBlob, generateFrameSnapshot } from "@/lib/frame-snapshot"
+import { generateFrameSnapshot } from "@/lib/frame-snapshot"
 import { measureText } from "@/lib/measure-text"
+import { useGenerateWorkflowMutation } from "@/redux/api/generation"
 import {
     addArrow,
     addEllipse,
@@ -433,6 +434,10 @@ export const useInfiniteCanvas = () => {
                             if (!e.shiftKey) dispatch(clearSelection())
                             dispatch(selectShape(hitShape.id))
                         }
+                        // Force canvas focus so keyboard events work for generatedui
+                        if (hitShape.type === 'generatedui') {
+                            canvasRef.current?.focus();
+                        }
                         isMovingRef.current = true
                         moveStartRef.current = world
 
@@ -508,8 +513,35 @@ export const useInfiniteCanvas = () => {
                             }
                         })
 
-                        if (
-                            hitShape.type === 'frame' ||
+                        if (hitShape.type === 'frame') {
+                            initialShapePositionsRef.current[hitShape.id] = {
+                                x: hitShape.x,
+                                y: hitShape.y
+                            }
+                            // Capture all shapes inside this frame
+                            shapeList.forEach(s => {
+                                if (s.type === 'frame') return
+                                const insideFrame =
+                                    s.x >= hitShape.x &&
+                                    s.x + (s.w || 0) <= hitShape.x + hitShape.w &&
+                                    s.y >= hitShape.y &&
+                                    s.y + (s.h || 0) <= hitShape.y + hitShape.h
+
+                                if (insideFrame) {
+                                    if (s.type === 'rect' || s.type === 'ellipse' ||
+                                        s.type === 'text' || s.type === 'generatedui') {
+                                        initialShapePositionsRef.current[s.id] = { x: s.x, y: s.y }
+                                    } else if (s.type === 'freedraw') {
+                                        initialShapePositionsRef.current[s.id] = { points: [...s.points] }
+                                    } else if (s.type === 'line' || s.type === 'arrow') {
+                                        initialShapePositionsRef.current[s.id] = {
+                                            startX: s.startX, startY: s.startY,
+                                            endX: s.endX, endY: s.endY
+                                        }
+                                    }
+                                }
+                            })
+                        } else if (
                             hitShape.type === 'rect' ||
                             hitShape.type === 'ellipse' ||
                             hitShape.type === 'generatedui'
@@ -1015,11 +1047,10 @@ export const useInfiniteCanvas = () => {
 
                 if (e.key === 'Delete' || e.key === 'Backspace') {
                     if (isEditingTextRef.current) return  // text input owns this key, bail immediately
-                    
                     e.preventDefault()
                     const selected = Object.keys(selectedShapesRef.current)
                     if (selected.length > 0) {
-                        selected.forEach(id => dispatch(removeShape(id)))
+                        selected.forEach(id => dispatch(removeShape(id))) // delete ALL types
                         dispatch(clearSelection())
                     }
                 }
@@ -1510,5 +1541,155 @@ export const useInspiration = () => {
         toggleInspiration,
         openInspiration,
         closeInspiration,
+    }
+}
+
+export const useWorkflowGeneration = () => {
+    const dispatch = useAppDispatch()
+    const [, { isLoading: isGeneratingWorkflow }] = useGenerateWorkflowMutation()
+    
+    const allShapes = useAppSelector((state) => 
+        Object.values(state.shapes.shapes?.entities || {}).filter(
+            (shape): shape is Shape => shape !== undefined
+        )
+    )
+
+    const generateWorkflow = async (generatedUIId: string) => {
+        try {
+            const currentShape = allShapes.find((shape) => shape.id === generatedUIId)
+            
+            if (!currentShape || currentShape.type !== 'generatedui') {
+                toast.error("Generated UI not found")
+                return
+            }
+
+            if (!currentShape.uiSpecData) {
+                toast.error("No design data to generate workflow")
+                return
+            }
+
+            const urlParams = new URLSearchParams(window.location.search)
+
+            const projectId = urlParams.get('project')
+
+            if (!projectId) {
+                toast.error("Project ID not found")
+                return
+            }
+
+            const pageCount = 4
+            toast.loading("Generate workflow pages...", {
+                id: 'workflow-generation',
+            })
+
+            const baseX = currentShape.x + currentShape.w + 100
+            const spacing = Math.max(currentShape.w + 50, 450)
+
+            const workflowPromises = Array.from({ length: pageCount }).map(
+                async (_, index) => {
+                    try {
+                        const response = await fetch('/api/generate/workflow', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({
+                                currentHTML: currentShape.uiSpecData,
+                                projectId,
+                                pageIndex: index,
+                                generatedUIId
+                            })
+                        })
+
+                        if (!response.ok) {
+                            throw new Error(
+                                `Failed to generate page ${index + 1}: ${response.status}`
+                            )
+                        }
+
+                        const workflowPosition = {
+                            x: baseX + index * spacing,
+                            y: currentShape.y,
+                            w: Math.max(400, currentShape.w),
+                            h: Math.max(300, currentShape.h),
+                        }
+
+                        const workflowId = nanoid()
+
+                        dispatch(
+                            addGeneratedUI({
+                                ...workflowPosition,
+                                id: workflowId,
+                                uiSpecData: null,
+                                sourceFrameId: currentShape.sourceFrameId,
+                                isWorkflowPage: true
+                            })
+                        )
+
+                        const reader = response.body?.getReader()
+                        const decoder = new TextDecoder()
+                        let accumulatedHTML = ''
+
+                        if (reader) {
+                            while (true) {
+                                const { done, value } = await reader.read()
+                                if (done) break
+
+                                const chunk = decoder.decode(value)
+                                accumulatedHTML += chunk
+
+                                dispatch(
+                                    updateShape({
+                                        id: workflowId,
+                                        patch: {
+                                            uiSpecData: accumulatedHTML
+                                        }
+                                    })
+                                )
+                            }
+                        }
+                        return { pageIndex: index, success: true }
+
+                    } catch (error) {
+                        console.error(`Failed to generate page ${index + 1}:`, error)
+                        return { pageIndex: index, success: false, error }
+                    }
+                }
+            )
+
+            const results = await Promise.all(workflowPromises)
+            const successCount = results.filter((r) => r.success).length
+            const failureCount = results.length - successCount
+
+            if (successCount === 4) {
+                toast.success("Workflow generated successfully", {
+                    id: 'workflow-generation',
+                })
+            } else {
+                toast.error(`Generated ${successCount} out of 4 workflow pages`, {
+                    id: 'workflow-generation',
+                })
+            }
+        } catch (error) {
+            toast.error(`Failed to generate workflow: ${error instanceof Error ? error.message : 'Unknown error'}`)
+        } finally {
+            toast.dismiss('workflow-generation')
+        }
+    }
+    return {
+        generateWorkflow,
+        isGeneratingWorkflow
+    }
+}
+
+export const useGlobalChat = () => {
+    const [isChatOpen, setIsChatOpen] = React.useState(false)
+    const [ activeGeneratedUIId, setActiveGeneratedUIId] = React.useState<string | null>(null)
+    const { generateWorkflow } = useWorkflowGeneration()
+
+    return {
+        isChatOpen,
+        activeGeneratedUIId,
+        generateWorkflow,
     }
 }

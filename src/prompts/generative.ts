@@ -33,6 +33,7 @@ DESIGN CONSISTENCY REQUIREMENTS:
 3. Keep the same overall layout structure and spacing patterns  
 4. Use similar UI patterns and component hierarchy
 5. Ensure the page feels like it belongs to the same application - perfect visual consistency
+6. BORDER STROKES — Preserve all border strokes, outlines, and rounded pill borders exactly as they appear in the reference. Do not omit input borders or chip outlines.
 
 TECHNICAL REQUIREMENTS:
 1. Generate clean, semantic HTML with Tailwind CSS classes matching the main page
@@ -165,6 +166,7 @@ MODIFICATION GUIDELINES:
 4. Maintain shadcn/ui component patterns and classes
 5. Preserve responsive design and accessibility features
 6. Update content, styling, or layout as requested but keep core structure
+7. BORDER STROKES — Preserve all border strokes, outlines, and rounded pill borders exactly as they appear in the reference. Do not omit input borders or chip outlines.
 
 IMPORTANT: 
 - DO NOT generate a completely different page

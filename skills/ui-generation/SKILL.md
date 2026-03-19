@@ -26,6 +26,7 @@ The JSON told you a button exists. The image told you it's a white pill.
 3. TYPE — h1: 3rem+ font-weight 800 tracking-tight. Body: 1.125rem line-height 1.7
 4. DEPTH — cards get box-shadow: 0 4px 24px rgba(0,0,0,0.08), border-radius var(--radius)
 5. MOTION — all interactive elements: transition: all 0.15s ease on hover
+6. BORDERS — Preserve all border strokes, outlines, and rounded pill borders exactly as they appear in the reference. Do not omit input borders or chip outlines.
 
 ## Component Patterns
 
@@ -54,10 +55,16 @@ The JSON told you a button exists. The image told you it's a white pill.
   onfocus="this.style.borderColor=getComputedStyle(this).getPropertyValue('--primary')"
   onblur="this.style.borderColor=getComputedStyle(this).getPropertyValue('--border')">
 
-### Hero Section
-<section style="padding:96px 32px; text-align:center;">
-  <h1 style="font-size:3.5rem; font-weight:800; letter-spacing:-0.03em; 
-    line-height:1.1; margin-bottom:24px;">
+### Hero Section (CENTERED — default for all hero components)
+<section style="display:flex; flex-direction:column; align-items:center; 
+  justify-content:center; padding:96px 32px; width:100%; text-align:center;">
+  <h1 style="font-size:3rem; font-weight:700; letter-spacing:-0.02em;
+    line-height:1.15; margin-bottom:32px; text-align:center; width:100%;">
+### Chat Input Container (centered, max-width constrained)
+<div style="width:100%; max-width:720px; margin:0 auto;
+  background:var(--card); border:1px solid var(--border);
+  border-radius:16px; padding:16px 20px;
+  box-shadow:0 2px 8px rgba(0,0,0,0.06);">
 
 ### Grid Cards
 <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(280px,1fr));
@@ -79,3 +86,5 @@ The JSON told you a button exists. The image told you it's a white pill.
 ❌ Lorem ipsum
 ❌ Adding sections not in the layout JSON
 ❌ Generic startup copy unrelated to the inspiration context
+❌ Left-aligning hero headings — hero content is ALWAYS centered
+❌ Narrow input boxes — chat inputs are ALWAYS max-width 720px centered

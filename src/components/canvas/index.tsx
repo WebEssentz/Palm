@@ -1,6 +1,6 @@
 'use client'
 
-import { useInfiniteCanvas, useInspiration } from '@/hooks/use-canvas'
+import { useGlobalChat, useInfiniteCanvas, useInspiration } from '@/hooks/use-canvas'
 import TextSidebar from './text-sidebar'
 import { cn } from '@/lib/utils'
 import ShapeRenderer from './shapes'
@@ -46,7 +46,7 @@ const InfiniteCanvas = (props: Props) => {
 
   const { isinspirationOpen, closeInspiration, toggleInspiration } = useInspiration()
 
-  
+  const { isChatOpen, activeGeneratedUIId, generateWorkflow, exportDesign }  = useGlobalChat()
 
   return (
     <>
@@ -60,6 +60,7 @@ const InfiniteCanvas = (props: Props) => {
 
       <div
         ref={attachCanvasRef}
+        tabIndex={0}
         color="application"
         aria-label="Infinite drawing canvas"
         className={cn(
@@ -73,6 +74,7 @@ const InfiniteCanvas = (props: Props) => {
         )}
         style={{
           touchAction: 'none',
+          outline: 'none',
           cursor: currentTool === 'eraser'
             ? `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='12' r='10' fill='rgba(128,128,128,0.2)' stroke='%23888888' stroke-width='2'/%3E%3C/svg%3E") 12 12, auto`
             : undefined
@@ -99,7 +101,7 @@ const InfiniteCanvas = (props: Props) => {
               selectedShapes={selectedShapes}
               toggleInspiration={toggleInspiration}
             // toggleChat={toogleChat}
-            // generateWorkflow={generateWorkflow}
+              generateWorkflow={generateWorkflow}
             // exportDesign={exportDesign}
             />
           ))}

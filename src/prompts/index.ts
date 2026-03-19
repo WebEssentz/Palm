@@ -171,6 +171,7 @@ DESIGN PRINCIPLES (non-negotiable)
 4. DEPTH & SURFACE — use shadow-xl on cards, subtle borders, slight bg differences between layers
 5. MOTION HINTS — use transition-all duration-200 on interactive elements
 6. GRID MASTERY — CSS Grid for 2D layouts, Flexbox for 1D. gap-8 minimum.
+7. BORDER STROKES — Preserve all border strokes, outlines, and rounded pill borders exactly as they appear in the reference. Do not omit input borders or chip outlines.
 
 COMPONENT QUALITY BAR
 Every component must look like it belongs in a real product. Ask yourself:
@@ -206,41 +207,36 @@ FORBIDDEN
   },
 }
 
-// const userPrompt = `Use the user-provided styleGuide for all visual decisions: map its colors, typography scale, spacing, and radii directly to Tailwind v4 utilities (use arbitrary color classes like text-[#RRGGBB] / bg-[#RRGGBB] when hexes are given), enforce WCAG AA contrast (≥4.5:1 body, ≥3:1 large text), and if any token is missing fall back to neutral light defaults. Never invent new tokens; keep usage consistent across components.
+// Vision pass prompt: extract explicit proportional measurements for all components
+export const visionPrompt = `Return ONLY a JSON object. No prose. Start with {
 
-// Inspiration images (URLs):
+{
+  "source": "vision",
+  "layout": "centered | sidebar | dashboard | landing",
+  "contentContext": "specific description",
+  "visualStyle": "dark | light | minimal | bold",
+  "canvasWidth": 1440,
+  "components": [
+    {
+      "type": "nav | hero | input | cards | sidebar | footer",
+      "position": "top | left | center | bottom | right",
+      "widthPercent": 100,
+      "heightPx": 64,
+      "borderRadius": "0px | 4px | 8px | 12px | 9999px",
+      "children": [
+        {
+          "type": "button | text | input | textarea | badge | link | avatar | selector",
+          "content": "exact visible text",
+          "widthPercent": 15,
+          "heightPx": 40,
+          "borderRadius": "9999px",
+          "style": "filled-black | outlined | ghost | pill-outline",
+          "position": "left | center | right"
+        }
+      ]
+    }
+  ]
+}`
 
-// You will receive up to 6 image URLs in images[].
-
-// Use them only for interpretation (mood/keywords/subject matter) to bias choices within the existing styleGuide tokens (e.g., which primary/secondary to emphasize, where accent appears, light vs. dark sections).
-
-// Do not derive new colors or fonts from images; do not create tokens that aren’t in styleGuide.
-
-// Do not echo the URLs in the output JSON; use them purely as inspiration.
-
-// If an image URL is unreachable/invalid, ignore it without degrading output quality.
-
-// If images imply low-contrast contexts, adjust class pairings (e.g., text-[#FFFFFF] on bg-[#0A0A0A], stronger border/ring from tokens) to maintain accessibility while staying inside the styleGuide.
-
-// For any required illustrative slots, use a public placeholder image (deterministic seed) only if the schema requires an image field; otherwise don’t include images in the JSON.
-
-// On conflicts: the styleGuide always wins over image cues.
-//     colors: ${colors
-//       .map((color: any) =>
-//         color.swatches
-//           .map((swatch: any) => {
-//             return `${swatch.name}: ${swatch.hexColor}, ${swatch.description}`
-//           })
-//           .join(', ')
-//       )
-//       .join(', ')}
-//     typography: ${typography
-//       .map((typography: any) =>
-//         typography.styles
-//           .map((style: any) => {
-//             return `${style.name}: ${style.description}, ${style.fontFamily}, ${style.fontWeight}, ${style.fontSize}, ${style.lineHeight}`
-//           })
-//           .join(', ')
-//       )
-//       .join(', ')}
-//     `
+// In userPrompt for generation:
+export const sizingRules = `## CRITICAL SIZING RULES\nEvery component has explicit widthPercent and heightPx from the spec.\n- widthPercent: 100 → width: 100%\n- widthPercent: 50 → width: 50%; margin: 0 auto\n- widthPercent: 8 → display: inline-flex (natural width)\n- heightPx maps directly to min-height in CSS\n- borderRadius: 9999px → border-radius: 9999px (true pill)\nNEVER guess sizing. Use the JSON values exactly.`
