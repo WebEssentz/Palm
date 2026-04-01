@@ -6,7 +6,8 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
+  --font-sans: var(--font-sans);
+  --font-display: var(--font-display);
   --font-mono: var(--font-geist-mono);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
@@ -44,17 +45,33 @@
   --animate-shimmer: shimmer 1.5s infinite;
 }
 
-@keyframes shimmer {
-  100% {
-    transform: translateX(100%);
-  }
+@keyframes trace {
+    0%   { stroke-dashoffset: 200; opacity: 1; }
+    65%  { stroke-dashoffset: 0;   opacity: 1; }
+    85%  { stroke-dashoffset: 0;   opacity: 0; }
+    100% { stroke-dashoffset: 200; opacity: 0; }
+}
+
+@keyframes bar {
+    0%  { width: 0% }
+    40% { width: 55% }
+    70% { width: 78% }
+    90% { width: 92% }
+    100%{ width: 100% }
 }
 
 
+    /* --background: 245 240 232;        Parchment — #F5F0E8 */
+    /* or Linen:  239 233 220         #EFE9DC */
+    /* or Ivory:  247 242 234         #F7F2EA */
+    /* or Sand:   240 235 225         #F0EBE1 */
 
 :root {
   --radius: 0.625rem;
-  --background: oklch(1 0 0);
+  /* Glass morphism tokens — light mode */
+  --glass-fill: 248 248 250;
+  --glass-shadow: 0 0 0;
+  --background: #F5F0E8;
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.145 0 0);
@@ -119,6 +136,9 @@
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.552 0.016 285.938);
+  /* Glass morphism tokens — dark mode */
+  --glass-fill: 255 255 255;
+  --glass-shadow: 0 0 0;
 }
 
 @layer base {

@@ -101,31 +101,40 @@ export async function POST(req: NextRequest) {
         }
 
         const moodBoardImages = await MoodBoardImagesQuery(projectId)
+        const promptText = body.promptText as string | undefined
 
-        if (!moodBoardImages || moodBoardImages.images._valueJSON.length === 0) {
+        let imageUrls: string[] = []
+        if (moodBoardImages && moodBoardImages.images._valueJSON.length > 0) {
+            const images = moodBoardImages.images._valueJSON as unknown as MoodBoardImage[]
+            imageUrls = images
+                .map((img) => img.url)
+                .filter((url): url is string => {
+                    if (!url) return false
+                    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+                        console.warn('[generate-style] Skipping non-HTTP image URL:', url.slice(0, 50))
+                        return false
+                    }
+                    return true
+                })
+        }
+
+        const hasImages = imageUrls.length > 0
+
+        // If no images and no prompt text — bail
+        if (!hasImages && !promptText) {
             return NextResponse.json(
-                {
-                    error:
-                        'No moodboard images found. Please add moodboard images'
-                },
+                { error: 'No images and no prompt text provided' },
                 { status: 400 }
             )
         }
 
-        const images = moodBoardImages.images._valueJSON as unknown as MoodBoardImage[]
-        const imageUrls = images
-            .map((img) => img.url)
-            .filter((url): url is string => {
-                if (!url) return false
-                if (!url.startsWith('http://') && !url.startsWith('https://')) {
-                    console.warn('[generate-style] Skipping non-HTTP image URL:', url.slice(0, 50))
-                    return false
-                }
-                return true
-            })
         const systemPrompt = prompts.styleGuide.system
 
-        const userPrompt = `Analyze these ${imageUrls.length} mood board images and generate a design system: Extract colors that work harmoniously together, create a color palette, and typography that matches the aesthetic. Return ONLY the JSON object matching the exact schema structure above.`
+        const userPrompt = hasImages
+            ? `Analyze these ${imageUrls.length} mood board images and generate a design system: Extract colors that work harmoniously together, create a color palette, and typography that matches the aesthetic. Return ONLY the JSON object matching the exact schema structure above.`
+            : `Generate a complete design system for this product: "${promptText}". 
+               Infer colors, typography, and component styles that suit the product's purpose.
+               Return ONLY the JSON object matching the schema.`
 
         const result = await generateObject({
             model: google('gemini-3.1-flash-lite-preview'),  // best price/quality
@@ -142,16 +151,23 @@ export async function POST(req: NextRequest) {
             messages: [
                 {
                     role: 'user',
-                    content: [
-                        {
-                            type: 'text',
-                            text: userPrompt,
-                        },
-                        ...imageUrls.map((url) => ({
-                            type: 'image' as const,
-                            image: new URL(url as string),  // ← URL object for remote images
-                        })),
-                    ],
+                    content: hasImages
+                        ? [
+                            {
+                                type: 'text',
+                                text: userPrompt,
+                            },
+                            ...imageUrls.map((url) => ({
+                                type: 'image' as const,
+                                image: new URL(url as string),  // ← URL object for remote images
+                            })),
+                        ]
+                        : [
+                            {
+                                type: 'text',
+                                text: userPrompt,
+                            },
+                        ]
                 },
             ],
         })

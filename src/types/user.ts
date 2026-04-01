@@ -16,6 +16,7 @@ export type Profile = {
     emailVerifiedAtMs?: number;
     image?: string;
     name?: string;
+    authProvider?: string;
 }
 
 export const normalizeProfile = (
@@ -39,5 +40,6 @@ export const normalizeProfile = (
     emailVerifiedAtMs: raw.emailVerificationTime,
     image: raw.image,
     name,
+    authProvider: (raw as any).authProvider,
   }
 }

@@ -586,11 +586,20 @@ const shapesSlice = createSlice({
         frameCounter: number;
       }>
     ) {
-      // Load project data into the shapes state
-      state.shapes = action.payload.shapes;
-      state.tool = action.payload.tool;
-      state.selected = action.payload.selected;
-      state.frameCounter = action.payload.frameCounter ?? 0;
+      // Guard — new projects have no shapes data yet
+      const incoming = action.payload.shapes
+      if (!incoming || !incoming.ids) {
+        state.shapes = shapesAdapter.getInitialState()
+        state.tool = action.payload.tool ?? 'select'
+        state.selected = action.payload.selected ?? {}
+        state.frameCounter = action.payload.frameCounter ?? 0
+        return
+      }
+
+      state.shapes = incoming
+      state.tool = action.payload.tool
+      state.selected = action.payload.selected
+      state.frameCounter = action.payload.frameCounter ?? 0
 
       // Heal any existing NaN frameNumbers
       let maxFrameNumber = state.frameCounter;

@@ -54,18 +54,17 @@ const ProjectsList = () => {
                         >
                             <div className='space-y-3'>
                                 <div className='aspect-[4/3] rounded-lg overflow-hidden bg-muted'>
-                                    {project.thumbnail ? (
-                                        // eslint-disable-next-line @next/next/no-img-element
-                                        <img
-                                            src={project.thumbnail}
-                                            alt={project.name}
-                                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
-                                        />
-                                    ) : (
-                                        <div className='w-full h-full bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center'>
-                                            <Plus className='w-8 h-8 text-gray-400' />
-                                        </div>
-                                    )}
+                                    <div 
+                                        className='w-full h-full flex items-center justify-center group-hover:opacity-90 transition-opacity'
+                                        style={{
+                                            background: project.thumbnail 
+                                                ? project.thumbnail 
+                                                : 'linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%)'
+                                        }}
+                                    >
+                                        {!project.thumbnail && <Plus className='w-8 h-8 text-gray-400' />}
+                                    </div>
+                                </div>
                                 </div>
                                 <div className='space-y-1'>
                                     <h3 className='font-medium text-foreground text-sm truncate group-hover:text-primary transition-colors'>{project.name}</h3>

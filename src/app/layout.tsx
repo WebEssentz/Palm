@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Geist, Geist_Mono, Outfit, Plus_Jakarta_Sans } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/theme/provider";
 import { Toaster } from "@/components/ui/sonner";
@@ -9,14 +9,16 @@ import ReduxProvider from "@/redux/provider"
 import { ConvexUserRaw, normalizeProfile } from "@/types/user";
 import { ProfileQuery } from "@/convex/query.config";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+const outfit = Outfit({
   subsets: ["latin"],
+  weight: ["600", "700", "800"],
+  variable: "--font-display",
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const jakarta = Plus_Jakarta_Sans({
   subsets: ["latin"],
+  weight: ["400", "500", "600"],
+  variable: "--font-sans",
 });
 
 export const metadata: Metadata = {
@@ -37,9 +39,9 @@ export default async function RootLayout({
 
   return (
     <ConvexAuthNextjsServerProvider>
-      <html lang="en" className="bg-background" suppressHydrationWarning>
+      <html lang="en" className={`bg-background ${outfit.variable} ${jakarta.variable}`} suppressHydrationWarning>
         <body
-          className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+          className={`${jakarta.className} antialiased`}
         >
           <ConvexClientProvider>
             <ThemeProvider

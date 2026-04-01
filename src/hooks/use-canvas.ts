@@ -1659,7 +1659,6 @@ export const useWorkflowGeneration = () => {
 
             const results = await Promise.all(workflowPromises)
             const successCount = results.filter((r) => r.success).length
-            const failureCount = results.length - successCount
 
             if (successCount === 4) {
                 toast.success("Workflow generated successfully", {

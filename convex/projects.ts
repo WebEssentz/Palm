@@ -20,17 +20,27 @@ export const getProject = query({
 
 export const createProject = mutation({
     args: {
-        userId: v.id('users'),
-        name: v.optional(v.string()),
-        sketchesData: v.any(),
+        name: v.string(),
+        prompt: v.optional(v.string()),
+        userId: v.optional(v.id('users')),
+        sketchesData: v.optional(v.any()),
         thumbnail: v.optional(v.string()),
     },
     handler: async (ctx, {
-        userId,
         name,
+        prompt,
+        userId: providedUserId,
         sketchesData,
         thumbnail
     }) => {
+        // Get userId from auth if not provided
+        const authUserId = await getAuthUserId(ctx)
+        const userId = providedUserId || authUserId
+        
+        if (!userId) {
+            throw new Error("Unauthorized")
+        }
+
         console.log('[CONVEX] Creating a project for the user:', userId)
         const projectNumber = await getNextProjectNumber(ctx, userId)
         const projectName = name || `Project ${projectNumber}`
@@ -38,8 +48,8 @@ export const createProject = mutation({
         const projectId = await ctx.db.insert('projects', {
             userId,
             name: projectName,
-            sketchesData,
-            // Store thumbnail as-is, but we'll regenerate if needed
+            prompt,
+            sketchesData: sketchesData || {},
             thumbnail,
             projectNumber,
             lastModified: Date.now(),
@@ -47,14 +57,9 @@ export const createProject = mutation({
             isPublic: false,
         })
         
-        console.log('[CONVEX] Project created with thumbnail:', !!thumbnail, 'length:', thumbnail?.length)
+        console.log('[CONVEX] Project created with prompt:', !!prompt)
 
-        return {
-            projectId,
-            name: projectName,
-            projectNumber,
-            thumbnail,
-        }
+        return projectId
     },
 })
 
@@ -92,17 +97,15 @@ export const getUserProjects = query({
             .order('desc')
             .take(limit ?? 20)
 
-        return await Promise.all(projects.map(async (project) => ({
+        return projects.map((project) => ({
             _id: project._id,
             name: project.name,
             projectNumber: project.projectNumber,
-            thumbnail: project.thumbnail 
-                ? await ctx.storage.getUrl(project.thumbnail as any) 
-                : undefined,
+            thumbnail: project.thumbnail,
             lastModified: project.lastModified,
             createdAt: project.createdAt,
             isPublic: project.isPublic,
-        })))
+        }))
     },
 })
 
@@ -163,7 +166,40 @@ export const updateProjectStyleGuide = mutation({
             throw new Error("Access Denied")
         }
 
-        await ctx.db.patch(projectId, { styleGuides: JSON.stringify(styleGuide), lastModified: Date.now() })
+        // Extract primary color from style guide for thumbnail
+        let thumbnailColor = '#888888'
+        if (styleGuide?.colorSections && styleGuide.colorSections.length > 0) {
+            const primarySection = styleGuide.colorSections[0]
+            if (primarySection?.swatches && primarySection.swatches.length > 0) {
+                thumbnailColor = primarySection.swatches[0].hexColor
+            }
+        }
+
+        await ctx.db.patch(projectId, { 
+            styleGuides: JSON.stringify(styleGuide), 
+            thumbnail: thumbnailColor,
+            lastModified: Date.now() 
+        })
         return { success: true, styleGuide }
+    }
+})
+
+export const fixLegacyThumbnails = mutation({
+    args: {},
+    handler: async (ctx) => {
+        const projects = await ctx.db.query('projects').collect()
+        let fixed = 0
+        for (const project of projects) {
+            const doc = project as any
+            if (doc.thumbnailColor !== undefined) {
+                // Move thumbnailColor → thumbnail, delete the bad field
+                await ctx.db.patch(project._id, {
+                    thumbnail: doc.thumbnailColor,
+                    // Convex doesn't support undefined in patches, just leave it
+                })
+                fixed++
+            }
+        }
+        return { fixed }
     }
 })

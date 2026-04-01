@@ -1,10 +1,14 @@
 'use client'
 
+import { useEffect, useRef } from 'react'
 import { useGlobalChat, useInfiniteCanvas, useInspiration } from '@/hooks/use-canvas'
 import TextSidebar from './text-sidebar'
 import { cn } from '@/lib/utils'
 import ShapeRenderer from './shapes'
 import React from 'react'
+import { useSearchParams } from 'next/navigation'
+import { useDispatch } from 'react-redux'
+import { addGeneratedUI, updateShape } from '@/redux/slice/shapes'
 import { RectanglePreview } from './shapes/rectangle/preview'
 import { FramePreview } from './shapes/frame/preview'
 import { EllipsePreview } from './shapes/ellipse/preview'
@@ -39,6 +43,8 @@ const InfiniteCanvas = (props: Props) => {
   } = useInfiniteCanvas()
 
 
+
+
   const draftShape = getDraftShape()
   const freeDrawPoints = getFreeDrawPoints()
   const marquee = getMarquee()
@@ -47,6 +53,68 @@ const InfiniteCanvas = (props: Props) => {
   const { isinspirationOpen, closeInspiration, toggleInspiration } = useInspiration()
 
   const { isChatOpen, activeGeneratedUIId, generateWorkflow, exportDesign }  = useGlobalChat()
+
+  const searchParams = useSearchParams()
+  const dispatch = useDispatch()
+  const hasStartedGeneration = useRef(false)
+
+  useEffect(() => {
+    const urlPrompt = searchParams.get('prompt')
+    const urlProjectId = searchParams.get('project')
+    if (!urlPrompt || !urlProjectId) return
+    if (hasStartedGeneration.current) return
+    hasStartedGeneration.current = true
+
+    // Clean prompt from URL without re-render
+    const cleanUrl = window.location.pathname + `?project=${urlProjectId}`
+    window.history.replaceState({}, '', cleanUrl)
+
+    // Place placeholder shape immediately
+    const newShapeId = crypto.randomUUID()
+    dispatch(addGeneratedUI({
+      id: newShapeId,
+      x: 100,
+      y: 100,
+      w: 720,
+      h: 450,
+      uiSpecData: null,
+      sourceFrameId: '',
+    }))
+
+    // Stream HTML into it
+    ;(async () => {
+      try {
+        const res = await fetch('/api/generate-from-prompt', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            prompt: urlPrompt, 
+            projectId: urlProjectId 
+          })
+        })
+
+        if (!res.ok) throw new Error('Generation failed')
+
+        const reader = res.body!.getReader()
+        const decoder = new TextDecoder()
+        let html = ''
+        let chunkCount = 0
+
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+          chunkCount++
+          html += decoder.decode(value, { stream: true })
+          dispatch(updateShape({ 
+            id: newShapeId, 
+            patch: { uiSpecData: html } 
+          }))
+        }
+      } catch (err) {
+        console.error('[Canvas] Generation stream failed:', err)
+      }
+    })()
+  }, [])
 
   return (
     <>

@@ -44,6 +44,7 @@ const schema = defineSchema({
     userId: v.id("users"),
     name: v.string(),
     description: v.optional(v.string()),
+    prompt: v.optional(v.string()),
     styleGuides: v.optional(v.string()),
     sketchesData: v.any(),
     viewportData: v.optional(v.any()),

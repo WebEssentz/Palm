@@ -5,24 +5,27 @@ import Navbar from '@/components/navbar'
 import React from 'react'
 
 type Props = {
-  children: React.ReactNode
-  params: Promise<{ session: string }>
+    children: React.ReactNode
+    params: Promise<{ session: string }>
 }
 
 const Layout = async ({ children, params }: Props) => {
-  const { session } = await params
-  const { profileName, entitlement } = await SubscriptionEntitlementQuery()
-  const target = combinedSlug(profileName || 'User')
-  // Only redirect when the computed target slug differs from the current session
-  if (!entitlement) {
-    redirect(`/billing/${target}`)
-  }
-  return (
-    <div className='grid grid-cols-1'>
-      <Navbar />
-      {children}
-    </div>
-  )
+    const { session } = await params
+    const { profileName, entitlement } = await SubscriptionEntitlementQuery()
+    const target = combinedSlug(profileName || 'User')
+
+    if (!entitlement) {
+        redirect(`/billing/${target}`)
+    }
+
+    return (
+        // No padding-top here — HomeShell is full-screen and manages its own layout.
+        // Navbar returns null on the home route, and renders the slim bar on canvas/style-guide.
+        <div className='min-h-screen'>
+            <Navbar />
+            {children}
+        </div>
+    )
 }
 
 export default Layout

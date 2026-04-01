@@ -1,28 +1,38 @@
-import { Loader2 } from "lucide-react";
-import { cn } from "@/lib/utils";
+'use client'
 
-const Loading = () => {
+export default function Loading() {
     return (
-       <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="flex flex-col items-center gap-4 text-center">
-            <Loader2 
-                className={cn(
-                    "h-8 w-8 animate-spin text-primary",
-                    "transition-colors duration-200"
-                )} 
-            />
+        <div className='min-h-screen bg-background flex items-center justify-center'>
+            <div className='relative w-14 h-14'>
 
-            <div className="space-y-1">
-                <p className="text-sm font-medium text-foreground">
-                    Loading Dashboard
-                </p>
-                <p className="text-sm text-muted-foreground">
-                    Please wait while we set things up for you.
-                </p>
+                {/* Logo */}
+                <div className='w-14 h-14 rounded-2xl bg-foreground flex items-center justify-center'>
+                    <div className='w-6 h-6 rounded-full bg-background' />
+                </div>
+
+                {/* Trace ring */}
+                <svg
+                    className='absolute -inset-1.5'
+                    width='68'
+                    height='68'
+                    viewBox='0 0 68 68'
+                    fill='none'
+                >
+                    <rect
+                        x='2' y='2'
+                        width='64' height='64'
+                        rx='18'
+                        stroke='currentColor'
+                        strokeWidth='2'
+                        strokeLinecap='round'
+                        className='text-foreground animate-[trace_1.8s_ease-in-out_infinite]'
+                        style={{
+                            strokeDasharray: 200,
+                            strokeDashoffset: 200,
+                        }}
+                    />
+                </svg>
             </div>
         </div>
-       </div>
     )
 }
-
-export default Loading
