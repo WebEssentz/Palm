@@ -1,81 +1,79 @@
 import { Type } from 'lucide-react'
 import React from 'react'
+import type { TypographySection } from '@/types/style-guide'
 
-type Props = {
-    typographyGuide: any[]
+interface Props {
+  typographyGuide: TypographySection[]
 }
 
 const StyleGuideTypography = ({ typographyGuide }: Props) => {
   return (
-      <>
+    <>
       {typographyGuide.length === 0 ? (
-          <div className='text-center py-20'>
-            <Type className='w-16 h-16 mx-auto mb-4 text-muted-foreground' />
-            <h3 className='text-lg font-medium text-foreground mb-2'>
-                No typography added yet
-            </h3>
-            <p className='text-sm text-muted-foreground max-w-md mx-auto mb-6'>
-                Generate a style guide to see typography recommendations
-            </p>
-          </div>
-        ) : (
-            <div className='flex flex-col gap-10'>
-                {typographyGuide.map((section: any, index: number) => (
-                    <div
-                      key={index}
-                      className='flex flex-col gap-5'
-                    >
-                      <div>
-                        <h3 className='text-lg font-medium text-foreground/50'>
-                            {section.title}
-                        </h3>
-                      </div>
-                      <div className='grid grid-cols-1 md:grid-cols-2 gap-0'>
-                        {section.styles?.map((style: any, styleIndex: number) => (
-                            <div
-                              key={styleIndex}
-                              className='p-6 rounded-2xl backdrop-blur-xl bg-background border border-border saturate-150'
-                            >
-                              <div className='space-y-4'>
-                                <h4 className='text-sm font-medium text-foreground'>
-                                    {style.name}
-                                </h4>
-                                {style.description && (
-                                <p className='text-sm text-muted-foreground'>
-                                    {style.description}
-                                </p>
-                                )}
-                              </div>
-                              <div
-                                className='text-foreground'
-                                style={{
-                                    fontFamily: style.fontFamily,
-                                    fontSize: style.fontSize,
-                                    fontWeight: style.fontWeight,
-                                    lineHeight: style.lineHeight,
-                                    letterSpacing: style.letterSpacing || 'normal'
-                                }}
-                              >
-                                The quick brown fox jumps over the lazy dog
-                              </div>
-                              <div className='text-xs text-muted-foreground space-y-1'>
-                                <div>Font: {style.fontFamily}</div>
-                                <div>Size: {style.fontSize}</div>
-                                <div>Weight: {style.fontWeight}</div>
-                                <div>Line height: {style.lineHeight}</div>
-                                {style.letterSpacing && (
-                                    <div>Letter spacing: {style.letterSpacing}</div>
-                                )}
-                              </div>
-                            </div>
-                        ))}
-                      </div>
+        <div className='text-center py-20'>
+          <Type className='w-16 h-16 mx-auto mb-4 text-muted-foreground' />
+          <h3 className='text-lg font-medium text-foreground mb-2'>
+            No typography added yet
+          </h3>
+          <p className='text-sm text-muted-foreground max-w-md mx-auto mb-6'>
+            Generate a style guide to see typography recommendations
+          </p>
+        </div>
+      ) : (
+        <div className='flex flex-col gap-10'>
+          {typographyGuide.map((section, index) => (
+            <div key={index} className='flex flex-col gap-5'>
+              <div>
+                <h3 className='text-lg font-medium text-foreground/50'>
+                  {section.title}
+                </h3>
+              </div>
+              <div className='grid grid-cols-1 md:grid-cols-2 gap-0'>
+                {section.styles?.map((style, styleIndex) => (
+                  <div
+                    key={styleIndex}
+                    className='p-6 rounded-2xl backdrop-blur-xl bg-background border border-border saturate-150'
+                  >
+                    <div className='space-y-4'>
+                      <h4 className='text-sm font-medium text-foreground'>
+                        {style.name}
+                      </h4>
+                      {style.description && (
+                        <p className='text-sm text-muted-foreground'>
+                          {style.description}
+                        </p>
+                      )}
                     </div>
+                    <div
+                      className='text-foreground'
+                      style={{
+                        fontFamily: style.fontFamily,
+                        fontSize: style.fontSize,
+                        fontWeight: style.fontWeight,
+                        lineHeight: style.lineHeight,
+                        letterSpacing: style.letterSpacing || 'normal',
+                      }}
+                    >
+                      The quick brown fox jumps over the lazy dog
+                    </div>
+                    <div className='text-xs text-muted-foreground space-y-1'>
+                      <div>Font: {style.fontFamily}</div>
+                      <div>Size: {style.fontSize}</div>
+                      <div>Weight: {style.fontWeight}</div>
+                      <div>Line height: {style.lineHeight}</div>
+                      {style.letterSpacing && (
+                        <div>Letter spacing: {style.letterSpacing}</div>
+                      )}
+                    </div>
+                  </div>
                 ))}
+              </div>
             </div>
-        )}
-      </>
-    )
+          ))}
+        </div>
+      )}
+    </>
+  )
 }
 
 export default StyleGuideTypography

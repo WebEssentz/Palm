@@ -11,13 +11,13 @@ import { useQuery } from 'convex/react'
 import { api } from '../../../convex/_generated/api'
 import { Id } from '../../../convex/_generated/dataModel'
 import { formatDistanceToNow } from 'date-fns'
-import { Home, LayoutGrid, User, ChevronRight, ChevronLeft, ArrowUp } from 'lucide-react'
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { Home, LayoutGrid, ChevronRight, ChevronLeft, ArrowUp } from 'lucide-react'
 import { ThemeToggle } from '@/components/theme/toggle'
 import { AvatarDropdown } from '@/components/avatar-dropdown'
 import ParticleBackground from '@/components/home/particle-background'
 import { CyclingWord } from '@/components/home/cycling-word'
 import { MicButton } from '@/components/home/mic-button'
+import { AttachmentMenu } from '@/components/home/attachment-menu'
 import { cn } from '@/lib/utils'
 
 // Convert gradient string to inline SVG data URL for img rendering
@@ -320,11 +320,11 @@ export default function HomeShell({ profile }: Props) {
                                 style={{ minHeight: '120px' }}
                             />
                             <div className='flex items-center gap-2'>
-                                <button className='w-10 h-10 rounded-full border border-border/60 bg-muted/40 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors'>
-                                    <svg width='16' height='16' viewBox='0 0 12 12' fill='none'>
-                                        <path d='M6 1v10M1 6h10' stroke='currentColor' strokeWidth='1.5' strokeLinecap='round'/>
-                                    </svg>
-                                </button>
+                                <AttachmentMenu
+                                    onUpload={(file) => console.log('file:', file)}
+                                    onUrl={(url) => console.log('url:', url)}
+                                    onEnhance={() => console.log('enhance')}
+                                />
                                 <div className='flex-1' />
                                 <MicButton
                                     onTranscript={(text) => setPrompt(p => p ? p + ' ' + text : text)}
