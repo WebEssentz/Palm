@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { ImageIcon, Globe, Sparkles } from 'lucide-react'
+import { ImageIcon, Globe, Sparkles, Plus } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import { cn } from '@/lib/utils'
 
@@ -88,11 +88,34 @@ export function AttachmentMenu({ onUpload, onUrl, onEnhance, enhancing }: Props)
             {/* Trigger */}
             <button
                 onClick={() => { setOpen(o => !o); setUrlMode(false) }}
-                className='w-10 h-10 rounded-full border border-border/60 bg-muted/40 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors cursor-pointer'
+                className='w-8 h-8 rounded-full flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors cursor-pointer'
+                style={isLight ? {
+                    background: 'rgba(250,246,238,0.88)',
+                    backdropFilter: 'url(#palm-glass-light) blur(20px)',
+                    WebkitBackdropFilter: 'blur(20px)',
+                    border: '1px solid rgba(120,96,60,0.10)',
+                    boxShadow: [
+                        '0 0 0 0.5px rgba(100,76,40,0.08)',
+                        '0 2px 4px rgba(80,60,30,0.06)',
+                        '0 8px 20px rgba(80,60,30,0.09)',
+                        'inset 0 1px 0 rgba(255,255,255,0.90)',
+                        'inset 0 -1px 0 rgba(100,76,40,0.04)',
+                    ].join(', '),
+                } : {
+                    background: 'rgba(255,255,255,0.07)',
+                    backdropFilter: 'url(#palm-glass-light) blur(20px)',
+                    WebkitBackdropFilter: 'blur(20px)',
+                    border: '1px solid rgba(255,255,255,0.12)',
+                    boxShadow: [
+                        '0 0 0 0.5px rgba(255,255,255,0.04)',
+                        '0 2px 4px rgba(0,0,0,0.12)',
+                        '0 8px 20px rgba(0,0,0,0.24)',
+                        'inset 0 1px 0 rgba(255,255,255,0.08)',
+                        'inset 0 -1px 0 rgba(0,0,0,0.2)',
+                    ].join(', '),
+                }}
             >
-                <svg width='16' height='16' viewBox='0 0 12 12' fill='none'>
-                    <path d='M6 1v10M1 6h10' stroke='currentColor' strokeWidth='1.5' strokeLinecap='round'/>
-                </svg>
+                <Plus className='w-4 h-4' />
             </button>
 
             <AnimatePresence>

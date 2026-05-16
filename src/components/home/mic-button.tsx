@@ -2,6 +2,7 @@
 
 import { useRef, useState, useEffect, useCallback } from 'react'
 import { Mic, X, Check } from 'lucide-react'
+import { useTheme } from 'next-themes'
 import { cn } from '@/lib/utils'
 
 interface Props {
@@ -17,6 +18,9 @@ export function MicButton({ onTranscript, onRecordingChange, disabled }: Props) 
     const [state, setState] = useState<'idle' | 'recording' | 'processing'>('idle')
     const [bars, setBars] = useState<number[]>(Array(16).fill(2))
 
+    const { theme, systemTheme } = useTheme()
+    const effectiveTheme = theme === 'system' ? systemTheme : theme
+    const isLight = effectiveTheme === 'light'
     const mediaRecorderRef = useRef<MediaRecorder | null>(null)
     const chunksRef = useRef<Blob[]>([])
     const analyserRef = useRef<AnalyserNode | null>(null)
@@ -182,7 +186,32 @@ export function MicButton({ onTranscript, onRecordingChange, disabled }: Props) 
             <button
                 onClick={start}
                 disabled={disabled}
-                className='w-10 h-10 rounded-full border border-border/60 bg-muted/40 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50 cursor-pointer'
+                className='w-8 h-8 rounded-full flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50 cursor-pointer'
+                style={isLight ? {
+                    background: 'rgba(250,246,238,0.88)',
+                    backdropFilter: 'url(#palm-glass-light) blur(20px)',
+                    WebkitBackdropFilter: 'blur(20px)',
+                    border: '1px solid rgba(120,96,60,0.10)',
+                    boxShadow: [
+                        '0 0 0 0.5px rgba(100,76,40,0.08)',
+                        '0 2px 4px rgba(80,60,30,0.06)',
+                        '0 8px 20px rgba(80,60,30,0.09)',
+                        'inset 0 1px 0 rgba(255,255,255,0.90)',
+                        'inset 0 -1px 0 rgba(100,76,40,0.04)',
+                    ].join(', '),
+                } : {
+                    background: 'rgba(255,255,255,0.07)',
+                    backdropFilter: 'url(#palm-glass-light) blur(20px)',
+                    WebkitBackdropFilter: 'blur(20px)',
+                    border: '1px solid rgba(255,255,255,0.12)',
+                    boxShadow: [
+                        '0 0 0 0.5px rgba(255,255,255,0.04)',
+                        '0 2px 4px rgba(0,0,0,0.12)',
+                        '0 8px 20px rgba(0,0,0,0.24)',
+                        'inset 0 1px 0 rgba(255,255,255,0.08)',
+                        'inset 0 -1px 0 rgba(0,0,0,0.2)',
+                    ].join(', '),
+                }}
             >
                 <Mic className='w-4 h-4' />
             </button>
