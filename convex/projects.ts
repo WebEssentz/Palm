@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { query, mutation } from "./_generated/server";
+import { query, mutation, internalMutation } from "./_generated/server";
 import { getAuthUserId } from "@convex-dev/auth/server";
 
 
@@ -97,15 +97,68 @@ export const getUserProjects = query({
             .order('desc')
             .take(limit ?? 20)
 
-        return projects.map((project) => ({
-            _id: project._id,
-            name: project.name,
-            projectNumber: project.projectNumber,
-            thumbnail: project.thumbnail,
-            lastModified: project.lastModified,
-            createdAt: project.createdAt,
-            isPublic: project.isPublic,
-        }))
+        return projects
+            .filter((project: any) => !project.is_deleted)
+            .map((project) => ({
+                _id: project._id,
+                name: project.name,
+                projectNumber: project.projectNumber,
+                thumbnail: project.thumbnail,
+                lastModified: project.lastModified,
+                createdAt: project.createdAt,
+                isPublic: project.isPublic,
+            }))
+    },
+})
+
+export const getDeletedProjects = query({
+    args: {
+        userId: v.id('users'),
+        limit: v.optional(v.number()),
+    },
+    handler: async (ctx, { userId, limit = 20 }) => {
+        const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000
+        const cutoff = Date.now() - THREE_DAYS_MS
+
+        const projects = await ctx.db
+            .query('projects')
+            .withIndex('by_userId_lastModified', (q: any) => q.eq('userId', userId))
+            .order('desc')
+            .take(limit ?? 20)
+
+        return projects
+            .filter((project: any) => project.is_deleted && project.deleted_at && project.deleted_at > cutoff)
+            .map((project) => ({
+                _id: project._id,
+                name: project.name,
+                projectNumber: project.projectNumber,
+                thumbnail: project.thumbnail,
+                lastModified: project.lastModified,
+                createdAt: project.createdAt,
+                isPublic: project.isPublic,
+                deleted_at: project.deleted_at,
+            }))
+    },
+})
+
+export const hasDeletedProjects = query({
+    args: {
+        userId: v.id('users'),
+    },
+    handler: async (ctx, { userId }) => {
+        const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000
+        const cutoff = Date.now() - THREE_DAYS_MS
+
+        const projects = await ctx.db
+            .query('projects')
+            .withIndex('by_userId_lastModified', (q: any) => q.eq('userId', userId))
+            .collect()
+
+        const hasDeleted = projects.some(
+            (project: any) => project.is_deleted && project.deleted_at && project.deleted_at > cutoff
+        )
+        
+        return hasDeleted
     },
 })
 
@@ -184,6 +237,59 @@ export const updateProjectStyleGuide = mutation({
     }
 })
 
+export const renameProject = mutation({
+    args: {
+        projectId: v.id('projects'),
+        newName: v.string(),
+    },
+    handler: async (ctx, { projectId, newName }) => {
+        const userId = await getAuthUserId(ctx)
+        if (!userId) throw new Error("Unauthenticated")
+
+        const project = await ctx.db.get(projectId)
+        if (!project) throw new Error("Project not found")
+
+        if (project.userId !== userId) {
+            throw new Error("Access Denied")
+        }
+
+        const trimmedName = newName.trim()
+        if (!trimmedName) throw new Error("Project name cannot be empty")
+
+        await ctx.db.patch(projectId, {
+            name: trimmedName,
+            lastModified: Date.now(),
+        })
+
+        return { success: true, name: trimmedName }
+    }
+})
+
+export const deleteProject = mutation({
+    args: {
+        projectId: v.id('projects'),
+    },
+    handler: async (ctx, { projectId }) => {
+        const userId = await getAuthUserId(ctx)
+        if (!userId) throw new Error("Unauthenticated")
+
+        const project = await ctx.db.get(projectId)
+        if (!project) throw new Error("Project not found")
+
+        if (project.userId !== userId) {
+            throw new Error("Access Denied")
+        }
+
+        // Soft delete: mark as deleted with timestamp
+        await ctx.db.patch(projectId, {
+            is_deleted: true,
+            deleted_at: Date.now(),
+        })
+
+        return { success: true }
+    }
+})
+
 export const fixLegacyThumbnails = mutation({
     args: {},
     handler: async (ctx) => {
@@ -202,4 +308,29 @@ export const fixLegacyThumbnails = mutation({
         }
         return { fixed }
     }
+})
+
+export const hardDeleteExpiredProjects = internalMutation({
+    args: {},
+    handler: async (ctx) => {
+        const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000
+        const cutoff = Date.now() - THREE_DAYS_MS
+
+        const expiredProjects = await ctx.db
+            .query('projects')
+            .filter((q) =>
+                q.and(
+                    q.eq(q.field('is_deleted'), true),
+                    q.lt(q.field('deleted_at'), cutoff)
+                )
+            )
+            .collect()
+
+        for (const project of expiredProjects) {
+            await ctx.db.delete(project._id)
+        }
+
+        console.log(`[CRON] Hard deleted ${expiredProjects.length} expired project(s)`)
+        return { deleted: expiredProjects.length }
+    },
 })

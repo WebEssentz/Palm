@@ -11,13 +11,15 @@ import { useQuery } from 'convex/react'
 import { api } from '../../../convex/_generated/api'
 import { Id } from '../../../convex/_generated/dataModel'
 import { formatDistanceToNow } from 'date-fns'
-import { Home, LayoutGrid, ChevronRight, ChevronLeft, ArrowUp } from 'lucide-react'
+import { Home, LayoutGrid, ChevronRight, ChevronLeft, ArrowUp, Trash2 } from 'lucide-react'
 import { ThemeToggle } from '@/components/theme/toggle'
 import { AvatarDropdown } from '@/components/avatar-dropdown'
 import ParticleBackground from '@/components/home/particle-background'
 import { CyclingWord } from '@/components/home/cycling-word'
 import { MicButton } from '@/components/home/mic-button'
 import { AttachmentMenu } from '@/components/home/attachment-menu'
+import ProjectsList from '@/components/projects/list'
+import TrashList from '@/components/projects/trash-list'
 import { cn } from '@/lib/utils'
 
 function thumbnailToSrc(thumbnail: string | undefined): string | null {
@@ -39,9 +41,9 @@ function thumbnailToSrc(thumbnail: string | undefined): string | null {
     return null
 }
 
-function isColorDark(color: string): boolean {
+function isColorDark(color: string | undefined): boolean {
     // Extract first hex color from the string (works for solid colors and gradients)
-    const hex = (color.match(/#[a-fA-F0-9]{6}/) || [])[0]
+    const hex = (color?.match(/#[a-fA-F0-9]{6}/) || [])[0]
     if (!hex) return true // assume dark if unparseable
 
     const r = parseInt(hex.slice(1, 3), 16)
@@ -55,6 +57,7 @@ function isColorDark(color: string): boolean {
 
 interface Props {
     profile: { name: string; image?: string | null }
+    view?: 'home' | 'projects' | 'trash'
 }
 
 const ALL_PROMPTS = [
@@ -105,7 +108,7 @@ const getRandomPrompts = () => {
     return shuffled.slice(0, 3)
 }
 
-export default function HomeShell({ profile }: Props) {
+export default function HomeShell({ profile, view = 'home' }: Props) {
     const { theme, systemTheme } = useTheme()
     const me = useAppSelector((state) => state.profile)
     const projects = useProjects()
@@ -117,10 +120,16 @@ export default function HomeShell({ profile }: Props) {
     const [isLoading, setIsLoading] = useState(false)
     const [isRecordingActive, setIsRecordingActive] = useState(false)
     const [suggestedPrompts] = useState(() => getRandomPrompts())
+    const [hasDeletedOptimistic, setHasDeletedOptimistic] = useState(false)
     const textareaRef = useRef<HTMLTextAreaElement>(null)
 
     const creditBalance = useQuery(
         api.subscription.getCreditsBalance,
+        me?.id ? { userId: me.id as Id<'users'> } : 'skip'
+    )
+
+    const hasDeleted = useQuery(
+        api.projects.hasDeletedProjects,
         me?.id ? { userId: me.id as Id<'users'> } : 'skip'
     )
 
@@ -249,7 +258,7 @@ export default function HomeShell({ profile }: Props) {
                 {/* ── Sidebar ── */}
                 <aside
                     className={cn(
-                        'relative z-20 flex flex-col h-screen border-r border-border/40 bg-background/60 backdrop-blur-xl transition-all duration-200 ease-in-out flex-shrink-0',
+                        'relative z-20 flex flex-col h-screen border-r border-border/40 bg-background/60 backdrop-blur-xl transition-all duration-200 ease-in-out flex-shrink-0 hidden md:flex',
                         sideOpen ? 'w-52' : 'w-14'
                     )}
                 >
@@ -268,13 +277,29 @@ export default function HomeShell({ profile }: Props) {
 
                     {/* Nav */}
                     <nav className='flex flex-col gap-0.5 px-2 mt-1'>
-                        <SideItem icon={<Home className='w-4 h-4' />} label='Home' open={sideOpen} active />
+                        <SideItem
+                            icon={<Home className='w-4 h-4' />}
+                            label='Home'
+                            open={sideOpen}
+                            active={view === 'home'}
+                            onClick={() => router.push(`/dashboard/${me.name}`)}
+                        />
                         <SideItem
                             icon={<LayoutGrid className='w-4 h-4' />}
                             label='Projects'
                             open={sideOpen}
-                            onClick={() => setSideOpen(true)}
+                            active={view === 'projects'}
+                            onClick={() => router.push(`/dashboard/${me.name}/projects`)}
                         />
+                        {(hasDeleted || hasDeletedOptimistic) && (
+                            <SideItem
+                                icon={<Trash2 className='w-4 h-4' />}
+                                label='Trash'
+                                open={sideOpen}
+                                active={view === 'trash'}
+                                onClick={() => router.push(`/dashboard/${me.name}/trash`)}
+                            />
+                        )}
                     </nav>
 
                     {/* Recent projects */}
@@ -282,7 +307,7 @@ export default function HomeShell({ profile }: Props) {
                         <div className='mt-4 px-3'>
                             <p className='text-[10px] uppercase tracking-widest text-muted-foreground/50 mb-2 px-1'>Recent</p>
                             <div className='space-y-0.5'>
-                                {projects.slice(0, 8).map((p: any) => (
+                                {projects.slice(0, 8).map((p) => (
                                     <Link
                                         key={p._id}
                                         href={`/dashboard/${me.name}/canvas?project=${p._id}`}
@@ -326,11 +351,22 @@ export default function HomeShell({ profile }: Props) {
                         </div>
                     )}
 
+                    {/* Collapsed projects area — clickable to expand */}
+                    {!sideOpen && projects.length > 0 && (
+                        <div
+                            onClick={() => setSideOpen(true)}
+                            className='flex-1 cursor-ew-resize transition-colors'
+                            style={{
+                                margin: '0.5rem 0.5rem 0 0.5rem',
+                            }}
+                        />
+                    )}
+
                     {/* Sidebar toggle — liquid glass */}
                     <button
                         onClick={() => setSideOpen((o) => !o)}
                         className={cn(
-                            'mt-auto mb-4 w-7 h-7 rounded-full flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors',
+                            'mt-auto mb-4 w-7 h-7 rounded-full flex items-center justify-center text-muted-foreground hover:text-foreground hover:cursor-pointer transition-colors',
                             sideOpen ? 'ml-auto mr-2' : 'mx-auto'
                         )}
                         style={liquidGlassStyle(isLightMode)}
@@ -343,12 +379,17 @@ export default function HomeShell({ profile }: Props) {
                 <div className='relative z-10 flex flex-col flex-1 min-w-0'>
 
                     {/* Topbar */}
-                    <header className='flex items-center justify-end gap-3 px-6 py-4 flex-shrink-0'>
-                        {/* Credits — liquid glass */}
-                        <div
-                            className='flex items-center gap-1.5 rounded-full px-3 py-1.5 relative'
-                            style={liquidGlassStyle(isLightMode)}
-                        >
+                    <header className='flex items-center justify-end md:justify-end gap-3 px-2 md:px-6 py-3 md:py-4 flex-shrink-0'>
+                        {/* Palm text — mobile only */}
+                        <span className='md:hidden absolute left-4 font-semibold text-xl -mt-1 text-foreground tracking-tight'>Palm</span>
+
+                        {/* Credits + Avatar — right side */}
+                        <div className='flex items-center gap-3'>
+                            {/* Credits — liquid glass */}
+                            <div
+                                className='flex items-center gap-1.5 rounded-full px-3 py-1.5 relative'
+                                style={liquidGlassStyle(isLightMode)}
+                            >
                             <div
                                 className='pointer-events-none absolute inset-x-0 top-0 h-[1px]'
                                 style={{ background: 'linear-gradient(90deg, transparent 5%, rgba(255,255,255,0.95) 50%, transparent 95%)' }}
@@ -358,128 +399,139 @@ export default function HomeShell({ profile }: Props) {
                                 {creditBalance ?? 0}
                             </span>
                         </div>
-                        <AvatarDropdown creditBalance={creditBalance ?? 0} />
+                            <AvatarDropdown creditBalance={creditBalance ?? 0} />
+                        </div>
                     </header>
 
                     {/* Center content */}
                     <main className='flex-1 flex flex-col items-center justify-center px-6 pb-16'>
-                        <h1 className='font-display text-5xl font-bold tracking-tight text-foreground mb-10 text-center leading-tight'>
-                            What will you <CyclingWord />
-                        </h1>
-
-                        {/* Input card */}
-                        <motion.div
-                            layout
-                            transition={{ type: 'spring', damping: 24, stiffness: 260 }}
-                            className={cn(
-                                'w-full max-w-2xl relative rounded-2xl transition-colors duration-200',
-                                prompt.trim()
-                                    ? 'bg-[rgba(250,246,238,0.88)] dark:bg-[rgba(255,255,255,0.07)]'
-                                    : 'bg-[rgba(250,246,238,0.88)] dark:bg-transparent'
-                            )}
-                            style={{
-                                backdropFilter: 'url(#palm-glass-light) blur(32px)',
-                                WebkitBackdropFilter: 'blur(32px)',
-                                boxShadow: (!prompt.trim() && !isLightMode)
-                                    ? 'none'
-                                    : (isFocused
-                                        ? [
-                                            '0 0 0 2px rgba(160,120,60,0.40)',
-                                            '0 0 0 1px rgba(120,96,60,0.20)',
-                                            '0 8px 32px rgba(80,60,30,0.25)',
-                                            '0 4px 16px rgba(80,60,30,0.18)',
-                                            '0 1px 3px rgba(80,60,30,0.12)',
-                                            'inset 0 1px 0 rgba(255,255,255,0.90)',
-                                            'inset 0 -1px 0 rgba(100,76,40,0.04)',
-                                        ].join(', ')
-                                        : [
-                                            '0 0 0 1px rgba(120,96,60,0.12)',
-                                            '0 4px 24px rgba(80,60,30,0.14)',
-                                            '0 1px 3px rgba(80,60,30,0.10)',
-                                            '0 0 0 0.5px rgba(100,76,40,0.08)',
-                                            '0 2px 4px rgba(80,60,30,0.06)',
-                                            '0 8px 20px rgba(80,60,30,0.09)',
-                                            '0 24px 48px rgba(80,60,30,0.07)',
-                                            'inset 0 1px 0 rgba(255,255,255,0.90)',
-                                            'inset 0 -1px 0 rgba(100,76,40,0.04)',
-                                        ].join(', ')),
-                            }}
-                        >
-                            {/* Specular rim */}
-                            <div
-                                className='pointer-events-none absolute inset-x-0 top-0 h-[1px]'
-                                style={{ background: 'linear-gradient(90deg, transparent 5%, rgba(255,255,255,0.95) 50%, transparent 95%)' }}
-                            />
-                            <div className='p-4'>
-                                {/* Textarea — frosted inner glass, both light and dark */}
-                                <textarea
-                                    ref={textareaRef}
-                                    value={prompt}
-                                    onChange={(e) => {
-                                        setPrompt(e.target.value)
-                                        const el = e.target
-                                        el.style.height = 'auto'
-                                        el.style.height = el.scrollHeight + 'px'
-                                    }}
-                                    onFocus={() => setIsFocused(true)}
-                                    onBlur={() => setIsFocused(false)}
-                                    onKeyDown={handleKeyDown}
-                                    placeholder='Describe a UI to generate…'
-                                    className='w-full resize-none text-sm text-foreground placeholder:text-muted-foreground/65 outline-none leading-relaxed max-h-60'
-                                    style={textareaStyle}
-                                />
-
-                                {/* Toolbar — smaller buttons, pushed down from textarea */}
-                                <div className='flex items-center gap-2' style={{ marginTop: '12px' }}>
-                                    <AttachmentMenu
-                                        onUpload={(file) => console.log('file:', file)}
-                                        onUrl={(url) => console.log('url:', url)}
-                                        onEnhance={() => console.log('enhance')}
-                                    />
-                                    <div className='flex-1' />
-                                    <MicButton
-                                        onTranscript={(text) => setPrompt(p => p ? p + ' ' + text : text)}
-                                        onRecordingChange={setIsRecordingActive}
-                                        disabled={isLoading}
-                                    />
-                                    {!isRecordingActive && (
-                                        <button
-                                            onClick={handleSubmit}
-                                            disabled={!prompt.trim() || isLoading}
-                                            className={cn(
-                                                'w-8 h-8 rounded-full flex items-center justify-center transition-all flex-shrink-0',
-                                                prompt.trim() && !isLoading
-                                                    ? 'bg-black dark:bg-white'
-                                                    : 'bg-transparent opacity-30'
-                                            )}
-                                        >
-                                            {isLoading
-                                                ? <div className='w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin' />
-                                                : <ArrowUp className={cn('w-4 h-4', prompt.trim() ? 'text-white dark:text-black' : 'text-muted-foreground')} />
-                                            }
-                                        </button>
-                                    )}
-                                </div>
+                        {view === 'projects' ? (
+                            <div className='w-full max-w-7xl pt-10'>
+                                <ProjectsList onProjectDelete={() => setHasDeletedOptimistic(true)} />
                             </div>
-                        </motion.div>
+                        ) : view === 'trash' ? (
+                            <TrashList />
+                        ) : (
+                            <>
+                                <h1 className='font-display text-3xl sm:text-3xl md:text-5xl font-bold tracking-tight text-foreground mb-10 text-center leading-tight'>
+                                    What will you <CyclingWord />
+                                </h1>
 
-                        {/* Suggested prompts — liquid glass, both modes */}
-                        <div className='w-full max-w-2xl mt-4 flex flex-wrap gap-3 justify-center'>
-                            {suggestedPrompts.map((p, idx) => (
-                                <button
-                                    key={idx}
-                                    onClick={() => setPrompt(p.long)}
-                                    className='px-3 py-1.5 rounded-full text-xs transition-colors text-muted-foreground hover:text-foreground cursor-pointer relative'
-                                    style={liquidGlassStyle(isLightMode)}
+                                {/* Input card */}
+                                <motion.div
+                                    layout
+                                    transition={{ type: 'spring', damping: 24, stiffness: 260 }}
+                                    className={cn(
+                                        'w-full max-w-2xl relative rounded-2xl transition-colors duration-200',
+                                        prompt.trim()
+                                            ? 'bg-[rgba(250,246,238,0.88)] dark:bg-[rgba(255,255,255,0.07)]'
+                                            : 'bg-[rgba(250,246,238,0.88)] dark:bg-transparent'
+                                    )}
+                                    style={{
+                                        backdropFilter: 'url(#palm-glass-light) blur(32px)',
+                                        WebkitBackdropFilter: 'blur(32px)',
+                                        boxShadow: (!prompt.trim() && !isLightMode)
+                                            ? 'none'
+                                            : (isFocused
+                                                ? [
+                                                    '0 0 0 2px rgba(160,120,60,0.40)',
+                                                    '0 0 0 1px rgba(120,96,60,0.20)',
+                                                    '0 8px 32px rgba(80,60,30,0.25)',
+                                                    '0 4px 16px rgba(80,60,30,0.18)',
+                                                    '0 1px 3px rgba(80,60,30,0.12)',
+                                                    'inset 0 1px 0 rgba(255,255,255,0.90)',
+                                                    'inset 0 -1px 0 rgba(100,76,40,0.04)',
+                                                ].join(', ')
+                                                : [
+                                                    '0 0 0 1px rgba(120,96,60,0.12)',
+                                                    '0 4px 24px rgba(80,60,30,0.14)',
+                                                    '0 1px 3px rgba(80,60,30,0.10)',
+                                                    '0 0 0 0.5px rgba(100,76,40,0.08)',
+                                                    '0 2px 4px rgba(80,60,30,0.06)',
+                                                    '0 8px 20px rgba(80,60,30,0.09)',
+                                                    '0 24px 48px rgba(80,60,30,0.07)',
+                                                    'inset 0 1px 0 rgba(255,255,255,0.90)',
+                                                    'inset 0 -1px 0 rgba(100,76,40,0.04)',
+                                                ].join(', ')),
+                                    }}
                                 >
+                                    {/* Specular rim */}
                                     <div
-                                        className='pointer-events-none absolute inset-x-0 top-0 h-[1px] rounded-full'
+                                        className='pointer-events-none absolute inset-x-0 top-0 h-[1px]'
                                         style={{ background: 'linear-gradient(90deg, transparent 5%, rgba(255,255,255,0.95) 50%, transparent 95%)' }}
                                     />
-                                    {p.short}
-                                </button>
-                            ))}
-                        </div>
+                                    <div className='p-4'>
+                                        {/* Textarea — frosted inner glass, both light and dark */}
+                                        <textarea
+                                            ref={textareaRef}
+                                            value={prompt}
+                                            onChange={(e) => {
+                                                setPrompt(e.target.value)
+                                                const el = e.target
+                                                el.style.height = 'auto'
+                                                el.style.height = el.scrollHeight + 'px'
+                                            }}
+                                            onFocus={() => setIsFocused(true)}
+                                            onBlur={() => setIsFocused(false)}
+                                            onKeyDown={handleKeyDown}
+                                            placeholder='Describe a UI to generate…'
+                                            className='w-full resize-none text-sm text-foreground placeholder:text-muted-foreground/65 outline-none leading-relaxed max-h-60'
+                                            style={textareaStyle}
+                                        />
+
+                                        {/* Toolbar — smaller buttons, pushed down from textarea */}
+                                        <div className='flex items-center gap-2' style={{ marginTop: '12px' }}>
+                                            <AttachmentMenu
+                                                onUpload={(file) => console.log('file:', file)}
+                                                onUrl={(url) => console.log('url:', url)}
+                                                onEnhance={() => console.log('enhance')}
+                                            />
+                                            <div className='flex-1' />
+                                            <MicButton
+                                                onTranscript={(text) => setPrompt(p => p ? p + ' ' + text : text)}
+                                                onRecordingChange={setIsRecordingActive}
+                                                disabled={isLoading}
+                                            />
+                                            {!isRecordingActive && (
+                                                <button
+                                                    onClick={handleSubmit}
+                                                    disabled={!prompt.trim() || isLoading}
+                                                    className={cn(
+                                                        'w-8 h-8 rounded-full flex items-center justify-center transition-all flex-shrink-0',
+                                                        prompt.trim() && !isLoading
+                                                            ? 'bg-black dark:bg-white'
+                                                            : 'bg-transparent opacity-30'
+                                                    )}
+                                                >
+                                                    {isLoading
+                                                        ? <div className='w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin' />
+                                                        : <ArrowUp className={cn('w-4 h-4', prompt.trim() ? 'text-white dark:text-black' : 'text-muted-foreground')} />
+                                                    }
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
+                                </motion.div>
+
+                                {/* Suggested prompts — liquid glass, both modes */}
+                                <div className='w-full max-w-2xl mt-4 flex flex-wrap gap-3 justify-center'>
+                                    {suggestedPrompts.map((p, idx) => (
+                                        <button
+                                            key={idx}
+                                            onClick={() => setPrompt(p.long)}
+                                            className='px-3 py-1.5 rounded-full text-xs transition-colors text-muted-foreground hover:text-foreground cursor-pointer relative'
+                                            style={liquidGlassStyle(isLightMode)}
+                                        >
+                                            <div
+                                                className='pointer-events-none absolute inset-x-0 top-0 h-[1px] rounded-full'
+                                                style={{ background: 'linear-gradient(90deg, transparent 5%, rgba(255,255,255,0.95) 50%, transparent 95%)' }}
+                                            />
+                                            {p.short}
+                                        </button>
+                                    ))}
+                                </div>
+                            </>
+                        )}
                     </main>
                 </div>
             </div>
