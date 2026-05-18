@@ -11,7 +11,7 @@ import { useQuery } from 'convex/react'
 import { api } from '../../../convex/_generated/api'
 import { Id } from '../../../convex/_generated/dataModel'
 import { formatDistanceToNow } from 'date-fns'
-import { Home, LayoutGrid, ChevronRight, ChevronLeft, ArrowUp, Trash2 } from 'lucide-react'
+import { Home, LayoutGrid, ChevronRight, ChevronLeft, ArrowUp, Trash2, MoreHorizontal } from 'lucide-react'
 import { ThemeToggle } from '@/components/theme/toggle'
 import { AvatarDropdown } from '@/components/avatar-dropdown'
 import ParticleBackground from '@/components/home/particle-background'
@@ -402,6 +402,20 @@ export default function HomeShell({ profile, view = 'home' }: Props) {
                             <AvatarDropdown creditBalance={creditBalance ?? 0} />
                         </div>
                     </header>
+
+                    {/* Mobile menu bar */}
+                    <div className='md:hidden flex items-center justify-end w-full px-3 py-1'>
+                        <button 
+                            className='w-7 h-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:cursor-pointer transition-colors relative'
+                            style={liquidGlassStyle(isLightMode)}
+                        >
+                            <div
+                                className='pointer-events-none absolute inset-x-0 top-0 h-[1px] rounded-lg'
+                                style={{ background: 'linear-gradient(90deg, transparent 5%, rgba(255,255,255,0.95) 50%, transparent 95%)' }}
+                            />
+                            <MoreHorizontal className='w-4 h-4' />
+                        </button>
+                    </div>
 
                     {/* Center content */}
                     <main className='flex-1 flex flex-col items-center justify-center px-6 pb-16'>
