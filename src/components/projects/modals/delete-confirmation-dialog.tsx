@@ -10,6 +10,8 @@ interface DeleteConfirmationDialogProps {
     projectName: string
     onConfirm: () => void
     isLoading?: boolean
+    customTitle?: string
+    customDescription?: string
 }
 
 export function DeleteConfirmationDialog({
@@ -18,6 +20,8 @@ export function DeleteConfirmationDialog({
     projectName,
     onConfirm,
     isLoading = false,
+    customTitle,
+    customDescription,
 }: DeleteConfirmationDialogProps) {
     const { theme, systemTheme } = useTheme()
     const effectiveTheme = theme === 'system' ? systemTheme : theme
@@ -87,10 +91,10 @@ export function DeleteConfirmationDialog({
                                 <div className='px-5 pt-5 pb-4 space-y-3'>
                                     <div className='space-y-1'>
                                         <p className='text-sm font-semibold text-foreground tracking-tight'>
-                                            Delete "{projectName}"?
+                                            {customTitle || `Delete "${projectName}"?`}
                                         </p>
                                         <p className='text-xs text-muted-foreground leading-relaxed'>
-                                            This can be recovered from Trash for 3 days.
+                                            {customDescription || 'This can be recovered from Trash for 3 days.'}
                                         </p>
                                     </div>
 

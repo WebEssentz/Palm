@@ -5,7 +5,8 @@ import { useTheme } from 'next-themes'
 import { motion, AnimatePresence } from 'framer-motion'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useAppSelector } from '@/redux/store'
+import { useAppSelector, useAppDispatch } from '@/redux/store'
+import { toggleSidebar } from '@/redux/slice/ui'
 import { useProjects } from '@/components/projects/list/provider'
 import { useQuery } from 'convex/react'
 import { api } from '../../../convex/_generated/api'
@@ -111,10 +112,11 @@ const getRandomPrompts = () => {
 export default function HomeShell({ profile, view = 'home' }: Props) {
     const { theme, systemTheme } = useTheme()
     const me = useAppSelector((state) => state.profile)
+    const sideOpen = useAppSelector((state) => state.ui.sidebarOpen)
+    const dispatch = useAppDispatch()
     const projects = useProjects()
     const router = useRouter()
 
-    const [sideOpen, setSideOpen] = useState(false)
     const [prompt, setPrompt] = useState('')
     const [isFocused, setIsFocused] = useState(false)
     const [isLoading, setIsLoading] = useState(false)
@@ -354,7 +356,7 @@ export default function HomeShell({ profile, view = 'home' }: Props) {
                     {/* Collapsed projects area — clickable to expand */}
                     {!sideOpen && projects.length > 0 && (
                         <div
-                            onClick={() => setSideOpen(true)}
+                            onClick={() => dispatch(toggleSidebar())}
                             className='flex-1 cursor-ew-resize transition-colors'
                             style={{
                                 margin: '0.5rem 0.5rem 0 0.5rem',
@@ -364,7 +366,7 @@ export default function HomeShell({ profile, view = 'home' }: Props) {
 
                     {/* Sidebar toggle — liquid glass */}
                     <button
-                        onClick={() => setSideOpen((o) => !o)}
+                        onClick={() => dispatch(toggleSidebar())}
                         className={cn(
                             'mt-auto mb-4 w-7 h-7 rounded-full flex items-center justify-center text-muted-foreground hover:text-foreground hover:cursor-pointer transition-colors',
                             sideOpen ? 'ml-auto mr-2' : 'mx-auto'

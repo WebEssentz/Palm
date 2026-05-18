@@ -3,10 +3,12 @@ import profile from './profile'
 import projects from './projects'
 import shapes from './shapes'
 import viewport from './viewport'
+import ui from './ui'
 
 export const slices: Record<string, Reducer> = {
     profile,
     projects,
     shapes,
-    viewport
+    viewport,
+    ui,
 }

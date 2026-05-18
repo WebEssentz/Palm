@@ -290,6 +290,59 @@ export const deleteProject = mutation({
     }
 })
 
+export const restoreProject = mutation({
+    args: {
+        projectId: v.id('projects'),
+    },
+    handler: async (ctx, { projectId }) => {
+        const userId = await getAuthUserId(ctx)
+        if (!userId) throw new Error("Unauthenticated")
+
+        const project = await ctx.db.get(projectId)
+        if (!project) throw new Error("Project not found")
+
+        if (project.userId !== userId) {
+            throw new Error("Access Denied")
+        }
+
+        // Restore: remove delete flags
+        await ctx.db.patch(projectId, {
+            is_deleted: false,
+            deleted_at: undefined as any,
+        })
+
+        return { success: true }
+    }
+})
+
+export const deleteAllDeletedProjects = mutation({
+    args: {},
+    handler: async (ctx) => {
+        const userId = await getAuthUserId(ctx)
+        if (!userId) throw new Error("Unauthenticated")
+
+        const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000
+        const cutoff = Date.now() - THREE_DAYS_MS
+
+        const deletedProjects = await ctx.db
+            .query('projects')
+            .withIndex('by_userId_lastModified', (q: any) => q.eq('userId', userId))
+            .collect()
+
+        // Filter for projects that are deleted and within the 3-day window
+        const projectsToDelete = deletedProjects.filter(
+            (project: any) => project.is_deleted && project.deleted_at && project.deleted_at > cutoff
+        )
+
+        // Hard delete all of them
+        for (const project of projectsToDelete) {
+            await ctx.db.delete(project._id)
+        }
+
+        return { success: true, deletedCount: projectsToDelete.length }
+    }
+})
+
 export const fixLegacyThumbnails = mutation({
     args: {},
     handler: async (ctx) => {
