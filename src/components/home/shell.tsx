@@ -372,18 +372,20 @@ export default function HomeShell({ profile, view = 'home' }: Props) {
                     )}
 
                     {/* Sidebar toggle — liquid glass */}
-                    <GlassTooltip content="Expand sidebar" disabled={sideOpen}>
-                        <button
-                            onClick={() => dispatch(toggleSidebar())}
-                            className={cn(
-                                'mt-auto mb-4 w-7 h-7 rounded-full flex items-center justify-center text-muted-foreground hover:text-foreground hover:cursor-pointer transition-colors',
-                                sideOpen ? 'ml-auto mr-2' : 'mx-auto'
-                            )}
-                            style={liquidGlassStyle(isLightMode)}
-                        >
-                            {sideOpen ? <ChevronLeft className='w-3.5 h-3.5' /> : <ChevronRight className='w-3.5 h-3.5' />}
-                        </button>
-                    </GlassTooltip>
+                    <div className='mt-auto flex items-center justify-center pb-4'>
+                        <GlassTooltip content="Expand sidebar" disabled={sideOpen}>
+                            <button
+                                onClick={() => dispatch(toggleSidebar())}
+                                className={cn(
+                                    'w-7 h-7 rounded-full flex items-center justify-center text-muted-foreground hover:text-foreground hover:cursor-pointer transition-colors',
+                                    sideOpen ? 'ml-auto mr-2' : 'mx-auto'
+                                )}
+                                style={liquidGlassStyle(isLightMode)}
+                            >
+                                {sideOpen ? <ChevronLeft className='w-3.5 h-3.5' /> : <ChevronRight className='w-3.5 h-3.5' />}
+                            </button>
+                        </GlassTooltip>
+                    </div>
                 </aside>
 
                 {/* ── Main ── */}
@@ -519,27 +521,31 @@ export default function HomeShell({ profile, view = 'home' }: Props) {
                                                 />
                                             </GlassTooltip>
                                             <div className='flex-1' />
-                                            <MicButton
-                                                onTranscript={(text) => setPrompt(p => p ? p + ' ' + text : text)}
-                                                onRecordingChange={setIsRecordingActive}
-                                                disabled={isLoading}
-                                            />
+                                            <GlassTooltip content="Record audio" side="top">
+                                                <MicButton
+                                                    onTranscript={(text) => setPrompt(p => p ? p + ' ' + text : text)}
+                                                    onRecordingChange={setIsRecordingActive}
+                                                    disabled={isLoading}
+                                                />
+                                            </GlassTooltip>
                                             {!isRecordingActive && (
-                                                <button
-                                                    onClick={handleSubmit}
-                                                    disabled={!prompt.trim() || isLoading}
-                                                    className={cn(
-                                                        'w-8 h-8 rounded-full flex items-center justify-center transition-all flex-shrink-0',
-                                                        prompt.trim() && !isLoading
-                                                            ? 'bg-black dark:bg-white'
-                                                            : 'bg-transparent opacity-30'
-                                                    )}
-                                                >
-                                                    {isLoading
-                                                        ? <div className='w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin' />
-                                                        : <ArrowUp className={cn('w-4 h-4', prompt.trim() ? 'text-white dark:text-black' : 'text-muted-foreground')} />
-                                                    }
-                                                </button>
+                                                <GlassTooltip content="Send" side="top">
+                                                    <button
+                                                        onClick={handleSubmit}
+                                                        disabled={!prompt.trim() || isLoading}
+                                                        className={cn(
+                                                            'w-8 h-8 rounded-full flex items-center justify-center transition-all flex-shrink-0',
+                                                            prompt.trim() && !isLoading
+                                                                ? 'bg-black dark:bg-white'
+                                                                : 'bg-transparent opacity-30'
+                                                        )}
+                                                    >
+                                                        {isLoading
+                                                            ? <div className='w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin' />
+                                                            : <ArrowUp className={cn('w-4 h-4', prompt.trim() ? 'text-white dark:text-black' : 'text-muted-foreground')} />
+                                                        }
+                                                    </button>
+                                                </GlassTooltip>
                                             )}
                                         </div>
                                     </div>
