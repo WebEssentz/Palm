@@ -84,8 +84,10 @@ export async function POST(req: NextRequest) {
         if (!balanceOk) return NextResponse.json({ error: 'Failed to get balance' }, { status: 500 })
         if (balance === 0) return NextResponse.json({ error: 'No credits available' }, { status: 402 })
 
-        const { ok } = await ConsumeCreditsQuery({ amount: 1 })
-        if (!ok) return NextResponse.json({ error: 'Failed to consume credits' }, { status: 500 })
+        const consumeResult = await ConsumeCreditsQuery({ amount: 1 })
+        if (!consumeResult.ok) return NextResponse.json({ error: 'Failed to consume credits' }, { status: 500 })
+
+        const newBalance = consumeResult.balance
 
         const imageBuffer = await imageFile.arrayBuffer()
         const imageBytes = new Uint8Array(imageBuffer)
@@ -317,6 +319,7 @@ ${layoutTokens}
             headers: {
                 'Content-Type': 'text/html; charset=utf-8',
                 'Cache-Control': 'no-cache',
+                'X-New-Balance': String(newBalance),
             }
         })
 

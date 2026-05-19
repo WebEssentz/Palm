@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useTheme } from 'next-themes'
 
@@ -49,6 +49,13 @@ export function GlassTooltip({
         timerRef[1](null)
         setVisible(false)
     }
+
+    // Reset tooltip visibility when disabled changes
+    useEffect(() => {
+        if (timerRef[0]) clearTimeout(timerRef[0])
+        timerRef[1](null)
+        setVisible(false)
+    }, [disabled])
 
     const glassStyle: React.CSSProperties = isLight ? {
         background: 'rgba(248,244,237,0.92)',

@@ -25,8 +25,10 @@ export async function POST(req: NextRequest) {
         if (!balanceOk) return NextResponse.json({ error: 'Failed to get balance' }, { status: 500 })
         if (balance === 0) return NextResponse.json({ error: 'No credits' }, { status: 402 })
 
-        const { ok } = await ConsumeCreditsQuery({ amount: 1 })
-        if (!ok) return NextResponse.json({ error: 'Failed to consume credits' }, { status: 500 })
+        const consumeResult = await ConsumeCreditsQuery({ amount: 1 })
+        if (!consumeResult.ok) return NextResponse.json({ error: 'Failed to consume credits' }, { status: 500 })
+
+        const newBalance = consumeResult.balance
 
         // ── STEP A: Planning pass ──────────────────────────────────────
         // This is where AI "thinks out loud" before generating
@@ -123,6 +125,7 @@ ${layoutTokens}
             headers: {
                 'Content-Type': 'text/html; charset=utf-8',
                 'Cache-Control': 'no-cache',
+                'X-New-Balance': String(newBalance),
                 // Uncomment when you build the AI thought panel:
                 // 'X-Palm-Thought': encodeURIComponent(planningThought),
             }

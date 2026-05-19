@@ -398,10 +398,10 @@ export default function HomeShell({ profile, view = 'home' }: Props) {
 
                         {/* Credits + Avatar — right side */}
                         <div className='flex items-center gap-3'>
-                            {/* Credits — liquid glass */}
+                            {/* Credits — liquid glass — hidden on mobile */}
                             <GlassTooltip content="Your credit balance" side="bottom">
                                 <div
-                                    className='flex items-center gap-1.5 rounded-full px-3 py-1.5 relative'
+                                    className='hidden md:flex items-center gap-1.5 rounded-full px-3 py-1.5 relative'
                                     style={liquidGlassStyle(isLightMode)}
                                 >
                                 <div

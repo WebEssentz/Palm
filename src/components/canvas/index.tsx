@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from 'react'
 import { useGlobalChat, useInfiniteCanvas, useInspiration } from '@/hooks/use-canvas'
+import { usePalmToast } from '@/hooks/use-palmtoast'
 import TextSidebar from './text-sidebar'
 import { cn } from '@/lib/utils'
 import ShapeRenderer from './shapes'
@@ -54,6 +55,8 @@ const InfiniteCanvas = (props: Props) => {
 
   const { isChatOpen, activeGeneratedUIId, generateWorkflow, exportDesign }  = useGlobalChat()
 
+  const { toast } = usePalmToast()
+
   const searchParams = useSearchParams()
   const dispatch = useDispatch()
   const hasStartedGeneration = useRef(false)
@@ -95,6 +98,9 @@ const InfiniteCanvas = (props: Props) => {
 
         if (!res.ok) throw new Error('Generation failed')
 
+        const newBalance = res.headers.get('X-New-Balance')
+        const balanceNum = newBalance ? parseInt(newBalance, 10) : null
+
         const reader = res.body!.getReader()
         const decoder = new TextDecoder()
         let html = ''
@@ -109,6 +115,13 @@ const InfiniteCanvas = (props: Props) => {
             id: newShapeId, 
             patch: { uiSpecData: html } 
           }))
+        }
+
+        // Show credits spent toast after generation completes
+        if (balanceNum !== null) {
+          toast(`Generated! 1 credit spent • ${balanceNum} remaining`, {
+            type: 'success'
+          })
         }
       } catch (err) {
         console.error('[Canvas] Generation stream failed:', err)
