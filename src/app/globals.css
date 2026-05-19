@@ -60,6 +60,11 @@
     100%{ width: 100% }
 }
 
+@keyframes palm-toast-drain {
+    from { transform: scaleX(1); }
+    to   { transform: scaleX(0); }
+}
+
 
     /* --background: 245 240 232;        Parchment — #F5F0E8 */
     /* or Linen:  239 233 220         #EFE9DC */

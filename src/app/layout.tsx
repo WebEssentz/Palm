@@ -3,6 +3,7 @@ import { Geist, Geist_Mono, Outfit, Plus_Jakarta_Sans } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/theme/provider";
 import { Toaster } from "@/components/ui/sonner";
+import { PalmToastProvider } from "@/components/ui/palm-toast";
 import { ConvexAuthNextjsServerProvider } from "@convex-dev/auth/nextjs/server";
 import { ConvexClientProvider } from "@/convex/provider";
 import ReduxProvider from "@/redux/provider"
@@ -51,8 +52,10 @@ export default async function RootLayout({
               disableTransitionOnChange
             >
               <ReduxProvider preloadedState={{ profile }}>
-                {children}
-                <Toaster />
+                <PalmToastProvider>
+                  {children}
+                  <Toaster />
+                </PalmToastProvider>
               </ReduxProvider>
             </ThemeProvider>
           </ConvexClientProvider>

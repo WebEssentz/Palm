@@ -343,6 +343,27 @@ export const deleteAllDeletedProjects = mutation({
     }
 })
 
+export const permanentlyDeleteProject = mutation({
+    args: {
+        projectId: v.id('projects'),
+    },
+    handler: async (ctx, { projectId }) => {
+        const userId = await getAuthUserId(ctx)
+        if (!userId) throw new Error("Unauthenticated")
+
+        const project = await ctx.db.get(projectId)
+        if (!project) throw new Error("Project not found")
+
+        if (project.userId !== userId) {
+            throw new Error("Access Denied")
+        }
+
+        // Hard delete — gone forever
+        await ctx.db.delete(projectId)
+        return { success: true }
+    }
+})
+
 export const fixLegacyThumbnails = mutation({
     args: {},
     handler: async (ctx) => {

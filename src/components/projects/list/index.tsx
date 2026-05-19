@@ -9,6 +9,7 @@ import { useTheme } from 'next-themes'
 import { useState } from 'react'
 import { useMutation } from 'convex/react'
 import { api } from '../../../../convex/_generated/api'
+import { usePalmToast } from '@/hooks/use-palmtoast'
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -37,6 +38,7 @@ const ProjectsList = ({ onProjectDelete }: { onProjectDelete?: () => void }) => 
     const projects = useProjects()
     const user = useAppSelector((state) => state.profile)
     const { theme, systemTheme } = useTheme()
+    const { toast } = usePalmToast()
     const [searchQuery, setSearchQuery] = useState('')
     const [renameId, setRenameId] = useState<string | null>(null)
     const [deleteId, setDeleteId] = useState<string | null>(null)
@@ -47,6 +49,7 @@ const ProjectsList = ({ onProjectDelete }: { onProjectDelete?: () => void }) => 
     
     const renameProjectMutation = useMutation(api.projects.renameProject)
     const deleteProjectMutation = useMutation(api.projects.deleteProject)
+    const restoreProjectMutation = useMutation(api.projects.restoreProject)
     
     const effectiveTheme = theme === 'system' ? systemTheme : theme
     const isLightMode = effectiveTheme === 'light'
@@ -68,11 +71,31 @@ const ProjectsList = ({ onProjectDelete }: { onProjectDelete?: () => void }) => 
                 projectId: renameId as any,
                 newName,
             })
+            toast(`Project renamed to "${newName}"`, { type: 'success' })
         } catch (err) {
             console.error('Rename failed:', err)
         } finally {
             setIsRenaming(false)
             setRenameId(null)
+        }
+    }
+
+    const handleUndoDelete = async (projectId: string) => {
+        // Get the project to restore
+        const project = projects.find(p => p._id === projectId)
+        if (!project) return
+
+        // Restore the project (reverse the delete)
+        try {
+            await restoreProjectMutation({ projectId: projectId as any })
+            // Remove from optimistically deleted set to show it again
+            setOptimisticallyDeletedIds(prev => {
+                const next = new Set(prev)
+                next.delete(projectId)
+                return next
+            })
+        } catch (err) {
+            console.error('Undo delete failed:', err)
         }
     }
 
@@ -84,15 +107,25 @@ const ProjectsList = ({ onProjectDelete }: { onProjectDelete?: () => void }) => 
     const handleDeleteConfirm = async () => {
         if (!deleteId) return
         
-        // 1. Immediately close modal + remove from UI
+        // 1. Get project name for toast
+        const project = projects.find(p => p._id === deleteId)
+        const projectName = project?.name || 'Project'
+
+        // 2. Immediately close modal + remove from UI
         const idToDelete = deleteId
         setOptimisticallyDeletedIds(prev => new Set([...prev, idToDelete]))
         setDeleteDialogOpen(false)
         setDeleteId(null)
         setIsDeleting(true)
         
-        // 2. Notify parent component of deletion (for optimistic UI updates like showing Trash)
+        // 3. Notify parent component of deletion (for optimistic UI updates like showing Trash)
         onProjectDelete?.()
+
+        // 4. Show success toast with undo action
+        toast(`${projectName} moved to Trash`, {
+            type: 'success',
+            action: { label: 'Undo', onClick: () => handleUndoDelete(idToDelete) }
+        })
 
         try {
             await deleteProjectMutation({ projectId: idToDelete as any })

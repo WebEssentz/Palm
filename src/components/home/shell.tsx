@@ -15,6 +15,7 @@ import { formatDistanceToNow } from 'date-fns'
 import { Home, LayoutGrid, ChevronRight, ChevronLeft, ArrowUp, Trash2, MoreHorizontal } from 'lucide-react'
 import { ThemeToggle } from '@/components/theme/toggle'
 import { AvatarDropdown } from '@/components/avatar-dropdown'
+import { GlassTooltip } from '@/components/ui/glass-tooltip'
 import ParticleBackground from '@/components/home/particle-background'
 import { CyclingWord } from '@/components/home/cycling-word'
 import { MicButton } from '@/components/home/mic-button'
@@ -279,28 +280,34 @@ export default function HomeShell({ profile, view = 'home' }: Props) {
 
                     {/* Nav */}
                     <nav className='flex flex-col gap-0.5 px-2 mt-1'>
-                        <SideItem
-                            icon={<Home className='w-4 h-4' />}
-                            label='Home'
-                            open={sideOpen}
-                            active={view === 'home'}
-                            onClick={() => router.push(`/dashboard/${me.name}`)}
-                        />
-                        <SideItem
-                            icon={<LayoutGrid className='w-4 h-4' />}
-                            label='Projects'
-                            open={sideOpen}
-                            active={view === 'projects'}
-                            onClick={() => router.push(`/dashboard/${me.name}/projects`)}
-                        />
-                        {(hasDeleted || hasDeletedOptimistic) && (
+                        <GlassTooltip content="Home" disabled={sideOpen}>
                             <SideItem
-                                icon={<Trash2 className='w-4 h-4' />}
-                                label='Trash'
+                                icon={<Home className='w-4 h-4' />}
+                                label='Home'
                                 open={sideOpen}
-                                active={view === 'trash'}
-                                onClick={() => router.push(`/dashboard/${me.name}/trash`)}
+                                active={view === 'home'}
+                                onClick={() => router.push(`/dashboard/${me.name}`)}
                             />
+                        </GlassTooltip>
+                        <GlassTooltip content="Projects" disabled={sideOpen}>
+                            <SideItem
+                                icon={<LayoutGrid className='w-4 h-4' />}
+                                label='Projects'
+                                open={sideOpen}
+                                active={view === 'projects'}
+                                onClick={() => router.push(`/dashboard/${me.name}/projects`)}
+                            />
+                        </GlassTooltip>
+                        {(hasDeleted || hasDeletedOptimistic) && (
+                            <GlassTooltip content="Trash" disabled={sideOpen}>
+                                <SideItem
+                                    icon={<Trash2 className='w-4 h-4' />}
+                                    label='Trash'
+                                    open={sideOpen}
+                                    active={view === 'trash'}
+                                    onClick={() => router.push(`/dashboard/${me.name}/trash`)}
+                                />
+                            </GlassTooltip>
                         )}
                     </nav>
 
@@ -365,16 +372,18 @@ export default function HomeShell({ profile, view = 'home' }: Props) {
                     )}
 
                     {/* Sidebar toggle — liquid glass */}
-                    <button
-                        onClick={() => dispatch(toggleSidebar())}
-                        className={cn(
-                            'mt-auto mb-4 w-7 h-7 rounded-full flex items-center justify-center text-muted-foreground hover:text-foreground hover:cursor-pointer transition-colors',
-                            sideOpen ? 'ml-auto mr-2' : 'mx-auto'
-                        )}
-                        style={liquidGlassStyle(isLightMode)}
-                    >
-                        {sideOpen ? <ChevronLeft className='w-3.5 h-3.5' /> : <ChevronRight className='w-3.5 h-3.5' />}
-                    </button>
+                    <GlassTooltip content="Expand sidebar" disabled={sideOpen}>
+                        <button
+                            onClick={() => dispatch(toggleSidebar())}
+                            className={cn(
+                                'mt-auto mb-4 w-7 h-7 rounded-full flex items-center justify-center text-muted-foreground hover:text-foreground hover:cursor-pointer transition-colors',
+                                sideOpen ? 'ml-auto mr-2' : 'mx-auto'
+                            )}
+                            style={liquidGlassStyle(isLightMode)}
+                        >
+                            {sideOpen ? <ChevronLeft className='w-3.5 h-3.5' /> : <ChevronRight className='w-3.5 h-3.5' />}
+                        </button>
+                    </GlassTooltip>
                 </aside>
 
                 {/* ── Main ── */}
@@ -388,19 +397,21 @@ export default function HomeShell({ profile, view = 'home' }: Props) {
                         {/* Credits + Avatar — right side */}
                         <div className='flex items-center gap-3'>
                             {/* Credits — liquid glass */}
-                            <div
-                                className='flex items-center gap-1.5 rounded-full px-3 py-1.5 relative'
-                                style={liquidGlassStyle(isLightMode)}
-                            >
-                            <div
-                                className='pointer-events-none absolute inset-x-0 top-0 h-[1px]'
-                                style={{ background: 'linear-gradient(90deg, transparent 5%, rgba(255,255,255,0.95) 50%, transparent 95%)' }}
-                            />
-                            <PalmLeafIcon />
-                            <span className='text-xs font-medium tabular-nums text-foreground/70'>
-                                {creditBalance ?? 0}
-                            </span>
-                        </div>
+                            <GlassTooltip content="Your credit balance" side="bottom">
+                                <div
+                                    className='flex items-center gap-1.5 rounded-full px-3 py-1.5 relative'
+                                    style={liquidGlassStyle(isLightMode)}
+                                >
+                                <div
+                                    className='pointer-events-none absolute inset-x-0 top-0 h-[1px]'
+                                    style={{ background: 'linear-gradient(90deg, transparent 5%, rgba(255,255,255,0.95) 50%, transparent 95%)' }}
+                                />
+                                <PalmLeafIcon />
+                                <span className='text-xs font-medium tabular-nums text-foreground/70'>
+                                    {creditBalance ?? 0}
+                                </span>
+                            </div>
+                            </GlassTooltip>
                             <AvatarDropdown creditBalance={creditBalance ?? 0} />
                         </div>
                     </header>
@@ -420,13 +431,16 @@ export default function HomeShell({ profile, view = 'home' }: Props) {
                     </div>
 
                     {/* Center content */}
-                    <main className='flex-1 flex flex-col items-center justify-center px-6 pb-16'>
+                    <main className={cn(
+                        'flex-1 flex flex-col items-center px-6 pb-16',
+                        view === 'home' ? 'justify-center' : 'justify-start pt-10'
+                    )}>
                         {view === 'projects' ? (
                             <div className='w-full max-w-7xl pt-10'>
                                 <ProjectsList onProjectDelete={() => setHasDeletedOptimistic(true)} />
                             </div>
                         ) : view === 'trash' ? (
-                            <TrashList />
+                            <TrashList onTrashEmpty={() => setHasDeletedOptimistic(false)} />
                         ) : (
                             <>
                                 <h1 className='font-display text-3xl sm:text-3xl md:text-5xl font-bold tracking-tight text-foreground mb-10 text-center leading-tight'>
@@ -497,11 +511,13 @@ export default function HomeShell({ profile, view = 'home' }: Props) {
 
                                         {/* Toolbar — smaller buttons, pushed down from textarea */}
                                         <div className='flex items-center gap-2' style={{ marginTop: '12px' }}>
-                                            <AttachmentMenu
-                                                onUpload={(file) => console.log('file:', file)}
-                                                onUrl={(url) => console.log('url:', url)}
-                                                onEnhance={() => console.log('enhance')}
-                                            />
+                                            <GlassTooltip content="Add attachment" side="top">
+                                                <AttachmentMenu
+                                                    onUpload={(file) => console.log('file:', file)}
+                                                    onUrl={(url) => console.log('url:', url)}
+                                                    onEnhance={() => console.log('enhance')}
+                                                />
+                                            </GlassTooltip>
                                             <div className='flex-1' />
                                             <MicButton
                                                 onTranscript={(text) => setPrompt(p => p ? p + ' ' + text : text)}
@@ -554,7 +570,9 @@ export default function HomeShell({ profile, view = 'home' }: Props) {
 
             {/* Theme toggle — fixed bottom right */}
             <div className='fixed bottom-4 right-4 z-50'>
-                <ThemeToggle />
+                <GlassTooltip content="Toggle theme" side="left">
+                    <ThemeToggle />
+                </GlassTooltip>
             </div>
         </>
     )

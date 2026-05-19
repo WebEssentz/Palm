@@ -3,12 +3,12 @@
 import { useAppSelector } from '@/redux/store'
 import { Plus, RotateCcw, Trash2, Search, MoreVertical } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
-import Link from 'next/link'
 import { useTheme } from 'next-themes'
 import { useMutation, useQuery } from 'convex/react'
 import { api } from '../../../convex/_generated/api'
 import { Id } from '../../../convex/_generated/dataModel'
 import { useEffect, useState } from 'react'
+import { usePalmToast } from '@/hooks/use-palmtoast'
 import { DeleteConfirmationDialog } from './modals/delete-confirmation-dialog'
 import {
     DropdownMenu,
@@ -29,25 +29,6 @@ function isColorDark(color: string | undefined): boolean {
     // Perceived luminance (standard formula)
     const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255
     return luminance < 0.35
-}
-
-function thumbnailToSrc(thumbnail: string | undefined): string | null {
-    if (!thumbnail) return null
-    if (thumbnail.startsWith('linear-gradient')) {
-        const colors = thumbnail.match(/#[a-fA-F0-9]{6}/g) || ['#888888', '#444444']
-        const [c1, c2] = colors.length >= 2 ? [colors[0], colors[1]] : [colors[0] || '#888', '#444']
-        const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20">
-            <defs>
-                <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%">
-                    <stop offset="0%" stop-color="${c1}"/>
-                    <stop offset="100%" stop-color="${c2}"/>
-                </linearGradient>
-            </defs>
-            <rect width="20" height="20" rx="4" fill="url(#g)"/>
-        </svg>`
-        return `data:image/svg+xml,${encodeURIComponent(svg)}`
-    }
-    return null
 }
 
 function calculateRemainingTime(deletedAtMs: number): { text: string; isExpired: boolean } {
@@ -73,13 +54,14 @@ function calculateRemainingTime(deletedAtMs: number): { text: string; isExpired:
     }
 }
 
-const TrashList = () => {
+const TrashList = ({ onTrashEmpty }: { onTrashEmpty?: () => void }) => {
     const user = useAppSelector((state) => state.profile)
     const { theme, systemTheme } = useTheme()
-    
+    const { toast } = usePalmToast()
+
     const effectiveTheme = theme === 'system' ? systemTheme : theme
     const isLightMode = effectiveTheme === 'light'
-    
+
     const deletedProjects = useQuery(
         api.projects.getDeletedProjects,
         user?.id ? { userId: user.id as Id<'users'> } : 'skip'
@@ -87,7 +69,8 @@ const TrashList = () => {
 
     const deleteAllMutation = useMutation(api.projects.deleteAllDeletedProjects)
     const restoreProjectMutation = useMutation(api.projects.restoreProject)
-    const deleteProjectMutation = useMutation(api.projects.deleteProject)
+    const permanentlyDeleteMutation = useMutation(api.projects.permanentlyDeleteProject)
+    const softDeleteMutation = useMutation(api.projects.deleteProject)
 
     const [visibleProjects, setVisibleProjects] = useState<any[]>([])
     const [timings, setTimings] = useState<Record<string, { text: string; isExpired: boolean }>>({})
@@ -103,7 +86,7 @@ const TrashList = () => {
     useEffect(() => {
         if (deletedProjects) {
             setVisibleProjects(deletedProjects)
-            
+
             // Calculate initial timings
             const newTimings: Record<string, any> = {}
             deletedProjects.forEach((project: any) => {
@@ -124,11 +107,11 @@ const TrashList = () => {
                 const updated = prev.filter((project: any) => {
                     if (!project.deleted_at) return true
                     const timing = calculateRemainingTime(project.deleted_at)
-                    
+
                     if (timing.isExpired && !fadingOut.has(project._id)) {
                         // Start fade out
                         setFadingOut((prev) => new Set([...prev, project._id]))
-                        
+
                         // Remove after animation completes (500ms)
                         setTimeout(() => {
                             setVisibleProjects((p) => p.filter((pr: any) => pr._id !== project._id))
@@ -144,10 +127,10 @@ const TrashList = () => {
                                 return next
                             })
                         }, 500)
-                        
+
                         return false
                     }
-                    
+
                     return true
                 })
 
@@ -166,6 +149,13 @@ const TrashList = () => {
 
         return () => clearInterval(interval)
     }, [visibleProjects.length, fadingOut])
+
+    // Call onTrashEmpty when trash becomes empty
+    useEffect(() => {
+        if (visibleProjects.length === 0 && optimisticallyRemovedIds.size === 0 && onTrashEmpty) {
+            onTrashEmpty()
+        }
+    }, [visibleProjects.length, optimisticallyRemovedIds.size, onTrashEmpty])
 
     const handleDeleteAll = async () => {
         setIsDeleting(true)
@@ -188,7 +178,7 @@ const TrashList = () => {
 
     const handleDeleteConfirm = async () => {
         if (!deleteId) return
-        
+
         // 1. Immediately remove from UI (optimistic update)
         const idToDelete = deleteId
         setOptimisticallyRemovedIds(prev => new Set([...prev, idToDelete]))
@@ -196,7 +186,8 @@ const TrashList = () => {
         setDeleteId(null)
 
         try {
-            await deleteProjectMutation({ projectId: idToDelete as any })
+            // Hard delete — actually removes from DB
+            await permanentlyDeleteMutation({ projectId: idToDelete as any })
         } catch (err) {
             // Revert optimistic update on failure
             setOptimisticallyRemovedIds(prev => {
@@ -204,14 +195,39 @@ const TrashList = () => {
                 next.delete(idToDelete)
                 return next
             })
-            console.error('Delete failed:', err)
+            console.error('Permanent delete failed:', err)
+        }
+    }
+
+    const handleUndoRestore = async (projectId: string) => {
+        // Get project to restore to trash
+        const project = deletedProjects?.find(p => p._id === projectId)
+        if (!project) return
+
+        // Re-soft-delete (undo the restore)
+        try {
+            await softDeleteMutation({ projectId: projectId as any })
+            // Add back to visible projects
+            setVisibleProjects(prev => [...prev, project])
+            if (project.deleted_at) {
+                setTimings(prev => ({
+                    ...prev,
+                    [projectId]: calculateRemainingTime(project.deleted_at!)
+                }))
+            }
+        } catch (err) {
+            console.error('Undo restore failed:', err)
         }
     }
 
     const handleRestore = async (projectId: string) => {
+        // Get project name for toast
+        const project = visibleProjects.find(p => p._id === projectId)
+        const projectName = project?.name || 'Project'
+
         // 1. Immediately remove from trash UI (optimistic update with fade out)
         setFadingOut(prev => new Set([...prev, projectId]))
-        
+
         // 2. Remove from visible projects after animation
         setTimeout(() => {
             setVisibleProjects(prev => prev.filter(p => p._id !== projectId))
@@ -228,16 +244,22 @@ const TrashList = () => {
             })
         }, 500)
 
+        // 3. Show success toast with undo action
+        toast(`${projectName} restored`, {
+            type: 'success',
+            action: { label: 'Undo', onClick: () => handleUndoRestore(projectId) }
+        })
+
         try {
             await restoreProjectMutation({ projectId: projectId as any })
         } catch (err) {
             // Revert: add back to visible projects
-            const project = deletedProjects?.find(p => p._id === projectId)
-            if (project && project.deleted_at) {
-                setVisibleProjects(prev => [...prev, project])
+            const revertProject = deletedProjects?.find(p => p._id === projectId)
+            if (revertProject && revertProject.deleted_at) {
+                setVisibleProjects(prev => [...prev, revertProject])
                 setTimings(prev => ({
                     ...prev,
-                    [projectId]: calculateRemainingTime(project.deleted_at!)
+                    [projectId]: calculateRemainingTime(revertProject.deleted_at!)
                 }))
             }
             setFadingOut(prev => {
@@ -251,25 +273,59 @@ const TrashList = () => {
 
     if (deletedProjects === undefined || deletedProjects === null) {
         return (
-            <div className='w-full max-w-7xl pt-10'>
-                <div className='animate-pulse'>Loading...</div>
+            <div className='w-full flex justify-center'>
+                <div className='w-full max-w-7xl'>
+                    <div className='text-center py-20'>
+                        <div className='animate-pulse'>Loading...</div>
+                    </div>
+                </div>
             </div>
         )
     }
 
-    if (deletedProjects.length === 0) {
+    // Check if trash is empty (including optimistically removed items)
+    const filteredVisibleProjects = visibleProjects.filter(
+        (project: any) => !optimisticallyRemovedIds.has(project._id)
+    )
+    const isTrashEmpty = deletedProjects.length === 0 && visibleProjects.length === 0
+    const hasAnyProjects = filteredVisibleProjects.length > 0
+
+    if (isTrashEmpty) {
         return (
-            <div className='w-full max-w-7xl pt-10'>
-                <div className='text-center py-20'>
-                    <div className='w-16 h-16 mx-auto mb-4 rounded-lg bg-muted flex items-center justify-center'>
-                        <Plus className='w-8 h-8 text-muted-foreground' />
+            <div className='w-full flex justify-center'>
+                <div className='w-full max-w-7xl'>
+                    <div className='text-center py-20'>
+                        <div className='w-16 h-16 mx-auto mb-4 rounded-lg bg-muted flex items-center justify-center'>
+                            <Plus className='w-8 h-8 text-muted-foreground' />
+                        </div>
+                        <h3 className='text-lg font-medium text-foreground mb-2'>
+                            Trash is empty
+                        </h3>
+                        <p className='text-sm text-muted-foreground'>
+                            Deleted projects appear here for 3 days before permanent removal
+                        </p>
                     </div>
-                    <h3 className='text-lg font-medium text-foreground mb-2'>
-                        Trash is empty
-                    </h3>
-                    <p className='text-sm text-muted-foreground'>
-                        Deleted projects appear here for 3 days before permanent removal
-                    </p>
+                </div>
+            </div>
+        )
+    }
+
+    // If all visible projects are optimistically removed, show empty state
+    if (!hasAnyProjects) {
+        return (
+            <div className='w-full flex justify-center'>
+                <div className='w-full max-w-7xl'>
+                    <div className='text-center py-20'>
+                        <div className='w-16 h-16 mx-auto mb-4 rounded-lg bg-muted flex items-center justify-center'>
+                            <Plus className='w-8 h-8 text-muted-foreground' />
+                        </div>
+                        <h3 className='text-lg font-medium text-foreground mb-2'>
+                            Trash is empty
+                        </h3>
+                        <p className='text-sm text-muted-foreground'>
+                            Deleted projects appear here for 3 days before permanent removal
+                        </p>
+                    </div>
                 </div>
             </div>
         )
@@ -336,93 +392,110 @@ const TrashList = () => {
                 </div>
 
                 <div className='grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6'>
-                    {visibleProjects
-                        .filter((project: any) => !optimisticallyRemovedIds.has(project._id))
-                        .filter((project: any) =>
-                            project.name.toLowerCase().includes(searchQuery.trim().toLowerCase())
-                        )
-                        .map((project: any) => {
-                        const timing = timings[project._id]
-                        const isFading = fadingOut.has(project._id)
-                        
-                        return (
-                            <div
-                                key={project._id}
-                                className={`group cursor-pointer relative transition-all duration-500 ${isFading ? 'opacity-0 scale-95' : 'opacity-75 hover:opacity-100'}`}
-                            >
-                                <div className='space-y-3'>
-                                    <div className='aspect-[4/3] rounded-lg overflow-hidden bg-muted relative'>
-                                        <div
-                                            className='w-full h-full flex items-center justify-center group-hover:opacity-90 transition-opacity'
-                                            style={{
-                                                background: project.thumbnail
-                                                    ? (!isLightMode && isColorDark(project.thumbnail)
-                                                        ? '#ffffff'
-                                                        : project.thumbnail)
-                                                    : 'linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%)'
-                                            }}
-                                        >
-                                            {!project.thumbnail && <Plus className='w-8 h-8 text-gray-400' />}
-                                        </div>
-                                        
-                                        {/* Countdown badge */}
-                                        {timing && (
-                                            <div className='absolute bottom-2 right-2 bg-background/90 backdrop-blur-sm border border-border/50 rounded-md px-2 py-1'>
-                                                <p className='text-xs font-medium text-foreground'>
-                                                    {timing.text}
-                                                </p>
-                                            </div>
-                                        )}
+                    {(() => {
+                        const filteredProjects = visibleProjects
+                            .filter((project: any) => !optimisticallyRemovedIds.has(project._id))
+                            .filter((project: any) =>
+                                project.name.toLowerCase().includes(searchQuery.trim().toLowerCase())
+                            )
 
-                                        {/* Three dots menu - appears on hover */}
-                                        <div className='absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity'>
-                                            <DropdownMenu>
-                                                <DropdownMenuTrigger asChild onClick={(e) => e.preventDefault()}>
-                                                    <button className='p-1.5 rounded-md bg-background/80 backdrop-blur hover:bg-background transition-colors'>
-                                                        <MoreVertical className='w-4 h-4 text-foreground' />
-                                                    </button>
-                                                </DropdownMenuTrigger>
-                                                <DropdownMenuContent 
-                                                    align='end' 
-                                                    onClick={(e) => e.preventDefault()}
-                                                    className='border border-border/50 shadow-lg backdrop-blur-sm bg-background/95'
-                                                >
-                                                    <DropdownMenuItem
-                                                        onClick={() => handleRestore(project._id)}
-                                                        className='cursor-pointer'
-                                                        onMouseEnter={(e) => {
-                                                            e.currentTarget.style.backgroundColor = isLightMode ? '#EFE7DD' : '#141414'
-                                                        }}
-                                                        onMouseLeave={(e) => {
-                                                            e.currentTarget.style.backgroundColor = 'transparent'
-                                                        }}
+                        if (filteredProjects.length === 0 && searchQuery.trim()) {
+                            return (
+                                <div className='col-span-full text-center py-16'>
+                                    <p className='text-sm font-medium text-foreground mb-1'>
+                                        No results for "{searchQuery}"
+                                    </p>
+                                    <p className='text-xs text-muted-foreground'>
+                                        Try a different name
+                                    </p>
+                                </div>
+                            )
+                        }
+
+                        // If no search query and no projects, the empty state above will handle it
+                        if (filteredProjects.length === 0) {
+                            return null
+                        }
+
+                        return filteredProjects.map((project: any) => {
+                            const timing = timings[project._id]
+                            const isFading = fadingOut.has(project._id)
+
+                            return (
+                                <div
+                                    key={project._id}
+                                    className={`group cursor-pointer relative transition-all duration-500 ${isFading ? 'opacity-0 scale-95' : 'opacity-75 hover:opacity-100'}`}
+                                >
+                                    <div className='space-y-3'>
+                                        <div className='aspect-[4/3] rounded-lg overflow-hidden bg-muted relative'>
+                                            <div
+                                                className='w-full h-full flex items-center justify-center group-hover:opacity-90 transition-opacity'
+                                                style={{
+                                                    background: project.thumbnail
+                                                        ? (!isLightMode && isColorDark(project.thumbnail)
+                                                            ? '#ffffff'
+                                                            : project.thumbnail)
+                                                        : 'linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%)'
+                                                }}
+                                            >
+                                                {!project.thumbnail && <Plus className='w-8 h-8 text-gray-400' />}
+                                            </div>
+
+                                            {timing && (
+                                                <div className='absolute bottom-2 right-2 bg-background/90 backdrop-blur-sm border border-border/50 rounded-md px-2 py-1'>
+                                                    <p className='text-xs font-medium text-foreground'>
+                                                        {timing.text}
+                                                    </p>
+                                                </div>
+                                            )}
+
+                                            <div className='absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity'>
+                                                <DropdownMenu>
+                                                    <DropdownMenuTrigger asChild onClick={(e) => e.preventDefault()}>
+                                                        <button className='p-1.5 rounded-md bg-background/80 backdrop-blur hover:bg-background transition-colors'>
+                                                            <MoreVertical className='w-4 h-4 text-foreground' />
+                                                        </button>
+                                                    </DropdownMenuTrigger>
+                                                    <DropdownMenuContent
+                                                        align='end'
+                                                        onClick={(e) => e.preventDefault()}
+                                                        className='border border-border/50 shadow-lg backdrop-blur-sm bg-background/95'
                                                     >
-                                                        <RotateCcw className='w-4 h-4 mr-2' />
-                                                        Restore
-                                                    </DropdownMenuItem>
-                                                    <DropdownMenuItem
-                                                        className='text-destructive focus:text-destructive focus:bg-destructive/10 cursor-pointer'
-                                                        onClick={() => handleDeleteClick(project._id)}
-                                                    >
-                                                        <Trash2 className='w-4 h-4 mr-2' />
-                                                        Delete
-                                                    </DropdownMenuItem>
-                                                </DropdownMenuContent>
-                                            </DropdownMenu>
+                                                        <DropdownMenuItem
+                                                            onClick={() => handleRestore(project._id)}
+                                                            className='cursor-pointer'
+                                                            onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = isLightMode ? '#EFE7DD' : '#141414' }}
+                                                            onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent' }}
+                                                        >
+                                                            <RotateCcw className='w-4 h-4 mr-2' />
+                                                            Restore
+                                                        </DropdownMenuItem>
+                                                        <DropdownMenuItem
+                                                            className='text-destructive focus:text-destructive focus:bg-destructive/10 cursor-pointer'
+                                                            onClick={() => handleDeleteClick(project._id)}
+                                                        >
+                                                            <Trash2 className='w-4 h-4 mr-2' />
+                                                            Delete
+                                                        </DropdownMenuItem>
+                                                    </DropdownMenuContent>
+                                                </DropdownMenu>
+                                            </div>
                                         </div>
-                                    </div>
-                                    <div className='space-y-1'>
-                                        <h3 className='font-medium text-foreground text-sm truncate group-hover:text-primary transition-colors'>
-                                            {project.name}
-                                        </h3>
-                                        <p className='text-xs text-muted-foreground'>
-                                            {project.deleted_at ? `Deleted ${formatDistanceToNow(new Date(project.deleted_at), { addSuffix: true })}` : 'Deleted'}
-                                        </p>
+                                        <div className='space-y-1'>
+                                            <h3 className='font-medium text-foreground text-sm truncate group-hover:text-primary transition-colors'>
+                                                {project.name}
+                                            </h3>
+                                            <p className='text-xs text-muted-foreground'>
+                                                {project.deleted_at
+                                                    ? `Deleted ${formatDistanceToNow(new Date(project.deleted_at), { addSuffix: true })}`
+                                                    : 'Deleted'}
+                                            </p>
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
-                        )
-                    })}
+                            )
+                        })  // ← closes .map()
+                    })()}
                 </div>
             </div>
 
