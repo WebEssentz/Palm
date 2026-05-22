@@ -1,6 +1,7 @@
 'use client'
 
-import React, { useRef, useState } from 'react'
+import React, { useRef, useState, useEffect } from 'react'
+import { useMutation } from 'convex/react'
 import { useTheme } from 'next-themes'
 import { motion, AnimatePresence } from 'framer-motion'
 import Link from 'next/link'
@@ -21,6 +22,7 @@ import ParticleBackground from '@/components/home/particle-background'
 import { CyclingWord } from '@/components/home/cycling-word'
 import { MicButton } from '@/components/home/mic-button'
 import { AttachmentMenu } from '@/components/home/attachment-menu'
+import { ImagePreview, type ImageItem } from '@/components/home/image-preview'
 import ProjectsList from '@/components/projects/list'
 import TrashList from '@/components/projects/trash-list'
 import { cn } from '@/lib/utils'
@@ -118,6 +120,7 @@ export default function HomeShell({ profile, view = 'home' }: Props) {
     const dispatch = useAppDispatch()
     const projects = useProjects()
     const router = useRouter()
+    const deleteFile = useMutation(api.files.deleteFile)
 
     const [prompt, setPrompt] = useState('')
     const [isFocused, setIsFocused] = useState(false)
@@ -126,7 +129,10 @@ export default function HomeShell({ profile, view = 'home' }: Props) {
     const [suggestedPrompts] = useState(() => getRandomPrompts())
     const [hasDeletedOptimistic, setHasDeletedOptimistic] = useState(false)
     const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState(false)
+    const [uploadedImages, setUploadedImages] = useState<ImageItem[]>([])
+    const [isDragging, setIsDragging] = useState(false)
     const textareaRef = useRef<HTMLTextAreaElement>(null)
+    const dragCounter = useRef(0)
 
     const creditBalance = useQuery(
         api.subscription.getCreditsBalance,
@@ -143,17 +149,108 @@ export default function HomeShell({ profile, view = 'home' }: Props) {
         me?.id ? { userId: me.id as Id<'users'> } : 'skip'
     ) ?? []
 
+    const handleUpload = async (file: File) => {
+        if (!file.type.startsWith('image/')) return
+        const previewUrl = URL.createObjectURL(file)
+        const id = Math.random().toString(36).slice(2, 9)
+
+        setUploadedImages(prev => [...prev, { id, previewUrl, storageId: null }])
+
+        try {
+            const form = new FormData()
+            form.append('file', file)
+            const res = await fetch('/api/upload', { method: 'POST', body: form })
+            const { storageId } = await res.json()
+            setUploadedImages(prev => prev.map(img => img.id === id ? { ...img, storageId } : img))
+        } catch (err) {
+            console.error('Image upload failed:', err)
+            setUploadedImages(prev => prev.filter(img => img.id !== id))
+        }
+    }
+
+    const handleRemoveImage = async (id: string) => {
+        setUploadedImages(prev => {
+            const img = prev.find(i => i.id === id)
+            if (img) {
+                URL.revokeObjectURL(img.previewUrl)
+                // Only delete from Convex if upload completed
+                if (img.storageId) {
+                    deleteFile({ storageId: img.storageId }).catch(console.error)
+                }
+            }
+            return prev.filter(i => i.id !== id)
+        })
+    }
+
+
+    useEffect(() => {
+        const onEnter = (e: DragEvent) => {
+            if (e.dataTransfer?.types.includes('Files')) {
+                dragCounter.current++
+                setIsDragging(true)
+            }
+        }
+        const onLeave = (e: DragEvent) => {
+            dragCounter.current--
+            if (dragCounter.current <= 0) {
+                dragCounter.current = 0
+                setIsDragging(false)
+            }
+        }
+        const onDrop = () => {
+            dragCounter.current = 0
+            setIsDragging(false)
+        }
+
+        window.addEventListener('dragenter', onEnter)
+        window.addEventListener('dragleave', onLeave)
+        window.addEventListener('drop', onDrop)
+        return () => {
+            window.removeEventListener('dragenter', onEnter)
+            window.removeEventListener('dragleave', onLeave)
+            window.removeEventListener('drop', onDrop)
+        }
+    }, [])
+
+    // Keep these on the card motion.div for the actual drop:
+    const handleDragOver = (e: React.DragEvent) => e.preventDefault()
+    const handleDrop = (e: React.DragEvent) => {
+        e.preventDefault()
+        dragCounter.current = 0
+        setIsDragging(false)
+        Array.from(e.dataTransfer.files)
+            .filter(f => f.type.startsWith('image/'))
+            .forEach(handleUpload)
+    }
+
+    const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+        const imageItems = Array.from(e.clipboardData.items)
+            .filter(item => item.type.startsWith('image/'))
+        if (imageItems.length > 0) {
+            e.preventDefault()
+            imageItems.forEach(item => {
+                const file = item.getAsFile()
+                if (file) handleUpload(file)
+            })
+        }
+    }
+
     const handleSubmit = async () => {
         if (!prompt.trim() || isLoading) return
         setIsLoading(true)
 
         try {
+            const imageStorageIds = uploadedImages
+                .filter(img => img.storageId !== null)
+                .map(img => img.storageId as string)
+
             const res = await fetch('/api/projects/create', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     prompt: prompt.trim(),
-                    userId: me.id
+                    userId: me.id,
+                    ...(imageStorageIds.length > 0 && { imageStorageIds }),
                 }),
             })
 
@@ -433,15 +530,15 @@ export default function HomeShell({ profile, view = 'home' }: Props) {
                                     className='hidden md:flex items-center gap-1.5 rounded-full px-3 py-1.5 relative'
                                     style={liquidGlassStyle(isLightMode)}
                                 >
-                                <div
-                                    className='pointer-events-none absolute inset-x-0 top-0 h-[1px]'
-                                    style={{ background: 'linear-gradient(90deg, transparent 5%, rgba(255,255,255,0.95) 50%, transparent 95%)' }}
-                                />
-                                <PalmLeafIcon />
-                                <span className='text-xs font-medium tabular-nums text-foreground/70'>
-                                    {creditBalance ?? 0}
-                                </span>
-                            </div>
+                                    <div
+                                        className='pointer-events-none absolute inset-x-0 top-0 h-[1px]'
+                                        style={{ background: 'linear-gradient(90deg, transparent 5%, rgba(255,255,255,0.95) 50%, transparent 95%)' }}
+                                    />
+                                    <PalmLeafIcon />
+                                    <span className='text-xs font-medium tabular-nums text-foreground/70'>
+                                        {creditBalance ?? 0}
+                                    </span>
+                                </div>
                             </GlassTooltip>
                             <AvatarDropdown creditBalance={creditBalance ?? 0} />
                         </div>
@@ -468,6 +565,8 @@ export default function HomeShell({ profile, view = 'home' }: Props) {
                                 <motion.div
                                     layout
                                     transition={{ type: 'spring', damping: 24, stiffness: 260 }}
+                                    onDragOver={handleDragOver}
+                                    onDrop={handleDrop}
                                     className={cn(
                                         'w-full max-w-2xl relative rounded-2xl transition-colors duration-200',
                                         prompt.trim()
@@ -477,9 +576,8 @@ export default function HomeShell({ profile, view = 'home' }: Props) {
                                     style={{
                                         backdropFilter: 'url(#palm-glass-light) blur(32px)',
                                         WebkitBackdropFilter: 'blur(32px)',
-                                        boxShadow: (!prompt.trim() && !isLightMode)
-                                            ? 'none'
-                                            : (isFocused
+                                        boxShadow: (isDragging || isFocused || prompt.trim())
+                                            ? (isDragging || isFocused
                                                 ? [
                                                     '0 0 0 2px rgba(160,120,60,0.40)',
                                                     '0 0 0 1px rgba(120,96,60,0.20)',
@@ -499,7 +597,8 @@ export default function HomeShell({ profile, view = 'home' }: Props) {
                                                     '0 24px 48px rgba(80,60,30,0.07)',
                                                     'inset 0 1px 0 rgba(255,255,255,0.90)',
                                                     'inset 0 -1px 0 rgba(100,76,40,0.04)',
-                                                ].join(', ')),
+                                                ].join(', '))
+                                            : 'none',
                                     }}
                                 >
                                     {/* Specular rim */}
@@ -508,8 +607,14 @@ export default function HomeShell({ profile, view = 'home' }: Props) {
                                         style={{ background: 'linear-gradient(90deg, transparent 5%, rgba(255,255,255,0.95) 50%, transparent 95%)' }}
                                     />
                                     <div className='p-4'>
+                                        {/* Multi-image preview strip */}
+                                        <ImagePreview
+                                            images={uploadedImages}
+                                            onRemove={handleRemoveImage}
+                                        />
+
                                         {/* Textarea — frosted inner glass, both light and dark */}
-                                        <textarea
+                                        <motion.textarea
                                             ref={textareaRef}
                                             value={prompt}
                                             onChange={(e) => {
@@ -521,18 +626,28 @@ export default function HomeShell({ profile, view = 'home' }: Props) {
                                             onFocus={() => setIsFocused(true)}
                                             onBlur={() => setIsFocused(false)}
                                             onKeyDown={handleKeyDown}
-                                            placeholder='Describe a UI to generate…'
+                                            onPaste={handlePaste}
+                                            placeholder={isDragging
+                                                ? "Drop images here — they'll be used as design references…"
+                                                : 'Describe a UI to generate…'
+                                            }
+                                            animate={{ minHeight: isDragging ? 152 : 120 }}
+                                            transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
                                             className='w-full resize-none text-sm text-foreground placeholder:text-muted-foreground/65 outline-none leading-relaxed max-h-60'
-                                            style={textareaStyle}
+                                            style={{
+                                                ...textareaStyle,
+                                                minHeight: undefined, // let framer own this now
+                                            }}
                                         />
 
                                         {/* Toolbar — smaller buttons, pushed down from textarea */}
                                         <div className='flex items-center gap-2' style={{ marginTop: '12px' }}>
                                             <GlassTooltip content="Add attachment" side="top">
                                                 <AttachmentMenu
-                                                    onUpload={(file) => console.log('file:', file)}
+                                                    onUpload={handleUpload}
                                                     onUrl={(url) => console.log('url:', url)}
                                                     onEnhance={() => console.log('enhance')}
+                                                    hasInput={prompt.trim().length > 0}
                                                 />
                                             </GlassTooltip>
                                             <div className='flex-1' />

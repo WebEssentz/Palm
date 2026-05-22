@@ -11,9 +11,10 @@ interface Props {
     onUrl: (url: string) => void
     onEnhance: () => void
     enhancing?: boolean
+    hasInput?: boolean
 }
 
-export function AttachmentMenu({ onUpload, onUrl, onEnhance, enhancing }: Props) {
+export function AttachmentMenu({ onUpload, onUrl, onEnhance, enhancing, hasInput }: Props) {
     const [open, setOpen] = useState(false)
     const [urlMode, setUrlMode] = useState(false)
     const [urlValue, setUrlValue] = useState('')
@@ -158,7 +159,7 @@ export function AttachmentMenu({ onUpload, onUrl, onEnhance, enhancing }: Props)
                                     label='Enhance prompt'
                                     onClick={() => { onEnhance(); setOpen(false) }}
                                     isLight={isLight}
-                                    accent
+                                    disabled={!hasInput}
                                 />
                             </div>
                         ) : (
@@ -210,24 +211,23 @@ export function AttachmentMenu({ onUpload, onUrl, onEnhance, enhancing }: Props)
 }
 
 function MenuItem({
-    icon, label, onClick, isLight, accent
+    icon, label, onClick, isLight, disabled
 }: {
     icon: React.ReactNode
     label: string
     onClick: () => void
     isLight: boolean
-    accent?: boolean
+    disabled?: boolean
 }) {
     return (
         <button
             onClick={onClick}
+            disabled={disabled}
             className={cn(
-                'flex items-center gap-2.5 w-full px-3 py-2.5 rounded-xl transition-colors text-left cursor-pointer text-sm font-medium',
-                accent
-                    ? 'text-amber-600 dark:text-amber-400 hover:bg-amber-500/10'
-                    : isLight
-                        ? 'text-black/75 hover:bg-black/[0.05] hover:text-black'
-                        : 'text-white/75 hover:bg-white/[0.06] hover:text-white'
+                'flex items-center gap-2.5 w-full px-3 py-2.5 rounded-xl transition-colors text-left cursor-pointer text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed',
+                isLight
+                    ? 'text-black/75 hover:bg-black/[0.05] hover:text-black'
+                    : 'text-white/75 hover:bg-white/[0.06] hover:text-white'
             )}
         >
             <span className='flex-shrink-0 opacity-60'>{icon}</span>
