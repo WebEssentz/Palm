@@ -16,6 +16,7 @@ import { Home, LayoutGrid, ChevronRight, ChevronLeft, ArrowUp, Trash2, MoreHoriz
 import { ThemeToggle } from '@/components/theme/toggle'
 import { AvatarDropdown } from '@/components/avatar-dropdown'
 import { GlassTooltip } from '@/components/ui/glass-tooltip'
+import { MobileDrawer } from '@/components/ui/mobile-drawer'
 import ParticleBackground from '@/components/home/particle-background'
 import { CyclingWord } from '@/components/home/cycling-word'
 import { MicButton } from '@/components/home/mic-button'
@@ -124,6 +125,7 @@ export default function HomeShell({ profile, view = 'home' }: Props) {
     const [isRecordingActive, setIsRecordingActive] = useState(false)
     const [suggestedPrompts] = useState(() => getRandomPrompts())
     const [hasDeletedOptimistic, setHasDeletedOptimistic] = useState(false)
+    const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState(false)
     const textareaRef = useRef<HTMLTextAreaElement>(null)
 
     const creditBalance = useQuery(
@@ -135,6 +137,11 @@ export default function HomeShell({ profile, view = 'home' }: Props) {
         api.projects.hasDeletedProjects,
         me?.id ? { userId: me.id as Id<'users'> } : 'skip'
     )
+
+    const trashedProjects = useQuery(
+        api.projects.getDeletedProjects,
+        me?.id ? { userId: me.id as Id<'users'> } : 'skip'
+    ) ?? []
 
     const handleSubmit = async () => {
         if (!prompt.trim() || isLoading) return
@@ -269,7 +276,7 @@ export default function HomeShell({ profile, view = 'home' }: Props) {
                     <div className={cn('flex items-center px-3.5 py-4', sideOpen && 'gap-2.5')}>
                         <Link
                             href={`/dashboard/${me.name}`}
-                            className='w-7 h-7 rounded-lg bg-primary flex-shrink-0 flex items-center justify-center'
+                            className='w-6 h-6 rounded-lg bg-primary flex-shrink-0 flex items-center justify-center'
                         >
                             <div className='w-3.5 h-3.5 rounded-full bg-primary-foreground' />
                         </Link>
@@ -392,9 +399,31 @@ export default function HomeShell({ profile, view = 'home' }: Props) {
                 <div className='relative z-10 flex flex-col flex-1 min-w-0'>
 
                     {/* Topbar */}
-                    <header className='flex items-center justify-end md:justify-end gap-3 px-2 md:px-6 py-3 md:py-4 flex-shrink-0'>
-                        {/* Palm text — mobile only */}
-                        <span className='md:hidden absolute left-4 font-semibold text-xl -mt-1 text-foreground tracking-tight'>Palm</span>
+                    <header className='flex items-center justify-between md:justify-end gap-3 px-2 md:px-6 py-3 md:py-4 flex-shrink-0'>
+                        {/* Mobile hamburger — left side, 44×44px touch target */}
+                        <button
+                            onClick={() => setIsMobileDrawerOpen(true)}
+                            className='md:hidden w-8 h-8 rounded-lg flex items-center justify-center text-foreground hover:text-foreground transition-colors flex-shrink-0'
+                            style={liquidGlassStyle(isLightMode)}
+                            aria-label="Toggle sidebar navigation"
+                        >
+                            <div
+                                className='pointer-events-none absolute inset-x-0 top-0 h-[1px] rounded-lg'
+                                style={{ background: 'linear-gradient(90deg, transparent 5%, rgba(255,255,255,0.95) 50%, transparent 95%)' }}
+                            />
+                            <MoreHorizontal className='w-5 h-5' />
+                        </button>
+
+                        {/* Palm logo + text — mobile/center */}
+                        <div className='md:hidden flex items-center gap-2 flex-1 justify-center'>
+                            <Link
+                                href={`/dashboard/${me.name}`}
+                                className='w-6 h-6 rounded-lg bg-primary flex-shrink-0 flex items-center justify-center'
+                            >
+                                <div className='w-3.5 h-3.5 rounded-full bg-primary-foreground' />
+                            </Link>
+                            <span className='font-semibold text-sm text-foreground tracking-tight'>Palm</span>
+                        </div>
 
                         {/* Credits + Avatar — right side */}
                         <div className='flex items-center gap-3'>
@@ -417,20 +446,6 @@ export default function HomeShell({ profile, view = 'home' }: Props) {
                             <AvatarDropdown creditBalance={creditBalance ?? 0} />
                         </div>
                     </header>
-
-                    {/* Mobile menu bar */}
-                    <div className='md:hidden flex items-center justify-end w-full px-3 py-1'>
-                        <button 
-                            className='w-7 h-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:cursor-pointer transition-colors relative'
-                            style={liquidGlassStyle(isLightMode)}
-                        >
-                            <div
-                                className='pointer-events-none absolute inset-x-0 top-0 h-[1px] rounded-lg'
-                                style={{ background: 'linear-gradient(90deg, transparent 5%, rgba(255,255,255,0.95) 50%, transparent 95%)' }}
-                            />
-                            <MoreHorizontal className='w-4 h-4' />
-                        </button>
-                    </div>
 
                     {/* Center content */}
                     <main className={cn(
@@ -580,6 +595,19 @@ export default function HomeShell({ profile, view = 'home' }: Props) {
                     <ThemeToggle />
                 </GlassTooltip>
             </div>
+
+            {/* Mobile drawer — sidebar navigation on mobile */}
+            <MobileDrawer
+                isOpen={isMobileDrawerOpen}
+                onClose={() => setIsMobileDrawerOpen(false)}
+                projects={projects}
+                trashedProjects={trashedProjects}
+                hasDeleted={!!(hasDeleted || hasDeletedOptimistic)}
+                userName={me.name}
+                isLightMode={isLightMode}
+                thumbnailToSrc={thumbnailToSrc}
+                isColorDark={isColorDark}
+            />
         </>
     )
 }

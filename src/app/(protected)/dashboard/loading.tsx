@@ -7,7 +7,7 @@ export default function Loading() {
 
                 {/* Logo */}
                 <div className='w-14 h-14 rounded-2xl bg-foreground flex items-center justify-center'>
-                    <div className='w-6 h-6 rounded-full bg-background' />
+                    <div className='w-7.5 h-7.5 rounded-full bg-background' />
                 </div>
 
                 {/* Trace ring */}
