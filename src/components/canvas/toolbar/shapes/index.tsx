@@ -1,98 +1,82 @@
 'use client'
 
-import { Button } from '@/components/ui/button'
 import { useInfiniteCanvas } from '@/hooks/use-canvas'
+import { useTheme } from 'next-themes'
 import { cn } from '@/lib/utils'
 import { Tool } from '@/redux/slice/shapes'
 import { ArrowRight, Circle, Eraser, Hash, Minus, MousePointer2, Pencil, Square, Type } from 'lucide-react'
+import { GlassTooltip } from '@/components/ui/glass-tooltip'
 import React from 'react'
 
-const tools: Array<{
-    id: Tool
-    icon: React.ReactNode
-    label: string
-    description: string
-}> = [
-    {
-        id: 'select',
-        icon: <MousePointer2 className='w-4 h-4' />,
-        label: 'Select',
-        description: 'Select and move shapes'
-    },
-    {
-        id: 'frame',
-        icon: <Hash className='w-4 h-4' />,
-        label: 'Frame',
-        description: 'Draw Frame containers'
-    },
-    {
-        id: 'rect',
-        icon: <Square className='w-4 h-4' />,
-        label: 'Rectangle',
-        description: 'Draw a rectangle',
-    },
-    {
-        id: 'ellipse',
-        icon: <Circle className='w-4 h-4' />,
-        label: 'Ellipse',
-        description: 'Draw Ellipses and Circles'
-    },
-    {
-        id: 'freedraw',
-        icon: <Pencil className='w-4 h-4' />,
-        label: 'Free Draw',
-        description: 'Draw Freehand lines'
-    },
-    {
-        id: 'arrow',
-        icon: <ArrowRight className='w-4 h-4' />,
-        label: 'Arrow',
-        description: 'Draw arrows with direction'
-    },
-    {
-        id: 'line',
-        icon: <Minus className='w-4 h-4' />,
-        label: 'Line',
-        description: 'Draw straight lines'
-    },
-    {
-        id: 'text',
-        icon: <Type className='w-4 h-4' />,
-        label: 'Text',
-        description: 'Add a text block'
-    },
-    {
-        id: 'eraser',
-        icon: <Eraser className='w-4 h-4' />,
-        label: 'Eraser',
-        description: 'Erase shapes'
-    }
+const tools: Array<{ id: Tool; icon: React.ReactNode; label: string }> = [
+    { id: 'select', icon: <MousePointer2 className='w-3.5 h-3.5' />, label: 'Select' },
+    { id: 'frame', icon: <Hash className='w-3.5 h-3.5' />, label: 'Frame' },
+    { id: 'rect', icon: <Square className='w-3.5 h-3.5' />, label: 'Rectangle' },
+    { id: 'ellipse', icon: <Circle className='w-3.5 h-3.5' />, label: 'Ellipse' },
+    { id: 'freedraw', icon: <Pencil className='w-3.5 h-3.5' />, label: 'Free Draw' },
+    { id: 'arrow', icon: <ArrowRight className='w-3.5 h-3.5' />, label: 'Arrow' },
+    { id: 'line', icon: <Minus className='w-3.5 h-3.5' />, label: 'Line' },
+    { id: 'text', icon: <Type className='w-3.5 h-3.5' />, label: 'Text' },
+    { id: 'eraser', icon: <Eraser className='w-3.5 h-3.5' />, label: 'Eraser' },
 ]
 
 const ToolBarShapes = () => {
     const { currentTool, selectTool } = useInfiniteCanvas()
+    const { theme, systemTheme } = useTheme()
+    const isLight = (theme === 'system' ? systemTheme : theme) === 'light'
+
+    const glassStyle: React.CSSProperties = isLight ? {
+        background: 'rgba(250,246,238,0.88)',
+        backdropFilter: 'blur(20px)',
+        WebkitBackdropFilter: 'blur(20px)',
+        border: '1px solid rgba(120,96,60,0.10)',
+        boxShadow: [
+            '0 0 0 0.5px rgba(100,76,40,0.08)',
+            '0 2px 4px rgba(80,60,30,0.06)',
+            '0 8px 20px rgba(80,60,30,0.09)',
+            'inset 0 1px 0 rgba(255,255,255,0.90)',
+            'inset 0 -1px 0 rgba(100,76,40,0.04)',
+        ].join(', '),
+    } : {
+        background: 'rgba(18,18,18,0.85)',
+        backdropFilter: 'blur(32px) saturate(1.8)',
+        WebkitBackdropFilter: 'blur(32px) saturate(1.8)',
+        border: '1px solid rgba(255,255,255,0.08)',
+        boxShadow: [
+            '0 0 0 0.5px rgba(255,255,255,0.04)',
+            '0 2px 4px rgba(0,0,0,0.12)',
+            '0 8px 32px rgba(0,0,0,0.35)',
+            '0 4px 24px rgba(0,0,0,0.45)',
+            'inset 0 1px 0 rgba(255,255,255,0.08)',
+            'inset 0 -1px 0 rgba(0,0,0,0.2)',
+        ].join(', '),
+    }
 
     return (
-        <div className='col-span-1 flex justify-center items-center'>
-            <div className="flex items-center backdrop-blur-xl backdrop-[url('#displacementFilter')] bg-muted border border-border dark:bg-white/[0.08] dark:border-white/[0.12] gap-2 rounded-full p-3 saturate-150">
-                {tools.map((tool) => (
-                    <Button
-                       key={tool.id}
-                       variant={'ghost'}
-                       size="lg"
-                       onClick={() => selectTool(tool.id)}
-                       className={cn(
-                        'cursor-pointer rounded-full p-3',
-                        currentTool === tool.id
-                            ? 'text-primary bg-accent dark:bg-white/[0.12] border border-foreground/20 dark:border-white/[0.16]'
-                            : 'text-primary/50 hover:bg-accent dark:hover:bg-white/[0.06] border border-transparent'
-                       )}
-                       title={`${tool.label} - ${tool.description}`}
+        <div
+            className='flex flex-col items-center gap-0.5 rounded-l-2xl rounded-r-none p-1.5'
+            style={glassStyle}
+        >
+            {/* Specular rim */}
+            <div
+                className='pointer-events-none absolute inset-x-0 top-0 h-[1px] rounded-2xl'
+                style={{ background: 'linear-gradient(90deg, transparent 5%, rgba(255,255,255,0.95) 50%, transparent 95%)' }}
+            />
+            {tools.map((tool) => (
+                <GlassTooltip key={tool.id} content={tool.label} side='left'>
+                    <button
+                        onClick={() => selectTool(tool.id)}
+                        className={cn(
+                            'w-7 h-7 flex items-center justify-center rounded-lg transition-colors',
+                            currentTool === tool.id
+                                ? 'text-foreground bg-black/10 dark:bg-white/15'
+                                : 'text-muted-foreground hover:text-foreground hover:bg-black/5 dark:hover:bg-white/10'
+                        )}
                     >
                         {tool.icon}
-                    </Button>
-                ))}
-            </div>
+                    </button>
+                </GlassTooltip>
+            ))}
         </div>
     )
 }

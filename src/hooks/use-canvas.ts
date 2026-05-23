@@ -2,6 +2,7 @@
 
 import { generateFrameSnapshot } from "@/lib/frame-snapshot"
 import { measureText } from "@/lib/measure-text"
+import { StyleTokens } from "@/lib/generate-ui"
 import { useGenerateWorkflowMutation } from "@/redux/api/generation"
 import {
     addArrow,
@@ -375,10 +376,10 @@ export const useInfiniteCanvas = () => {
 
     const onPointerDown: React.PointerEventHandler<HTMLDivElement> = (e) => {
         const target = e.target as HTMLElement
-        const isInteractive = 
-            target.tagName === 'BUTTON' || 
-            target.tagName === 'INPUT' || 
-            target.tagName === 'TEXTAREA' || 
+        const isInteractive =
+            target.tagName === 'BUTTON' ||
+            target.tagName === 'INPUT' ||
+            target.tagName === 'TEXTAREA' ||
             (target as HTMLElement).isContentEditable ||
             !!target.closest('button') ||
             !!target.closest('input') ||
@@ -998,59 +999,59 @@ export const useInfiniteCanvas = () => {
                 dispatch(handToolEnable())
             }
 
-                const activeElement = document.activeElement
-                const isTyping =
-                    activeElement?.tagName === 'INPUT' ||
-                    activeElement?.tagName === 'TEXTAREA' ||
-                    (activeElement as HTMLElement)?.isContentEditable
+            const activeElement = document.activeElement
+            const isTyping =
+                activeElement?.tagName === 'INPUT' ||
+                activeElement?.tagName === 'TEXTAREA' ||
+                (activeElement as HTMLElement)?.isContentEditable
 
-                if (isTyping) return
+            if (isTyping) return
 
-                const isMac = typeof window !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.userAgent)
-                const isModKey = isMac ? e.metaKey : e.ctrlKey
+            const isMac = typeof window !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.userAgent)
+            const isModKey = isMac ? e.metaKey : e.ctrlKey
 
-                if (isModKey && e.key === 'd') {
-                    e.preventDefault()
-                    dispatch(duplicateSelected())
+            if (isModKey && e.key === 'd') {
+                e.preventDefault()
+                dispatch(duplicateSelected())
+            }
+
+            if (isModKey && e.key === 'g') {
+                e.preventDefault()
+                if (e.shiftKey) dispatch(ungroupSelected())
+                else dispatch(groupSelected())
+            }
+
+            if (isModKey && e.key === 'c') {
+                e.preventDefault()
+                const selected = Object.keys(selectedShapesRef.current)
+                if (selected.length > 0) {
+                    clipboardRef.current = selected
+                        .map(id => entityState.entities[id])
+                        .filter((s): s is Shape => Boolean(s))
                 }
+            }
 
-                if (isModKey && e.key === 'g') {
-                    e.preventDefault()
-                    if (e.shiftKey) dispatch(ungroupSelected())
-                    else dispatch(groupSelected())
-                }
+            if (isModKey && e.key === 'v') {
+                e.preventDefault()
+                if (clipboardRef.current.length === 0) return
 
-                if (isModKey && e.key === 'c') {
-                    e.preventDefault()
-                    const selected = Object.keys(selectedShapesRef.current)
-                    if (selected.length > 0) {
-                        clipboardRef.current = selected
-                            .map(id => entityState.entities[id])
-                            .filter((s): s is Shape => Boolean(s))
-                    }
-                }
+                // Temporarily select the clipboard shapes then duplicate them
+                dispatch(clearSelection())
+                clipboardRef.current.forEach(shape => {
+                    dispatch(selectShape(shape.id))
+                })
+                dispatch(duplicateSelected())
+            }
 
-                if (isModKey && e.key === 'v') {
-                    e.preventDefault()
-                    if (clipboardRef.current.length === 0) return
-
-                    // Temporarily select the clipboard shapes then duplicate them
+            if (e.key === 'Delete' || e.key === 'Backspace') {
+                if (isEditingTextRef.current) return  // text input owns this key, bail immediately
+                e.preventDefault()
+                const selected = Object.keys(selectedShapesRef.current)
+                if (selected.length > 0) {
+                    selected.forEach(id => dispatch(removeShape(id))) // delete ALL types
                     dispatch(clearSelection())
-                    clipboardRef.current.forEach(shape => {
-                        dispatch(selectShape(shape.id))
-                    })
-                    dispatch(duplicateSelected())
                 }
-
-                if (e.key === 'Delete' || e.key === 'Backspace') {
-                    if (isEditingTextRef.current) return  // text input owns this key, bail immediately
-                    e.preventDefault()
-                    const selected = Object.keys(selectedShapesRef.current)
-                    if (selected.length > 0) {
-                        selected.forEach(id => dispatch(removeShape(id))) // delete ALL types
-                        dispatch(clearSelection())
-                    }
-                }
+            }
 
             if (e.key === 'Escape') {
                 if (pointToPointRef.current) {
@@ -1403,7 +1404,7 @@ export const useFrame = (shape: FrameShape) => {
     const [isGenerating, setIsGenerating] = React.useState(false);
     const dispatch = useAppDispatch()
 
-    const allShapes = useAppSelector((state) => 
+    const allShapes = useAppSelector((state) =>
         Object.values(state.shapes.shapes?.entities || {}).filter(
             (shape): shape is Shape => shape !== undefined
         )
@@ -1415,7 +1416,7 @@ export const useFrame = (shape: FrameShape) => {
             const snapshot = await generateFrameSnapshot(shape, allShapes)
 
             // Get shapes INSIDE this frame only
-            const shapesInsideFrame = allShapes.filter(s => 
+            const shapesInsideFrame = allShapes.filter(s =>
                 s.id !== shape.id &&
                 s.type !== 'frame' &&
                 s.x >= shape.x && s.x + (s.w || 0) <= shape.x + shape.w &&
@@ -1500,17 +1501,17 @@ export const useFrame = (shape: FrameShape) => {
                             lastUpdateTime = now
                         }
                     }
-            } finally {
-                reader.releaseLock()
+                } finally {
+                    reader.releaseLock()
+                }
             }
+
+        } catch (error) {
+            toast.error(`Failed to generate: ${error instanceof Error ? error.message : 'Unknown error'}`)
+        } finally {
+            setIsGenerating(false)
         }
-        
-    } catch (error) {
-        toast.error(`Failed to generate: ${error instanceof Error ? error.message : 'Unknown error'}`)
-    } finally {
-        setIsGenerating(false)
     }
-}
 
     return {
         isGenerating,
@@ -1544,8 +1545,8 @@ export const useInspiration = () => {
 export const useWorkflowGeneration = () => {
     const dispatch = useAppDispatch()
     const [, { isLoading: isGeneratingWorkflow }] = useGenerateWorkflowMutation()
-    
-    const allShapes = useAppSelector((state) => 
+
+    const allShapes = useAppSelector((state) =>
         Object.values(state.shapes.shapes?.entities || {}).filter(
             (shape): shape is Shape => shape !== undefined
         )
@@ -1554,7 +1555,7 @@ export const useWorkflowGeneration = () => {
     const generateWorkflow = async (generatedUIId: string) => {
         try {
             const currentShape = allShapes.find((shape) => shape.id === generatedUIId)
-            
+
             if (!currentShape || currentShape.type !== 'generatedui') {
                 toast.error("Generated UI not found")
                 return
@@ -1678,14 +1679,509 @@ export const useWorkflowGeneration = () => {
     }
 }
 
+export interface ChatTurn {
+    id: string
+    prompt: string
+    response: string
+    isLoading: boolean
+    timestamp: number
+    urls?: string[]   // ← NEW: reference URLs attached when the prompt was sent
+}
+
+/**
+ * Client event format from /api/chat stream.
+ */
+interface ChatStreamEvent {
+    type: 'text' | 'html' | 'error' | 'styleguide' | 'done'
+    text?: string
+    tokens?: StyleTokens
+}
+
+/**
+ * Parses multiplexed SSE stream from /api/chat.
+ * Each line is "data: {...}" with a complete event.
+ */
+async function consumeChatStream(
+    res: Response,
+    onText: (chunk: string) => void,
+    onHTML: (chunk: string) => void,
+    onError: (msg: string) => void,
+    onDone: () => void,
+    onStyleGuide?: (tokens: StyleTokens) => void
+) {
+    const reader = res.body!.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+
+    while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        buffer += decoder.decode(value, { stream: true })
+
+        // Split on newlines, each "data: {...}" is one line
+        const lines = buffer.split('\n')
+        buffer = lines.pop() ?? '' // keep incomplete last line
+
+        for (const line of lines) {
+            const trimmed = line.trim()
+            if (!trimmed || !trimmed.startsWith('data: ')) continue
+
+            try {
+                const event = JSON.parse(trimmed.slice(6)) as ChatStreamEvent
+                if (event.type === 'text') onText(event.text ?? '')
+                else if (event.type === 'html') onHTML(event.text ?? '')
+                else if (event.type === 'error') onError(event.text ?? '')
+                else if (event.type === 'styleguide' && event.tokens && onStyleGuide) {
+                    onStyleGuide(event.tokens)
+                }
+                else if (event.type === 'done') onDone()
+            } catch {
+                // malformed chunk, skip
+            }
+        }
+    }
+}
+
+/**
+ * Renders a style guide card as HTML for display on the canvas
+ */
+function buildStyleGuideHTML(tokens: StyleTokens): string {
+    const swatchEntries = Object.entries(tokens.colors)
+
+    const hexToRgb = (hex: string) => ({
+        r: parseInt(hex.slice(1, 3), 16),
+        g: parseInt(hex.slice(3, 5), 16),
+        b: parseInt(hex.slice(5, 7), 16),
+    })
+
+    const isLight = (hex: string) => {
+        const { r, g, b } = hexToRgb(hex)
+        return (r * 299 + g * 587 + b * 114) / 1000 > 150
+    }
+
+    const gradientBars = (hex: string) => {
+        const { r, g, b } = hexToRgb(hex)
+        const light = isLight(hex)
+        return Array.from({ length: 8 }, (_, i) => {
+            const d = light ? i / 8 : (7 - i) / 8
+            const nr = Math.round(r + (light ? -r : 255 - r) * d * 0.8)
+            const ng = Math.round(g + (light ? -g : 255 - g) * d * 0.8)
+            const nb = Math.round(b + (light ? -b : 255 - b) * d * 0.8)
+            return `<div style="flex:1;height:8px;border-radius:2px;background:rgb(${nr},${ng},${nb})"></div>`
+        }).join('')
+    }
+
+    const swatchCard = ([name, hex]: [string, string]) => {
+        const light = isLight(hex)
+        const labelColor = light ? '#333' : '#fff'
+        const hexColor = light ? '#999' : 'rgba(255,255,255,0.45)'
+        const border = light ? 'border:0.5px solid #ddd;' : ''
+        const label = name.replace(/([A-Z])/g, ' $1').trim()
+        return `
+      <div style="background:${hex};border-radius:10px;padding:10px 12px;${border}">
+        <div style="font-size:10px;font-weight:600;color:${labelColor};margin-bottom:6px;display:flex;justify-content:space-between;">
+          <span style="text-transform:capitalize">${label}</span>
+          <span style="font-family:monospace;opacity:0.6">${hex}</span>
+        </div>
+        <div style="display:flex;gap:2px">${gradientBars(hex)}</div>
+      </div>`
+    }
+
+    const primary = tokens.colors.primary
+    const bg = tokens.colors.background
+    const fg = tokens.colors.foreground
+    const font = tokens.fonts.sans
+    const radius = tokens.radius
+
+    return `<!DOCTYPE html>
+<html>
+<head>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:'${font}',-apple-system,sans-serif; background:#EFEFEF; padding:20px; }
+  .grid { display:grid; grid-template-columns:1fr 1fr 1fr 1fr; gap:8px; }
+  .cell { background:#fff; border-radius:10px; padding:14px 12px; border:0.5px solid #e8e8e8; }
+  .cell-dark { background:${fg}; border-radius:10px; padding:14px 12px; }
+  .label { font-size:10px; color:#999; }
+  .label-pair { display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; }
+</style>
+</head>
+<body>
+
+<div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;">
+  <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><circle cx="9" cy="9" r="8" stroke="#888" stroke-width="1.2"/><path d="M5 9h8M9 5v8" stroke="#888" stroke-width="1.2" stroke-linecap="round"/></svg>
+  <span style="font-size:14px;font-weight:600;color:#111;">${font} &middot; ${radius}</span>
+</div>
+
+<div class="grid">
+
+  <!-- COL 1: Color swatches -->
+  <div style="display:flex;flex-direction:column;gap:8px;">
+    ${swatchEntries.slice(0, 4).map(swatchCard).join('')}
+    ${swatchEntries.slice(4).map(swatchCard).join('')}
+  </div>
+
+  <!-- COL 2: Typography -->
+  <div style="display:flex;flex-direction:column;gap:8px;">
+    <div class="cell" style="flex:1">
+      <div class="label-pair"><span class="label">Headline</span><span class="label">${font}</span></div>
+      <div style="font-size:52px;font-weight:300;color:#333;line-height:1;letter-spacing:-2px;">Aa</div>
+    </div>
+    <div class="cell" style="flex:1">
+      <div class="label-pair"><span class="label">Body</span><span class="label">${font}</span></div>
+      <div style="font-size:44px;font-weight:400;color:#888;line-height:1;">Aa</div>
+    </div>
+    <div class="cell" style="flex:1">
+      <div class="label-pair"><span class="label">Label</span><span class="label">${font}</span></div>
+      <div style="font-size:38px;font-weight:500;color:#bbb;line-height:1;">Aa</div>
+    </div>
+  </div>
+
+  <!-- COL 3: Button variants + divider + label chip -->
+  <div style="display:flex;flex-direction:column;gap:8px;">
+    <div class="cell">
+      <div style="display:flex;flex-wrap:wrap;gap:6px;">
+        <button style="background:${primary};color:${bg};border:none;border-radius:6px;padding:5px 12px;font-size:11px;font-weight:600;">Primary</button>
+        <button style="background:${bg};color:${fg};border:none;border-radius:6px;padding:5px 12px;font-size:11px;font-weight:600;">Secondary</button>
+        <button style="background:${fg};color:${bg};border:none;border-radius:6px;padding:5px 12px;font-size:11px;font-weight:600;">Inverted</button>
+        <button style="background:transparent;color:${fg};border:1px solid ${fg};border-radius:6px;padding:5px 12px;font-size:11px;font-weight:600;">Outlined</button>
+      </div>
+    </div>
+    <div class="cell" style="display:flex;flex-direction:column;gap:5px;justify-content:center;min-height:60px;">
+      <div style="height:2px;background:${fg};border-radius:2px;"></div>
+      <div style="height:2px;background:${fg};border-radius:2px;width:70%;"></div>
+      <div style="height:2px;background:${fg};border-radius:2px;width:85%;"></div>
+    </div>
+    <div class="cell" style="display:flex;align-items:center;gap:8px;">
+      <div style="width:30px;height:30px;background:${primary};border-radius:${radius};display:flex;align-items:center;justify-content:center;">
+        <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M2 10l2.5-2.5L7 10l4.5-4.5" stroke="${bg}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+      <div style="background:${primary};color:${bg};border-radius:${radius};padding:4px 10px;font-size:11px;font-weight:600;display:flex;align-items:center;gap:4px;">
+        <svg width="10" height="10" viewBox="0 0 12 12" fill="none"><path d="M2 8l2-2 2 2 4-4" stroke="${bg}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Label
+      </div>
+    </div>
+  </div>
+
+  <!-- COL 4: Search + Nav + Actions -->
+  <div style="display:flex;flex-direction:column;gap:8px;">
+    <div class="cell">
+      <div style="display:flex;align-items:center;gap:6px;background:#f5f5f7;border-radius:7px;padding:7px 10px;">
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><circle cx="5" cy="5" r="3.5" stroke="#999" stroke-width="1.2"/><path d="M8 8l2 2" stroke="#999" stroke-width="1.2" stroke-linecap="round"/></svg>
+        <span style="font-size:11px;color:#aaa;">Search</span>
+      </div>
+    </div>
+    <div class="cell" style="display:flex;justify-content:space-around;align-items:center;min-height:56px;">
+      <div style="width:30px;height:30px;background:${primary};border-radius:50%;display:flex;align-items:center;justify-content:center;">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 11V7L7 2.5 12 7v4a1 1 0 01-1 1H3a1 1 0 01-1-1z" stroke="${bg}" stroke-width="1.3"/></svg>
+      </div>
+      <div style="width:30px;height:30px;background:#f0f0f0;border-radius:50%;display:flex;align-items:center;justify-content:center;">
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><circle cx="5" cy="5" r="3.5" stroke="#666" stroke-width="1.2"/><path d="M8 8l2 2" stroke="#666" stroke-width="1.2" stroke-linecap="round"/></svg>
+      </div>
+      <div style="width:30px;height:30px;background:#f0f0f0;border-radius:50%;display:flex;align-items:center;justify-content:center;">
+        <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><circle cx="6.5" cy="5" r="2" stroke="#666" stroke-width="1.2"/><path d="M2 12c0-2.2 2-4 4.5-4S11 9.8 11 12" stroke="#666" stroke-width="1.2" stroke-linecap="round"/></svg>
+      </div>
+    </div>
+    <div class="cell" style="display:flex;justify-content:space-around;align-items:center;min-height:56px;">
+      <div style="width:30px;height:30px;background:${primary};border-radius:50%;display:flex;align-items:center;justify-content:center;">
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 8l2-2 2 2 4-4" stroke="${bg}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+      <div style="width:30px;height:30px;background:${primary};border-radius:50%;display:flex;align-items:center;justify-content:center;">
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><circle cx="6" cy="6" r="1.2" fill="${bg}"/><circle cx="2" cy="6" r="1.2" fill="${bg}"/><circle cx="10" cy="6" r="1.2" fill="${bg}"/></svg>
+      </div>
+      <div style="width:30px;height:30px;background:${primary};border-radius:50%;display:flex;align-items:center;justify-content:center;">
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M1.5 6.5l3 2.5 6-6" stroke="${bg}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+      <div style="width:30px;height:30px;background:#e33;border-radius:50%;display:flex;align-items:center;justify-content:center;">
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M3 3l6 6M9 3l-6 6" stroke="#fff" stroke-width="1.5" stroke-linecap="round"/></svg>
+      </div>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>`
+}
+
 export const useGlobalChat = () => {
-    const [isChatOpen, setIsChatOpen] = React.useState(false)
-    const [ activeGeneratedUIId, setActiveGeneratedUIId] = React.useState<string | null>(null)
+    const dispatch = useAppDispatch()
+    const [activeGeneratedUIId, setActiveGeneratedUIId] = React.useState<string | null>(null)
+    const [chatTurns, setChatTurns] = React.useState<ChatTurn[]>([])
+    const [expandedTurnId, setExpandedTurnId] = React.useState<string | null>(null)
+    const [isSending, setIsSending] = React.useState(false)
+    const isSendingRef = React.useRef(false)
+    const [isLoadingHistory, setIsLoadingHistory] = React.useState(true)
+    const hasInitRef = React.useRef(false)
     const { generateWorkflow } = useWorkflowGeneration()
 
+    const allShapes = useAppSelector((state) =>
+        Object.values(state.shapes.shapes?.entities || {}).filter(
+            (s): s is Shape => s !== undefined
+        )
+    )
+
+    /**
+     * Load chat history from Convex on mount
+     */
+    const loadHistory = React.useCallback(async (projectId: string) => {
+        try {
+            const res = await fetch(`/api/chat/turns?projectId=${projectId}`)
+            if (!res.ok) return
+            const saved = await res.json()
+            if (saved.length > 0) {
+                setChatTurns(
+                    saved.map((t: any) => ({
+                        id: t.turnId,
+                        prompt: t.prompt,
+                        response: t.response,
+                        isLoading: false,
+                        timestamp: t.timestamp,
+                        urls: t.urls ?? [],
+                    }))
+                )
+                hasInitRef.current = true // Don't re-fire prompt if history exists
+            }
+        } catch (e) {
+            console.error('Failed to load chat history', e)
+        } finally {
+            setIsLoadingHistory(false)
+        }
+    }, [])
+
+    /**
+     * Save a completed turn to Convex
+     */
+    const saveTurn = React.useCallback(
+        async (projectId: string, turn: ChatTurn) => {
+            try {
+                await fetch('/api/chat/turns', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        projectId,
+                        turnId: turn.id,
+                        prompt: turn.prompt,
+                        response: turn.response,
+                        timestamp: turn.timestamp,
+                        urls: turn.urls ?? [],
+                    }),
+                })
+            } catch (e) {
+                console.error('Failed to save chat turn', e)
+            }
+        },
+        []
+    )
+
+    /**
+     * Core: send a message via /api/chat, handle multiplexed SSE stream.
+     * Streams text to chat panel, HTML to canvas shape.
+     */
+    const sendMessage = React.useCallback(
+        async (
+            prompt: string,
+            projectId: string,
+            opts?: { urls?: string[]; targetShapeId?: string; isInit?: boolean }
+        ) => {
+            if (isSendingRef.current) return
+            isSendingRef.current = true
+            setIsSending(true)
+
+            const turnId = crypto.randomUUID()
+            const targetId = opts?.targetShapeId ?? activeGeneratedUIId
+            const timestamp = Date.now()
+
+            // Optimistically add the turn
+            setChatTurns((prev) => [
+                ...(opts?.isInit ? [] : prev),
+                {
+                    id: turnId,
+                    prompt,
+                    response: '',
+                    isLoading: true,
+                    timestamp,
+                    urls: opts?.urls,
+                },
+            ])
+            setExpandedTurnId(turnId)
+
+            // Create a canvas shape to stream HTML into if we have a target
+            let shapeId = targetId
+            let htmlBuffer = ''
+            let lastShapeUpdate = 0
+            const HTML_THROTTLE_MS = 150
+            let fullResponse = ''
+
+            const flushHTML = (final = false) => {
+                if (!shapeId || !htmlBuffer) return
+                const now = Date.now()
+                if (final || now - lastShapeUpdate >= HTML_THROTTLE_MS) {
+                    dispatch(
+                        updateShape({ id: shapeId, patch: { uiSpecData: htmlBuffer } })
+                    )
+                    lastShapeUpdate = now
+                }
+            }
+
+            try {
+                // Get current HTML if we're editing an existing shape
+                const currentShape = targetId
+                    ? allShapes.find((s) => s.id === targetId)
+                    : null
+                const currentHTML =
+                    currentShape?.type === 'generatedui'
+                        ? currentShape.uiSpecData ?? undefined
+                        : undefined
+
+                const res = await fetch('/api/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ prompt, projectId, currentHTML }),
+                })
+
+                if (!res.ok) throw new Error('Chat request failed')
+
+                let shapeCreated = false
+
+                await consumeChatStream(
+                    res,
+                    // onText → stream into chat panel
+                    (chunk) => {
+                        fullResponse += chunk
+                        setChatTurns((prev) =>
+                            prev.map((t) =>
+                                t.id === turnId
+                                    ? { ...t, response: t.response + chunk }
+                                    : t
+                            )
+                        )
+                    },
+                    // onHTML → stream into canvas shape
+                    (chunk) => {
+                        if (!shapeCreated && !shapeId) {
+                            // Create a new shape on first HTML chunk
+                            const newId = nanoid()
+                            dispatch(
+                                addGeneratedUI({
+                                    x: 200,
+                                    y: 200,
+                                    w: 1200,
+                                    h: 900,
+                                    id: newId,
+                                    uiSpecData: null,
+                                    sourceFrameId: null,
+                                })
+                            )
+                            shapeId = newId
+                            setActiveGeneratedUIId(newId)
+                            shapeCreated = true
+                        }
+                        htmlBuffer += chunk
+                        flushHTML()
+                    },
+                    // onError
+                    (msg) => {
+                        setChatTurns((prev) =>
+                            prev.map((t) =>
+                                t.id === turnId
+                                    ? { ...t, response: t.response + `\n\n⚠️ ${msg}`, isLoading: false }
+                                    : t
+                            )
+                        )
+                    },
+                    // onDone — persist completed turn
+                    () => {
+                        flushHTML(true)
+                        setChatTurns((prev) =>
+                            prev.map((t) => {
+                                if (t.id === turnId) {
+                                    const completed = { ...t, isLoading: false }
+                                    // Persist to Convex
+                                    saveTurn(projectId, completed)
+                                    return completed
+                                }
+                                return t
+                            })
+                        )
+                    },
+                    // onStyleGuide — render style guide frame to the left of the generated UI
+                    (tokens) => {
+                        const sgId = nanoid()
+                        const sgHTML = buildStyleGuideHTML(tokens)
+                        dispatch(
+                            addGeneratedUI({
+                                id: sgId,
+                                x: -420,
+                                y: 200,
+                                w: 380,
+                                h: 520,
+                                uiSpecData: sgHTML,
+                                sourceFrameId: null,
+                            })
+                        )
+                    }
+                )
+            } catch (err) {
+                console.error('Chat failed:', err)
+                setChatTurns((prev) =>
+                    prev.map((t) =>
+                        t.id === turnId
+                            ? {
+                                ...t,
+                                response: 'Something went wrong. Please try again.',
+                                isLoading: false,
+                            }
+                            : t
+                    )
+                )
+            } finally {
+                isSendingRef.current = false
+                setIsSending(false)
+            }
+        },
+        [activeGeneratedUIId, dispatch, allShapes, saveTurn]
+    )
+
+    const initFromUrlPrompt = React.useCallback(
+        async (
+            prompt: string,
+            projectId: string,
+            onStream: (html: string) => void,
+            onDone: () => void
+        ) => {
+            if (hasInitRef.current) return
+            hasInitRef.current = true
+
+            // Delegate to sendMessage with isInit flag
+            // Collect HTML chunks for the onStream callback
+            let htmlBuffer = ''
+            const origSendMessage = sendMessage
+
+            // Hook into sendMessage by handling state updates
+            // For init flow, we pass HTML chunks to onStream
+            await sendMessage(prompt, projectId, { isInit: true })
+
+            // Note: The actual HTML streaming happens via the canvas dispatch,
+            // but for the init flow's onStream callback, we'd need to
+            // intercept the dispatch. For now, call onDone immediately
+            // since the shape updates are handled by sendMessage's dispatch calls
+            onDone()
+        },
+        [hasInitRef, sendMessage]
+    )
+
     return {
-        isChatOpen,
         activeGeneratedUIId,
+        setActiveGeneratedUIId,
+        chatTurns,
+        expandedTurnId,
+        setExpandedTurnId,
+        isSending,
+        isLoadingHistory,
+        loadHistory,
+        initFromUrlPrompt,
+        sendMessage,
         generateWorkflow,
     }
 }

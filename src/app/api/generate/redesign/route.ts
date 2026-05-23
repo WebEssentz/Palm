@@ -143,7 +143,7 @@ export async function POST(req: NextRequest) {
         `
 
         const result = streamText({
-            model: google('gemini-3.1-flash-lite-preview'),
+            model: google('gemini-3.5-flash'),
             messages: [
                 {
                     role: 'user',
@@ -200,4 +200,4 @@ export async function POST(req: NextRequest) {
             { status: 500 }
         )
     }
-}
+}

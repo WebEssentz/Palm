@@ -1,7 +1,6 @@
 'use client'
 
-import React, { useRef, useState, useEffect } from 'react'
-import { useMutation } from 'convex/react'
+import React, { useRef, useState } from 'react'
 import { useTheme } from 'next-themes'
 import { motion, AnimatePresence } from 'framer-motion'
 import Link from 'next/link'
@@ -13,7 +12,7 @@ import { useQuery } from 'convex/react'
 import { api } from '../../../convex/_generated/api'
 import { Id } from '../../../convex/_generated/dataModel'
 import { formatDistanceToNow } from 'date-fns'
-import { Home, LayoutGrid, ChevronRight, ChevronLeft, ArrowUp, Trash2, MoreHorizontal } from 'lucide-react'
+import { Home, LayoutGrid, ChevronRight, ChevronLeft, ArrowUp, Trash2, MoreHorizontal, Globe, X } from 'lucide-react'
 import { ThemeToggle } from '@/components/theme/toggle'
 import { AvatarDropdown } from '@/components/avatar-dropdown'
 import { GlassTooltip } from '@/components/ui/glass-tooltip'
@@ -24,6 +23,7 @@ import { MicButton } from '@/components/home/mic-button'
 import { AttachmentMenu } from '@/components/home/attachment-menu'
 import { ImagePreview, type ImageItem } from '@/components/home/image-preview'
 import ProjectsList from '@/components/projects/list'
+import { usePalmToast } from '@/hooks/use-palmtoast'
 import TrashList from '@/components/projects/trash-list'
 import { cn } from '@/lib/utils'
 
@@ -120,10 +120,10 @@ export default function HomeShell({ profile, view = 'home' }: Props) {
     const dispatch = useAppDispatch()
     const projects = useProjects()
     const router = useRouter()
-    const deleteFile = useMutation(api.files.deleteFile)
 
     const [prompt, setPrompt] = useState('')
     const [isFocused, setIsFocused] = useState(false)
+    const [enhancing, setEnhancing] = useState(false)
     const [isLoading, setIsLoading] = useState(false)
     const [isRecordingActive, setIsRecordingActive] = useState(false)
     const [suggestedPrompts] = useState(() => getRandomPrompts())
@@ -131,8 +131,12 @@ export default function HomeShell({ profile, view = 'home' }: Props) {
     const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState(false)
     const [uploadedImages, setUploadedImages] = useState<ImageItem[]>([])
     const [isDragging, setIsDragging] = useState(false)
+    const [urlMode, setUrlMode] = useState(false)
+    const [urlTags, setUrlTags] = useState<string[]>([])
+    const [urlInputValue, setUrlInputValue] = useState('')
     const textareaRef = useRef<HTMLTextAreaElement>(null)
     const dragCounter = useRef(0)
+    const { toast } = usePalmToast()
 
     const creditBalance = useQuery(
         api.subscription.getCreditsBalance,
@@ -168,52 +172,27 @@ export default function HomeShell({ profile, view = 'home' }: Props) {
         }
     }
 
-    const handleRemoveImage = async (id: string) => {
+    const handleRemoveImage = (id: string) => {
         setUploadedImages(prev => {
             const img = prev.find(i => i.id === id)
-            if (img) {
-                URL.revokeObjectURL(img.previewUrl)
-                // Only delete from Convex if upload completed
-                if (img.storageId) {
-                    deleteFile({ storageId: img.storageId }).catch(console.error)
-                }
-            }
+            if (img) URL.revokeObjectURL(img.previewUrl)
             return prev.filter(i => i.id !== id)
         })
     }
 
-
-    useEffect(() => {
-        const onEnter = (e: DragEvent) => {
-            if (e.dataTransfer?.types.includes('Files')) {
-                dragCounter.current++
-                setIsDragging(true)
-            }
-        }
-        const onLeave = (e: DragEvent) => {
-            dragCounter.current--
-            if (dragCounter.current <= 0) {
-                dragCounter.current = 0
-                setIsDragging(false)
-            }
-        }
-        const onDrop = () => {
-            dragCounter.current = 0
-            setIsDragging(false)
-        }
-
-        window.addEventListener('dragenter', onEnter)
-        window.addEventListener('dragleave', onLeave)
-        window.addEventListener('drop', onDrop)
-        return () => {
-            window.removeEventListener('dragenter', onEnter)
-            window.removeEventListener('dragleave', onLeave)
-            window.removeEventListener('drop', onDrop)
-        }
-    }, [])
-
-    // Keep these on the card motion.div for the actual drop:
-    const handleDragOver = (e: React.DragEvent) => e.preventDefault()
+    const handleDragEnter = (e: React.DragEvent) => {
+        e.preventDefault()
+        dragCounter.current++
+        if (e.dataTransfer.types.includes('Files')) setIsDragging(true)
+    }
+    const handleDragLeave = (e: React.DragEvent) => {
+        e.preventDefault()
+        dragCounter.current--
+        if (dragCounter.current === 0) setIsDragging(false)
+    }
+    const handleDragOver = (e: React.DragEvent) => {
+        e.preventDefault()
+    }
     const handleDrop = (e: React.DragEvent) => {
         e.preventDefault()
         dragCounter.current = 0
@@ -235,11 +214,56 @@ export default function HomeShell({ profile, view = 'home' }: Props) {
         }
     }
 
+    const handleEnhance = async () => {
+        if (!prompt.trim() || enhancing) return
+        setEnhancing(true)
+        toast('Enhancing your prompt...', { type: 'info', duration: 999999 })
+        try {
+            const res = await fetch('/api/enhance', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ prompt: prompt.trim() }),
+            })
+            const { enhanced, error } = await res.json()
+            if (enhanced) {
+                setPrompt(enhanced)
+                toast('Prompt enhanced! ✨', { type: 'success', duration: 2500 })
+            } else {
+                toast('Failed to enhance prompt', { type: 'error', duration: 3500 })
+                console.error('Enhance failed:', error)
+            }
+        } catch (err) {
+            toast('Enhancement error', { type: 'error', duration: 3500 })
+            console.error('Enhance error:', err)
+        } finally {
+            setEnhancing(false)
+        }
+    }
+
     const handleSubmit = async () => {
         if (!prompt.trim() || isLoading) return
         setIsLoading(true)
 
         try {
+            let finalPrompt = prompt.trim()
+
+            // If URL tags exist, analyze them first and merge with prompt
+            if (urlTags.length > 0) {
+                toast('Analyzing reference sites…', { type: 'info', duration: 999999 })
+                const analyzeRes = await fetch('/api/url-analyze', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ urls: urlTags, prompt: finalPrompt }),
+                })
+                const { enhanced, error } = await analyzeRes.json()
+                if (enhanced) {
+                    finalPrompt = enhanced
+                    toast('References analyzed ✨', { type: 'success', duration: 2000 })
+                } else {
+                    console.warn('URL analyze failed, using original prompt:', error)
+                }
+            }
+
             const imageStorageIds = uploadedImages
                 .filter(img => img.storageId !== null)
                 .map(img => img.storageId as string)
@@ -248,20 +272,17 @@ export default function HomeShell({ profile, view = 'home' }: Props) {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    prompt: prompt.trim(),
+                    prompt: finalPrompt,  // ← merged prompt goes here
                     userId: me.id,
                     ...(imageStorageIds.length > 0 && { imageStorageIds }),
                 }),
             })
 
             const { projectId, error, details } = await res.json()
-            if (!res.ok || !projectId) {
-                console.error('Project creation failed:', { error, details })
-                throw new Error(details || error)
-            }
+            if (!res.ok || !projectId) throw new Error(details || error)
 
             router.push(
-                `/dashboard/${me.name}/canvas?project=${projectId}&prompt=${encodeURIComponent(prompt.trim())}`
+                `/dashboard/${me.name}/canvas?project=${projectId}&prompt=${encodeURIComponent(finalPrompt)}`
             )
         } catch (err) {
             console.error('Submit failed:', err)
@@ -565,6 +586,8 @@ export default function HomeShell({ profile, view = 'home' }: Props) {
                                 <motion.div
                                     layout
                                     transition={{ type: 'spring', damping: 24, stiffness: 260 }}
+                                    onDragEnter={handleDragEnter}
+                                    onDragLeave={handleDragLeave}
                                     onDragOver={handleDragOver}
                                     onDrop={handleDrop}
                                     className={cn(
@@ -576,8 +599,9 @@ export default function HomeShell({ profile, view = 'home' }: Props) {
                                     style={{
                                         backdropFilter: 'url(#palm-glass-light) blur(32px)',
                                         WebkitBackdropFilter: 'blur(32px)',
-                                        boxShadow: (isDragging || isFocused || prompt.trim())
-                                            ? (isDragging || isFocused
+                                        boxShadow: (!prompt.trim() && !isLightMode)
+                                            ? 'none'
+                                            : (isDragging || isFocused
                                                 ? [
                                                     '0 0 0 2px rgba(160,120,60,0.40)',
                                                     '0 0 0 1px rgba(120,96,60,0.20)',
@@ -597,8 +621,7 @@ export default function HomeShell({ profile, view = 'home' }: Props) {
                                                     '0 24px 48px rgba(80,60,30,0.07)',
                                                     'inset 0 1px 0 rgba(255,255,255,0.90)',
                                                     'inset 0 -1px 0 rgba(100,76,40,0.04)',
-                                                ].join(', '))
-                                            : 'none',
+                                                ].join(', ')),
                                     }}
                                 >
                                     {/* Specular rim */}
@@ -607,14 +630,73 @@ export default function HomeShell({ profile, view = 'home' }: Props) {
                                         style={{ background: 'linear-gradient(90deg, transparent 5%, rgba(255,255,255,0.95) 50%, transparent 95%)' }}
                                     />
                                     <div className='p-4'>
-                                        {/* Multi-image preview strip */}
                                         <ImagePreview
                                             images={uploadedImages}
                                             onRemove={handleRemoveImage}
                                         />
 
-                                        {/* Textarea — frosted inner glass, both light and dark */}
-                                        <motion.textarea
+                                        {/* URL tags strip — shown above textarea when in urlMode and tags exist */}
+                                        <AnimatePresence>
+                                            {urlTags.length > 0 && (
+                                                <motion.div
+                                                    initial={{ opacity: 0, height: 0 }}
+                                                    animate={{ opacity: 1, height: 'auto' }}
+                                                    exit={{ opacity: 0, height: 0 }}
+                                                    transition={{ type: 'spring', damping: 24, stiffness: 300 }}
+                                                    className='overflow-hidden mb-3'
+                                                >
+                                                    <div className='flex flex-wrap gap-2'>
+                                                        {urlTags.map((tag, i) => (
+                                                            <motion.div
+                                                                key={tag + i}
+                                                                initial={{ opacity: 0, scale: 0.88 }}
+                                                                animate={{ opacity: 1, scale: 1 }}
+                                                                exit={{ opacity: 0, scale: 0.88 }}
+                                                                transition={{ type: 'spring', damping: 22, stiffness: 300 }}
+                                                                className='flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium'
+                                                                style={isLightMode ? {
+                                                                    background: 'rgba(250,246,238,0.92)',
+                                                                    backdropFilter: 'blur(20px)',
+                                                                    WebkitBackdropFilter: 'blur(20px)',
+                                                                    border: '1px solid rgba(120,96,60,0.14)',
+                                                                    boxShadow: [
+                                                                        '0 0 0 0.5px rgba(100,76,40,0.08)',
+                                                                        '0 2px 8px rgba(80,60,30,0.12)',
+                                                                        'inset 0 1px 0 rgba(255,255,255,0.95)',
+                                                                        'inset 0 -1px 0 rgba(100,76,40,0.04)',
+                                                                    ].join(', '),
+                                                                    color: 'rgba(0,0,0,0.65)',
+                                                                } : {
+                                                                    background: 'rgba(255,255,255,0.08)',
+                                                                    backdropFilter: 'blur(20px)',
+                                                                    WebkitBackdropFilter: 'blur(20px)',
+                                                                    border: '1px solid rgba(255,255,255,0.12)',
+                                                                    boxShadow: [
+                                                                        '0 0 0 0.5px rgba(255,255,255,0.04)',
+                                                                        '0 2px 8px rgba(0,0,0,0.25)',
+                                                                        'inset 0 1px 0 rgba(255,255,255,0.10)',
+                                                                        'inset 0 -1px 0 rgba(0,0,0,0.15)',
+                                                                    ].join(', '),
+                                                                    color: 'rgba(255,255,255,0.75)',
+                                                                }}
+                                                            >
+                                                                <Globe className='w-3 h-3 opacity-60 flex-shrink-0' />
+                                                                <span className='max-w-[160px] truncate'>{tag.replace(/^https?:\/\//, '')}</span>
+                                                                <button
+                                                                    onClick={() => setUrlTags(prev => prev.filter((_, idx) => idx !== i))}
+                                                                    className='opacity-50 hover:opacity-100 transition-opacity flex-shrink-0 ml-0.5'
+                                                                >
+                                                                    <X className='w-3 h-3' />
+                                                                </button>
+                                                            </motion.div>
+                                                        ))}
+                                                    </div>
+                                                </motion.div>
+                                            )}
+                                        </AnimatePresence>
+
+                                        {/* Textarea — always visible */}
+                                        <textarea
                                             ref={textareaRef}
                                             value={prompt}
                                             onChange={(e) => {
@@ -628,55 +710,140 @@ export default function HomeShell({ profile, view = 'home' }: Props) {
                                             onKeyDown={handleKeyDown}
                                             onPaste={handlePaste}
                                             placeholder={isDragging
-                                                ? "Drop images here — they'll be used as design references…"
-                                                : 'Describe a UI to generate…'
-                                            }
-                                            animate={{ minHeight: isDragging ? 152 : 120 }}
-                                            transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
-                                            className='w-full resize-none text-sm text-foreground placeholder:text-muted-foreground/65 outline-none leading-relaxed max-h-60'
+                                                ? 'Drop images here — they\'ll be used as design references…'
+                                                : 'Describe a UI to generate…'}
+                                            className='w-full resize-none text-sm text-foreground placeholder:text-muted-foreground/65 outline-none leading-relaxed max-h-60 transition-all duration-300'
                                             style={{
                                                 ...textareaStyle,
-                                                minHeight: undefined, // let framer own this now
+                                                minHeight: isDragging ? '148px' : '120px',
                                             }}
                                         />
 
-                                        {/* Toolbar — smaller buttons, pushed down from textarea */}
+                                        {/* Toolbar */}
                                         <div className='flex items-center gap-2' style={{ marginTop: '12px' }}>
-                                            <GlassTooltip content="Add attachment" side="top">
-                                                <AttachmentMenu
-                                                    onUpload={handleUpload}
-                                                    onUrl={(url) => console.log('url:', url)}
-                                                    onEnhance={() => console.log('enhance')}
-                                                    hasInput={prompt.trim().length > 0}
-                                                />
-                                            </GlassTooltip>
-                                            <div className='flex-1' />
-                                            <GlassTooltip content="Record audio" side="top">
-                                                <MicButton
-                                                    onTranscript={(text) => setPrompt(p => p ? p + ' ' + text : text)}
-                                                    onRecordingChange={setIsRecordingActive}
-                                                    disabled={isLoading}
-                                                />
-                                            </GlassTooltip>
-                                            {!isRecordingActive && (
-                                                <GlassTooltip content="Send" side="top">
-                                                    <button
-                                                        onClick={handleSubmit}
-                                                        disabled={!prompt.trim() || isLoading}
-                                                        className={cn(
-                                                            'w-8 h-8 rounded-full flex items-center justify-center transition-all flex-shrink-0',
-                                                            prompt.trim() && !isLoading
-                                                                ? 'bg-black dark:bg-white'
-                                                                : 'bg-transparent opacity-30'
-                                                        )}
+                                            <AttachmentMenu
+                                                onUpload={handleUpload}
+                                                onUrl={() => setUrlMode(true)}
+                                                onEnhance={handleEnhance}
+                                                enhancing={enhancing}
+                                                hasInput={prompt.trim().length > 0}
+                                            />
+
+                                            <AnimatePresence mode="wait">
+                                                {urlMode ? (
+                                                    <motion.div
+                                                        key="url-input"
+                                                        initial={{ opacity: 0, scale: 0.95 }}
+                                                        animate={{ opacity: 1, scale: 1 }}
+                                                        exit={{ opacity: 0, scale: 0.95 }}
+                                                        transition={{ duration: 0.15 }}
+                                                        className='flex items-center gap-2 flex-1 rounded-full px-3 py-1.5'
+                                                        style={isLightMode ? {
+                                                            background: 'rgba(255,251,244,0.72)',
+                                                            border: '1px solid rgba(120,96,60,0.12)',
+                                                            boxShadow: 'inset 0 1px 3px rgba(80,60,30,0.08)',
+                                                        } : {
+                                                            background: 'rgba(255,255,255,0.06)',
+                                                            border: '1px solid rgba(255,255,255,0.10)',
+                                                            boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.04)',
+                                                        }}
                                                     >
-                                                        {isLoading
-                                                            ? <div className='w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin' />
-                                                            : <ArrowUp className={cn('w-4 h-4', prompt.trim() ? 'text-white dark:text-black' : 'text-muted-foreground')} />
-                                                        }
-                                                    </button>
-                                                </GlassTooltip>
-                                            )}
+                                                        <Globe className='w-3.5 h-3.5 text-muted-foreground flex-shrink-0' />
+                                                        <input
+                                                            autoFocus
+                                                            value={urlInputValue}
+                                                            onChange={e => setUrlInputValue(e.target.value)}
+                                                            onKeyDown={e => {
+                                                                if (e.key === ' ' && urlInputValue.trim()) {
+                                                                    e.preventDefault()
+                                                                    const raw = urlInputValue.trim().toLowerCase() // lowercase everything
+                                                                    const stripped = raw.replace(/^https?:\/\//, '').replace(/\/.*$/, '') // remove protocol and path
+                                                                    const tld = stripped.split('.').pop() // get the last part after dot
+
+                                                                    const validTLDs = new Set([
+                                                                        'com', 'org', 'net', 'io', 'co', 'ai', 'dev', 'app', 'web', 'gov', 'edu', 'mil',
+                                                                        'int', 'info', 'biz', 'name', 'pro', 'museum', 'coop', 'aero', 'jobs', 'travel',
+                                                                        'uk', 'us', 'ca', 'au', 'de', 'fr', 'jp', 'cn', 'br', 'in', 'ru', 'es', 'it', 'nl',
+                                                                        'se', 'no', 'dk', 'fi', 'pl', 'pt', 'ch', 'at', 'be', 'cz', 'hu', 'ro', 'gr', 'tr',
+                                                                        'mx', 'ar', 'cl', 'co', 'pe', 've', 'za', 'ng', 'ke', 'gh', 'eg', 'ma', 'tz', 'ug',
+                                                                        'nz', 'sg', 'hk', 'tw', 'kr', 'ph', 'id', 'my', 'th', 'vn', 'pk', 'bd', 'lk', 'np',
+                                                                        'xyz', 'me', 'tv', 'fm', 'am', 'is', 'ie', 'il', 'ae', 'sa', 'qa', 'kw', 'om', 'bh',
+                                                                        'gg', 'vc', 'to', 'ly', 'sh', 'ac', 'gg', 'cc', 'im', 'je', 'aw', 'ag', 'bb', 'bs',
+                                                                        'page', 'site', 'online', 'tech', 'store', 'shop', 'blog', 'news', 'media',
+                                                                        'studio', 'design', 'digital', 'agency', 'cloud', 'space', 'world', 'today',
+                                                                        'live', 'fun', 'games', 'app', 'link', 'click', 'email', 'social', 'network',
+                                                                    ])
+
+                                                                    if (!tld || !validTLDs.has(tld)) return // invalid TLD, don't add
+
+                                                                    const normalized = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`
+                                                                    setUrlTags(prev => [...prev, normalized])
+                                                                    setUrlInputValue('')
+                                                                }
+                                                                if (e.key === 'Enter') {
+                                                                    const pending = urlInputValue.trim().toLowerCase()
+                                                                    if (pending) {
+                                                                        const normalized = /^https?:\/\//i.test(pending) ? pending : `https://${pending}`
+                                                                        setUrlTags(prev => [...prev, normalized])
+                                                                        setUrlInputValue('')
+                                                                    }
+                                                                }
+                                                                if (e.key === 'Escape') {
+                                                                    setUrlMode(false)
+                                                                    setUrlInputValue('')
+                                                                    setUrlTags([])
+                                                                }
+                                                            }}
+                                                            placeholder={urlTags.length > 0 ? 'Add another URL…' : 'Paste URLs, press Space to add…'}
+                                                            className='flex-1 text-sm outline-none bg-transparent text-foreground placeholder:text-muted-foreground/50 min-w-0'
+                                                        />
+                                                        <button
+                                                            onClick={() => { setUrlMode(false); setUrlInputValue('') }}
+                                                            className='text-muted-foreground hover:text-foreground transition-colors flex-shrink-0'
+                                                        >
+                                                            <X className='w-3.5 h-3.5' />
+                                                        </button>
+                                                    </motion.div>
+                                                ) : (
+                                                    <motion.div
+                                                        key="mic-send"
+                                                        initial={{ opacity: 0 }}
+                                                        animate={{ opacity: 1 }}
+                                                        exit={{ opacity: 0 }}
+                                                        transition={{ duration: 0.12 }}
+                                                        className='flex items-center gap-2 flex-1 justify-end'
+                                                    >
+                                                        {!isRecordingActive && (
+                                                            <>
+                                                                <GlassTooltip content="Record audio" side="top">
+                                                                    <MicButton
+                                                                        onTranscript={(text) => setPrompt(p => p ? p + ' ' + text : text)}
+                                                                        onRecordingChange={setIsRecordingActive}
+                                                                        disabled={isLoading}
+                                                                    />
+                                                                </GlassTooltip>
+                                                                <GlassTooltip content="Send" side="top">
+                                                                    <button
+                                                                        onClick={handleSubmit}
+                                                                        disabled={!prompt.trim() || isLoading}
+                                                                        className={cn(
+                                                                            'w-8 h-8 rounded-full flex items-center justify-center transition-all flex-shrink-0',
+                                                                            prompt.trim() && !isLoading
+                                                                                ? 'bg-black dark:bg-white'
+                                                                                : 'bg-transparent opacity-30'
+                                                                        )}
+                                                                    >
+                                                                        {isLoading
+                                                                            ? <div className='w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin' />
+                                                                            : <ArrowUp className={cn('w-4 h-4', prompt.trim() ? 'text-white dark:text-black' : 'text-muted-foreground')} />
+                                                                        }
+                                                                    </button>
+                                                                </GlassTooltip>
+                                                            </>
+                                                        )}
+                                                    </motion.div>
+                                                )}
+                                            </AnimatePresence>
                                         </div>
                                     </div>
                                 </motion.div>

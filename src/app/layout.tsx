@@ -43,7 +43,7 @@ export default async function RootLayout({
   return (
     <ConvexAuthNextjsServerProvider>
       <html lang="en" className={`bg-background ${bricolage.variable} ${dmSans.variable}`} suppressHydrationWarning>
-        <body className={`${dmSans.className} antialiased`}>
+        <body className={`${dmSans.className} antialiased`} suppressHydrationWarning>
           <ConvexClientProvider>
             <ThemeProvider
               attribute="class"

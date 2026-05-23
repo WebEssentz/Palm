@@ -1,7 +1,6 @@
 import InfiniteCanvas from "@/components/canvas"
 import ProjectProvider from "@/components/projects/provider"
 import { ProjectQuery } from "@/convex/query.config"
-import React from "react"
 
 interface CanvasPageProps {
     searchParams: Promise<{ project?: string }>

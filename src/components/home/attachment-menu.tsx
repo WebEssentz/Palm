@@ -8,7 +8,7 @@ import { cn } from '@/lib/utils'
 
 interface Props {
     onUpload: (file: File) => void
-    onUrl: (url: string) => void
+    onUrl: () => void
     onEnhance: () => void
     enhancing?: boolean
     hasInput?: boolean
@@ -16,8 +16,6 @@ interface Props {
 
 export function AttachmentMenu({ onUpload, onUrl, onEnhance, enhancing, hasInput }: Props) {
     const [open, setOpen] = useState(false)
-    const [urlMode, setUrlMode] = useState(false)
-    const [urlValue, setUrlValue] = useState('')
     const { theme, systemTheme } = useTheme()
     const fileRef = useRef<HTMLInputElement>(null)
     const menuRef = useRef<HTMLDivElement>(null)
@@ -29,7 +27,6 @@ export function AttachmentMenu({ onUpload, onUrl, onEnhance, enhancing, hasInput
         const handler = (e: MouseEvent) => {
             if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
                 setOpen(false)
-                setUrlMode(false)
             }
         }
         document.addEventListener('mousedown', handler)
@@ -39,15 +36,6 @@ export function AttachmentMenu({ onUpload, onUrl, onEnhance, enhancing, hasInput
     const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0]
         if (file) { onUpload(file); setOpen(false) }
-    }
-
-    const handleUrl = () => {
-        if (urlValue.trim()) {
-            onUrl(urlValue.trim())
-            setUrlValue('')
-            setUrlMode(false)
-            setOpen(false)
-        }
     }
 
     const glassStyle = isLight ? {
@@ -88,7 +76,7 @@ export function AttachmentMenu({ onUpload, onUrl, onEnhance, enhancing, hasInput
 
             {/* Trigger */}
             <button
-                onClick={() => { setOpen(o => !o); setUrlMode(false) }}
+                onClick={() => setOpen(o => !o)}
                 className='w-8 h-8 rounded-full flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors cursor-pointer'
                 style={isLight ? {
                     background: 'rgba(250,246,238,0.88)',
@@ -135,74 +123,32 @@ export function AttachmentMenu({ onUpload, onUrl, onEnhance, enhancing, hasInput
                             style={{ background: 'linear-gradient(90deg, transparent 10%, rgba(255,255,255,0.90) 50%, transparent 90%)' }}
                         />
 
-                        {!urlMode ? (
-                            <div className='p-1.5 flex flex-col gap-0.5'>
-                                <MenuItem
-                                    icon={<ImageIcon className='w-4 h-4' />}
-                                    label='Upload image'
-                                    onClick={() => fileRef.current?.click()}
-                                    isLight={isLight}
-                                />
-                                <MenuItem
-                                    icon={<Globe className='w-4 h-4' />}
-                                    label='Website URL'
-                                    onClick={() => setUrlMode(true)}
-                                    isLight={isLight}
-                                />
-                                <div className={cn('h-px mx-2 my-0.5', isLight ? 'bg-black/[0.06]' : 'bg-white/[0.06]')} />
-                                <MenuItem
-                                    icon={
-                                        enhancing
-                                            ? <div className='w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin' />
-                                            : <Sparkles className='w-4 h-4' />
-                                    }
-                                    label='Enhance prompt'
-                                    onClick={() => { onEnhance(); setOpen(false) }}
-                                    isLight={isLight}
-                                    disabled={!hasInput}
-                                />
-                            </div>
-                        ) : (
-                            <div className='p-3 flex flex-col gap-2'>
-                                <p className={cn('text-xs px-1', isLight ? 'text-black/40' : 'text-white/40')}>Paste a URL</p>
-                                <input
-                                    autoFocus
-                                    value={urlValue}
-                                    onChange={e => setUrlValue(e.target.value)}
-                                    onKeyDown={e => e.key === 'Enter' && handleUrl()}
-                                    placeholder='https://...'
-                                    className={cn(
-                                        'w-full rounded-lg px-3 py-2 text-sm outline-none transition-colors',
-                                        isLight
-                                            ? 'bg-black/[0.05] border border-black/10 text-black placeholder:text-black/30 focus:border-black/20'
-                                            : 'bg-white/[0.06] border border-white/10 text-white placeholder:text-white/30 focus:border-white/20'
-                                    )}
-                                />
-                                <div className='flex gap-2'>
-                                    <button
-                                        onClick={() => setUrlMode(false)}
-                                        className={cn(
-                                            'flex-1 py-1.5 rounded-lg text-xs border transition-colors',
-                                            isLight
-                                                ? 'border-black/10 text-black/50 hover:text-black/80 hover:bg-black/[0.04]'
-                                                : 'border-white/10 text-white/50 hover:text-white/80 hover:bg-white/[0.06]'
-                                        )}
-                                    >
-                                        Back
-                                    </button>
-                                    <button
-                                        onClick={handleUrl}
-                                        disabled={!urlValue.trim()}
-                                        className={cn(
-                                            'flex-1 py-1.5 rounded-lg text-xs font-medium transition-colors disabled:opacity-40',
-                                            isLight ? 'bg-black text-white hover:bg-black/80' : 'bg-white text-black hover:bg-white/90'
-                                        )}
-                                    >
-                                        Confirm
-                                    </button>
-                                </div>
-                            </div>
-                        )}
+                        <div className='p-1.5 flex flex-col gap-0.5'>
+                            <MenuItem
+                                icon={<ImageIcon className='w-4 h-4' />}
+                                label='Upload image'
+                                onClick={() => fileRef.current?.click()}
+                                isLight={isLight}
+                            />
+                            <MenuItem
+                                icon={<Globe className='w-4 h-4' />}
+                                label='Website URL'
+                                onClick={() => { onUrl(); setOpen(false) }}
+                                isLight={isLight}
+                            />
+                            <div className={cn('h-px mx-2 my-0.5', isLight ? 'bg-black/[0.06]' : 'bg-white/[0.06]')} />
+                            <MenuItem
+                                icon={
+                                    enhancing
+                                        ? <div className='w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin' />
+                                        : <Sparkles className='w-4 h-4' />
+                                }
+                                label='Enhance prompt'
+                                onClick={() => { onEnhance(); setOpen(false) }}
+                                isLight={isLight}
+                                disabled={!hasInput}
+                            />
+                        </div>
                     </motion.div>
                 )}
             </AnimatePresence>

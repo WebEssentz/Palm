@@ -67,6 +67,15 @@ const schema = defineSchema({
     userId: v.id("users"),
     nextProjectNumber: v.number(),
   }).index("by_userId", ["userId"]),
+
+  chatTurns: defineTable({
+    projectId: v.string(),
+    turnId: v.string(),
+    prompt: v.string(),
+    response: v.string(),
+    timestamp: v.number(),
+    urls: v.optional(v.array(v.string())),
+  }).index('by_project', ['projectId']),
 });
 
 export default schema;

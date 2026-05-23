@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
 
         // Generate project name
         const { text: projectName } = await generateText({
-            model: google('gemini-3.1-flash-lite-preview'),
+            model: google('gemini-3.5-flash'),
             prompt: `Generate a short 2-4 word project name for this UI prompt. 
             Return ONLY the name, no quotes, no punctuation: "${prompt}"`,
             providerOptions: {
