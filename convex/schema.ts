@@ -52,6 +52,7 @@ const schema = defineSchema({
     thumbnail: v.optional(v.string()),
     moodBoardImages: v.optional(v.array(v.string())),
     inspirationImages: v.optional(v.array(v.string())),
+    referenceUrls: v.optional(v.array(v.string())),
     lastModified: v.number(),
     createdAt: v.number(),
     isPublic: v.optional(v.boolean()),

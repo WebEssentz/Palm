@@ -4,20 +4,22 @@ import { useInfiniteCanvas } from '@/hooks/use-canvas'
 import { useTheme } from 'next-themes'
 import { cn } from '@/lib/utils'
 import { Tool } from '@/redux/slice/shapes'
-import { ArrowRight, Circle, Eraser, Hash, Minus, MousePointer2, Pencil, Square, Type } from 'lucide-react'
+import { ArrowRight, Circle, Eraser, Hand, Hash, Minus, MousePointer2, Pencil, Square, Type } from 'lucide-react'
 import { GlassTooltip } from '@/components/ui/glass-tooltip'
 import React from 'react'
 
-const tools: Array<{ id: Tool; icon: React.ReactNode; label: string }> = [
-    { id: 'select', icon: <MousePointer2 className='w-3.5 h-3.5' />, label: 'Select' },
-    { id: 'frame', icon: <Hash className='w-3.5 h-3.5' />, label: 'Frame' },
-    { id: 'rect', icon: <Square className='w-3.5 h-3.5' />, label: 'Rectangle' },
-    { id: 'ellipse', icon: <Circle className='w-3.5 h-3.5' />, label: 'Ellipse' },
-    { id: 'freedraw', icon: <Pencil className='w-3.5 h-3.5' />, label: 'Free Draw' },
-    { id: 'arrow', icon: <ArrowRight className='w-3.5 h-3.5' />, label: 'Arrow' },
-    { id: 'line', icon: <Minus className='w-3.5 h-3.5' />, label: 'Line' },
-    { id: 'text', icon: <Type className='w-3.5 h-3.5' />, label: 'Text' },
-    { id: 'eraser', icon: <Eraser className='w-3.5 h-3.5' />, label: 'Eraser' },
+
+const tools: Array<{ id: Tool; icon: React.ReactNode; label: string; shortcut: string }> = [
+    { id: 'select', icon: <MousePointer2 className='w-3.5 h-3.5' />, label: 'Select', shortcut: 'V' },
+    { id: 'pan', icon: <Hand className='w-3.5 h-3.5' />, label: 'Pan', shortcut: 'H' },
+    { id: 'frame', icon: <Hash className='w-3.5 h-3.5' />, label: 'Frame', shortcut: 'F' },
+    { id: 'rect', icon: <Square className='w-3.5 h-3.5' />, label: 'Rectangle', shortcut: 'R' },
+    { id: 'ellipse', icon: <Circle className='w-3.5 h-3.5' />, label: 'Ellipse', shortcut: 'O' },
+    { id: 'freedraw', icon: <Pencil className='w-3.5 h-3.5' />, label: 'Free Draw', shortcut: 'P' },
+    { id: 'arrow', icon: <ArrowRight className='w-3.5 h-3.5' />, label: 'Arrow', shortcut: 'A' },
+    { id: 'line', icon: <Minus className='w-3.5 h-3.5' />, label: 'Line', shortcut: 'L' },
+    { id: 'text', icon: <Type className='w-3.5 h-3.5' />, label: 'Text', shortcut: 'T' },
+    { id: 'eraser', icon: <Eraser className='w-3.5 h-3.5' />, label: 'Eraser', shortcut: 'E' },
 ]
 
 const ToolBarShapes = () => {
@@ -63,7 +65,11 @@ const ToolBarShapes = () => {
                 style={{ background: 'linear-gradient(90deg, transparent 5%, rgba(255,255,255,0.95) 50%, transparent 95%)' }}
             />
             {tools.map((tool) => (
-                <GlassTooltip key={tool.id} content={tool.label} side='left'>
+                <GlassTooltip
+                    key={tool.id}
+                    side='left'
+                    content={`${tool.label} - ${tool.shortcut}`}
+                >
                     <button
                         onClick={() => selectTool(tool.id)}
                         className={cn(

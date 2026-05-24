@@ -13,6 +13,8 @@ interface Props {
     expandedTurnId: string | null
     onExpandTurn: (id: string | null) => void
     profile?: { name: string; image?: string | null }
+    isOpen: boolean
+    onToggle: () => void
 }
 
 // ── Pulsing glass dot — shown while loading with no text yet ──
@@ -40,15 +42,15 @@ function StreamingDot({ isLight }: { isLight: boolean }) {
                     opacity: [0.55, 1, 0.55],
                     boxShadow: isLight
                         ? [
-                              '0 0 0 2px rgba(10,10,10,0.08), 0 1px 3px rgba(0,0,0,0.18)',
-                              '0 0 0 4px rgba(10,10,10,0.06), 0 2px 8px rgba(0,0,0,0.22)',
-                              '0 0 0 2px rgba(10,10,10,0.08), 0 1px 3px rgba(0,0,0,0.18)',
-                          ]
+                            '0 0 0 2px rgba(10,10,10,0.08), 0 1px 3px rgba(0,0,0,0.18)',
+                            '0 0 0 4px rgba(10,10,10,0.06), 0 2px 8px rgba(0,0,0,0.22)',
+                            '0 0 0 2px rgba(10,10,10,0.08), 0 1px 3px rgba(0,0,0,0.18)',
+                        ]
                         : [
-                              '0 0 0 2px rgba(255,255,255,0.12), 0 1px 3px rgba(0,0,0,0.40)',
-                              '0 0 0 5px rgba(255,255,255,0.07), 0 2px 10px rgba(255,255,255,0.10)',
-                              '0 0 0 2px rgba(255,255,255,0.12), 0 1px 3px rgba(0,0,0,0.40)',
-                          ],
+                            '0 0 0 2px rgba(255,255,255,0.12), 0 1px 3px rgba(0,0,0,0.40)',
+                            '0 0 0 5px rgba(255,255,255,0.07), 0 2px 10px rgba(255,255,255,0.10)',
+                            '0 0 0 2px rgba(255,255,255,0.12), 0 1px 3px rgba(0,0,0,0.40)',
+                        ],
                 }}
                 transition={{
                     duration: 1.6,
@@ -60,11 +62,15 @@ function StreamingDot({ isLight }: { isLight: boolean }) {
     )
 }
 
-export function ChatPanel({ turns, expandedTurnId, onExpandTurn, profile }: Props) {
+export function ChatPanel({ turns, expandedTurnId, onExpandTurn, profile, isOpen, onToggle }: Props) {
     const { theme, systemTheme } = useTheme()
     const isLight = (theme === 'system' ? systemTheme : theme) === 'light'
-    const [open, setOpen] = useState(true)
     const [copiedId, setCopiedId] = useState<string | null>(null)
+
+    // Find the single turn to render
+    const activeTurn = turns.find(t => t.id === expandedTurnId)
+        ?? turns[turns.length - 1]
+        ?? null
 
     const handleCopy = (e: React.MouseEvent, text: string, id: string) => {
         e.stopPropagation()
@@ -144,14 +150,15 @@ export function ChatPanel({ turns, expandedTurnId, onExpandTurn, profile }: Prop
         <>
             <style>{scrollbarStyle}</style>
             <div
-                onClick={!open ? () => setOpen(true) : undefined}
-                className='fixed left-3 top-14 z-50 overflow-hidden'
+                onClick={(e) => {
+                    e.stopPropagation()
+                    onToggle()
+                }}
+                className='relative flex flex-col overflow-hidden'
                 style={{
                     ...glass,
                     borderRadius: 20,
-                    width: open ? 296 : 72,
-                    cursor: open ? 'default' : 'pointer',
-                    transition: 'width 0.35s cubic-bezier(0.32, 0.72, 0, 1)',
+                    cursor: isOpen ? 'default' : 'pointer',
                 }}
             >
                 {/* Specular rim */}
@@ -161,11 +168,11 @@ export function ChatPanel({ turns, expandedTurnId, onExpandTurn, profile }: Prop
                 />
 
                 {/* ── Dots pill ── */}
-                <div className={`flex items-center ${open ? 'p-2.5' : 'p-0 h-10 justify-center'}`}>
+                <div className={`flex items-center ${isOpen ? 'p-2.5' : 'p-0 h-10 justify-center'}`}>
                     <button
-                        onClick={(e) => { e.stopPropagation(); setOpen(o => !o) }}
-                        className={`flex items-center justify-center gap-[3px] flex-shrink-0 cursor-pointer ${open ? 'w-8 h-8 rounded-xl' : 'w-full h-full'}`}
-                        style={open ? chipGlass : {}}
+                        onClick={(e) => { e.stopPropagation(); onToggle() }}
+                        className={`flex items-center justify-center gap-[3px] flex-shrink-0 cursor-pointer ${isOpen ? 'w-8 h-8 rounded-xl' : 'w-full h-full'}`}
+                        style={isOpen ? chipGlass : {}}
                     >
                         {[0, 1, 2].map(i => (
                             <div key={i} className='w-[3px] h-[3px] rounded-full bg-foreground/50' />
@@ -174,154 +181,192 @@ export function ChatPanel({ turns, expandedTurnId, onExpandTurn, profile }: Prop
                 </div>
 
                 {/* ── Body ── */}
-                {open && (
+                {isOpen && (
+                  <div className='relative'>
                     <div
-                        className='chat-scroll px-3 pb-3 pt-1 flex flex-col gap-3 overflow-y-auto'
-                        style={{ maxHeight: '65vh' }}
+                        className='chat-scroll px-3 pb-8 pt-1 flex flex-col gap-4 overflow-y-auto'
+                        style={{ maxHeight: '60vh' }}
                     >
-                        {turns.map((turn) => {
-                            const isExpanded = expandedTurnId === turn.id
-                            const turnUrls = turn.urls ?? []
-
-                            return (
-                                <div key={turn.id} className='flex flex-col'>
-
-                                    {/* ── User bubble ── */}
-                                    <div className='rounded-2xl overflow-hidden' style={chipGlass}>
-                                        {!isExpanded && (
-                                            <button
-                                                onClick={() => onExpandTurn(turn.id)}
-                                                className='w-full text-left px-3 py-2.5 cursor-pointer group'
-                                            >
-                                                <div className='flex items-center gap-2'>
-                                                    <Avatar className='size-5 flex-shrink-0'>
-                                                        <AvatarImage src={profile?.image || ''} alt={profile?.name} />
-                                                        <AvatarFallback className='text-[10px] font-semibold bg-orange-500 text-white'>
-                                                            {profile?.name?.[0]?.toUpperCase() ?? 'U'}
-                                                        </AvatarFallback>
-                                                    </Avatar>
-                                                    <p className='text-xs text-foreground/65 group-hover:text-foreground/90 transition-colors truncate flex-1'>
-                                                        {turn.prompt}
-                                                    </p>
-                                                    <ChevronDown className='w-3.5 h-3.5 text-foreground/35 group-hover:text-foreground/60 transition-colors flex-shrink-0' />
-                                                </div>
-                                            </button>
-                                        )}
-
-                                        {isExpanded && (
-                                            <div className='px-3 pt-3 pb-2.5 flex flex-col gap-2'>
-                                                <div className='flex items-start gap-2'>
-                                                    <Avatar className='size-5 flex-shrink-0 mt-0.5'>
-                                                        <AvatarImage src={profile?.image || ''} alt={profile?.name} />
-                                                        <AvatarFallback className='text-[10px] font-semibold bg-orange-500 text-white'>
-                                                            {profile?.name?.[0]?.toUpperCase() ?? 'U'}
-                                                        </AvatarFallback>
-                                                    </Avatar>
-                                                    <p
-                                                        className='text-xs text-foreground/80 leading-relaxed flex-1'
-                                                        style={{
-                                                            display: '-webkit-box',
-                                                            WebkitLineClamp: 2,
-                                                            WebkitBoxOrient: 'vertical',
-                                                            overflow: 'hidden',
-                                                        }}
+                        {activeTurn ? (
+                            <div key={activeTurn.id} className='flex flex-col'>
+                                {(() => {
+                                    const isExpanded = expandedTurnId === activeTurn.id
+                                    const turnUrls = activeTurn.urls ?? []
+                                    return (
+                                        <>
+                                            {/* ── User bubble ── */}
+                                            <div className='rounded-2xl overflow-hidden' style={chipGlass}>
+                                                {!isExpanded && (
+                                                    <button
+                                                        onClick={() => onExpandTurn(activeTurn.id)}
+                                                        className='w-full text-left px-3 py-2.5 cursor-pointer group'
                                                     >
-                                                        {turn.prompt}
-                                                    </p>
-                                                </div>
-
-                                                <div className='flex items-center gap-1.5'>
-                                                    {turnUrls.length > 0 && (
-                                                        <div className='flex items-center gap-1.5 px-2 py-1 flex-1 min-w-0' style={urlPill}>
-                                                            <Globe className='w-3 h-3 text-foreground/40 flex-shrink-0' />
-                                                            <span className='text-[11px] text-foreground/55 truncate'>
-                                                                {turnUrls[0].replace(/^https?:\/\//, '')}
-                                                            </span>
+                                                        <div className='flex items-center gap-2'>
+                                                            <Avatar className='size-5 flex-shrink-0'>
+                                                                <AvatarImage src={profile?.image || ''} alt={profile?.name} />
+                                                                <AvatarFallback className='text-[10px] font-semibold bg-orange-500 text-white'>
+                                                                    {profile?.name?.[0]?.toUpperCase() ?? 'U'}
+                                                                </AvatarFallback>
+                                                            </Avatar>
+                                                            <p className='text-xs text-foreground/65 group-hover:text-foreground/90 transition-colors truncate flex-1'>
+                                                                {activeTurn.prompt}
+                                                            </p>
+                                                            {turnUrls.length > 0 && (
+                                                                <div
+                                                                    className='flex items-center gap-1 px-1.5 py-0.5 flex-shrink-0'
+                                                                    style={urlPill}
+                                                                >
+                                                                    <Globe className='w-3 h-3 text-foreground/40' />
+                                                                </div>
+                                                            )}
+                                                            <ChevronDown className='w-3.5 h-3.5 text-foreground/35 group-hover:text-foreground/60 transition-colors flex-shrink-0' />
                                                         </div>
-                                                    )}
-                                                    <div className='flex items-center gap-1 ml-auto'>
-                                                        <button
-                                                            onClick={(e) => handleCopy(e, turn.prompt, turn.id)}
-                                                            className='w-6 h-6 flex items-center justify-center cursor-pointer hover:opacity-70 transition-opacity'
-                                                            style={iconBtn}
-                                                        >
-                                                            <Copy className='w-3 h-3 text-foreground/50' />
-                                                        </button>
-                                                        <button
-                                                            onClick={() => onExpandTurn(null)}
-                                                            className='w-6 h-6 flex items-center justify-center cursor-pointer hover:opacity-70 transition-opacity'
-                                                            style={iconBtn}
-                                                        >
-                                                            <ChevronUp className='w-3 h-3 text-foreground/50' />
-                                                        </button>
+                                                    </button>
+                                                )}
+
+                                                {isExpanded && (
+                                                    <div className='px-3 pt-3 pb-2.5 flex flex-col gap-2'>
+                                                        <div className='flex items-start gap-2'>
+                                                            <Avatar className='size-5 flex-shrink-0 mt-0.5'>
+                                                                <AvatarImage src={profile?.image || ''} alt={profile?.name} />
+                                                                <AvatarFallback className='text-[10px] font-semibold bg-orange-500 text-white'>
+                                                                    {profile?.name?.[0]?.toUpperCase() ?? 'U'}
+                                                                </AvatarFallback>
+                                                            </Avatar>
+                                                            <p
+                                                                className='text-xs text-foreground/80 leading-relaxed flex-1'
+                                                                style={{
+                                                                    display: '-webkit-box',
+                                                                    WebkitLineClamp: 2,
+                                                                    WebkitBoxOrient: 'vertical',
+                                                                    overflow: 'hidden',
+                                                                }}
+                                                            >
+                                                                {activeTurn.prompt}
+                                                            </p>
+                                                        </div>
+
+                                                        <div className='flex items-center justify-between gap-2'>
+                                                            {turnUrls.length > 0 && (
+                                                                <div className='flex gap-1.5 items-center flex-1 min-w-0 overflow-hidden'>
+                                                                    {turnUrls.slice(0, 2).map((url, idx) => (
+                                                                        <div
+                                                                            key={idx}
+                                                                            className='flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs flex-shrink-0'
+                                                                            style={urlPill}
+                                                                        >
+                                                                            <Globe className='w-3 h-3 text-foreground/40 flex-shrink-0' />
+                                                                            <span className='max-w-[100px] truncate text-foreground/55'>
+                                                                                {url.replace(/^https?:\/\//, '')}
+                                                                            </span>
+                                                                        </div>
+                                                                    ))}
+                                                                    {turnUrls.length > 2 && (
+                                                                        <span className='text-[10px] text-foreground/40 flex-shrink-0'>
+                                                                            +{turnUrls.length - 2}
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                            )}
+                                                            <div className='flex items-center gap-1 ml-auto flex-shrink-0'>
+                                                                <button
+                                                                    onClick={(e) => handleCopy(e, activeTurn.prompt, activeTurn.id)}
+                                                                    className='w-6 h-6 flex items-center justify-center cursor-pointer hover:opacity-70 transition-opacity'
+                                                                    style={iconBtn}
+                                                                >
+                                                                    <Copy className='w-3 h-3 text-foreground/50' />
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => onExpandTurn(null)}
+                                                                    className='w-6 h-6 flex items-center justify-center cursor-pointer hover:opacity-70 transition-opacity'
+                                                                    style={iconBtn}
+                                                                >
+                                                                    <ChevronUp className='w-3 h-3 text-foreground/50' />
+                                                                </button>
+                                                            </div>
+                                                        </div>
                                                     </div>
-                                                </div>
+                                                )}
                                             </div>
-                                        )}
-                                    </div>
 
-                                    {/* ── Gap between bubble and AI response ── */}
-                                    <div className='h-6' />
+                                            {/* ── Gap between bubble and AI response ── */}
+                                            <div className='h-6' />
 
-                                    {/* ── AI response ── */}
-                                    <div className='px-1'>
-                                        <AnimatePresence mode='wait'>
-                                            {turn.isLoading && !turn.response ? (
-                                                // Single pulsing glass dot while waiting for first token
-                                                <motion.div
-                                                    key='dot'
-                                                    initial={{ opacity: 0, scale: 0.6 }}
-                                                    animate={{ opacity: 1, scale: 1 }}
-                                                    exit={{ opacity: 0, scale: 0.6 }}
-                                                    transition={{ duration: 0.2 }}
-                                                >
-                                                    <StreamingDot isLight={isLight} />
-                                                </motion.div>
-                                            ) : (
-                                                <motion.div
-                                                    key='text'
-                                                    initial={{ opacity: 0 }}
-                                                    animate={{ opacity: 1 }}
-                                                    transition={{ duration: 0.15 }}
-                                                    className='text-xs text-foreground/55 leading-relaxed min-w-0'
-                                                >
-                                                    <ReactMarkdown
-                                                        components={{
-                                                            p: ({ children }) => (
-                                                                <p className='mb-1.5 last:mb-0'>{children}</p>
-                                                            ),
-                                                            strong: ({ children }) => (
-                                                                <strong className='font-semibold text-foreground/75'>{children}</strong>
-                                                            ),
-                                                            ul: ({ children }) => (
-                                                                <ul className='mt-1.5 flex flex-col gap-1'>{children}</ul>
-                                                            ),
-                                                            li: ({ children }) => (
-                                                                <li className='flex gap-1.5 items-start'>
-                                                                    <span className='mt-1.5 w-1 h-1 rounded-full flex-shrink-0' style={{ background: '#A07850', opacity: 0.6 }} />
-                                                                    <span>{children}</span>
-                                                                </li>
-                                                            ),
-                                                        }}
-                                                    >
-                                                        {turn.response}
-                                                    </ReactMarkdown>
-
-                                                    {/* Glass dot while still streaming text */}
-                                                    {turn.isLoading && (
-                                                        <div className='mt-1.5'>
+                                            {/* ── AI response ── */}
+                                            <div className='px-1'>
+                                                <AnimatePresence mode='wait'>
+                                                    {activeTurn.isLoading && !activeTurn.response ? (
+                                                        // Single pulsing glass dot while waiting for first token
+                                                        <motion.div
+                                                            key='dot'
+                                                            initial={{ opacity: 0, scale: 0.6 }}
+                                                            animate={{ opacity: 1, scale: 1 }}
+                                                            exit={{ opacity: 0, scale: 0.6 }}
+                                                            transition={{ duration: 0.2 }}
+                                                        >
                                                             <StreamingDot isLight={isLight} />
-                                                        </div>
-                                                    )}
-                                                </motion.div>
-                                            )}
-                                        </AnimatePresence>
-                                    </div>
+                                                        </motion.div>
+                                                    ) : (
+                                                        <motion.div
+                                                            key='text'
+                                                            initial={{ opacity: 0 }}
+                                                            animate={{ opacity: 1 }}
+                                                            transition={{ duration: 0.15 }}
+                                                            className='text-xs text-foreground/55 leading-relaxed min-w-0'
+                                                        >
+                                                            <ReactMarkdown
+                                                                components={{
+                                                                    p: ({ children }) => (
+                                                                        <p className='mb-1.5 last:mb-0'>{children}</p>
+                                                                    ),
+                                                                    strong: ({ children }) => (
+                                                                        <strong className='font-semibold text-foreground/75'>{children}</strong>
+                                                                    ),
+                                                                    ul: ({ children }) => (
+                                                                        <ul className='mt-1.5 flex flex-col gap-1'>{children}</ul>
+                                                                    ),
+                                                                    li: ({ children }) => (
+                                                                        <li className='flex gap-1.5 items-start'>
+                                                                            <span className='mt-1.5 w-1 h-1 rounded-full flex-shrink-0' style={{ background: '#A07850', opacity: 0.6 }} />
+                                                                            <span>{children}</span>
+                                                                        </li>
+                                                                    ),
+                                                                }}
+                                                            >
+                                                                {activeTurn.response}
+                                                            </ReactMarkdown>
 
-                                </div>
-                            )
-                        })}
+                                                            {/* Glass dot while still streaming text */}
+                                                            {activeTurn.isLoading && (
+                                                                <div className='mt-1.5'>
+                                                                    <StreamingDot isLight={isLight} />
+                                                                </div>
+                                                            )}
+                                                        </motion.div>
+                                                    )}
+                                                </AnimatePresence>
+                                            </div>
+                                        </>
+                                    )
+                                })()}
+                            </div>
+                        ) : (
+                            <p className='text-xs text-foreground/25 text-center py-6'>
+                                Start a conversation below
+                            </p>
+                        )}
                     </div>
+
+                    {/* Fade at bottom */}
+                    <div
+                      className='pointer-events-none absolute bottom-0 inset-x-0 h-10 rounded-b-[20px]'
+                      style={{
+                        background: `linear-gradient(to bottom, transparent, ${
+                          isLight ? 'rgba(250,246,238,0.96)' : 'rgba(18,18,18,0.92)'
+                        })`
+                      }}
+                    />
+                  </div>
                 )}
             </div>
         </>

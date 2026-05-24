@@ -389,6 +389,7 @@ export const useInfiniteCanvas = () => {
         if (isInteractive) return
 
         e.preventDefault()
+        canvasRef.current?.focus() // re-claims focus after e.preventDefault() swallowed it
 
         const local = getLocalPointFromPtr(e.nativeEvent)
         const world = screenToWorld(local, viewport.translate, viewport.scale)
@@ -417,8 +418,9 @@ export const useInfiniteCanvas = () => {
             canvasRef.current?.setPointerCapture?.(e.pointerId)
             const isPanButton = e.button === 1 || e.button === 2
             const panByShift = isSpacedPressed.current && e.button === 0
+            const isPanTool = currentTool === 'pan' && e.button === 0
 
-            if (isPanButton || panByShift) {
+            if (isPanButton || panByShift || isPanTool) {
                 const mode = isSpacedPressed.current ? 'shiftPanning' : 'panning'
                 dispatch(panStart({ screen: local, mode }))
             }
@@ -689,7 +691,7 @@ export const useInfiniteCanvas = () => {
         const world = screenToWorld(local, viewport.translate, viewport.scale)
 
         // Track hover for all shape types
-        if (!isMovingRef.current && !isDrawingRef.current && !isMarqueeingRef.current) {
+        if (!isMovingRef.current && !isDrawingRef.current && !isMarqueeingRef.current && currentTool !== 'pan') {
             const hit = getShapeAtPoint(world)
             setHoveredShapeId(hit?.id ?? null)
         }
@@ -1009,6 +1011,26 @@ export const useInfiniteCanvas = () => {
 
             const isMac = typeof window !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.userAgent)
             const isModKey = isMac ? e.metaKey : e.ctrlKey
+
+            // ── Tool shortcuts ────────────────────────────────────────
+            const toolKeys: Record<string, Tool> = {
+                v: 'select',
+                h: 'pan',
+                f: 'frame',
+                r: 'rect',
+                o: 'ellipse',
+                p: 'freedraw',
+                a: 'arrow',
+                l: 'line',
+                t: 'text',
+                e: 'eraser',
+            }
+            if (!isModKey && toolKeys[e.key.toLowerCase()]) {
+                console.log('🎯 Tool shortcut triggered:', e.key, '->', toolKeys[e.key.toLowerCase()])
+                dispatch(setTool(toolKeys[e.key.toLowerCase()]))
+                return
+            }
+            // ──────────────────────────────────────────────────────────
 
             if (isModKey && e.key === 'd') {
                 e.preventDefault()
@@ -1364,6 +1386,7 @@ export const useInfiniteCanvas = () => {
         // Add wheel event listener to the new canvas (for zoom/pan)
         if (ref) {
             ref.addEventListener('wheel', onWheel, { passive: false })
+            ref.focus() // gives focus immediately so shortcuts work on page load
         }
     }
 
@@ -2144,6 +2167,8 @@ export const useGlobalChat = () => {
         [activeGeneratedUIId, dispatch, allShapes, saveTurn]
     )
 
+    const projectMetadata = useAppSelector((s) => s.project)
+
     const initFromUrlPrompt = React.useCallback(
         async (
             prompt: string,
@@ -2154,14 +2179,11 @@ export const useGlobalChat = () => {
             if (hasInitRef.current) return
             hasInitRef.current = true
 
-            // Delegate to sendMessage with isInit flag
-            // Collect HTML chunks for the onStream callback
-            let htmlBuffer = ''
-            const origSendMessage = sendMessage
+            // Get reference URLs from Redux project metadata
+            const referenceUrls = projectMetadata.referenceUrls ?? []
 
-            // Hook into sendMessage by handling state updates
-            // For init flow, we pass HTML chunks to onStream
-            await sendMessage(prompt, projectId, { isInit: true })
+            // Delegate to sendMessage with isInit flag and referenceUrls
+            await sendMessage(prompt, projectId, { isInit: true, urls: referenceUrls })
 
             // Note: The actual HTML streaming happens via the canvas dispatch,
             // but for the init flow's onStream callback, we'd need to
@@ -2169,7 +2191,7 @@ export const useGlobalChat = () => {
             // since the shape updates are handled by sendMessage's dispatch calls
             onDone()
         },
-        [hasInitRef, sendMessage]
+        [hasInitRef, sendMessage, projectMetadata.referenceUrls]
     )
 
     return {

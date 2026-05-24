@@ -22,7 +22,7 @@ const generateGradientThumbnail = () => {
 
 export async function POST(req: NextRequest) {
     try {
-        const { prompt, userId } = await req.json()
+        const { prompt, userId, referenceUrls } = await req.json()
         if (!prompt || !userId) {
             return NextResponse.json({ error: 'Missing prompt or userId' }, { status: 400 })
         }
@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
         // Create project in Convex with auto-generated gradient thumbnail
         const projectId = await fetchMutation(
             api.projects.createProject,
-            { name: projectName.trim(), prompt, thumbnail: generateGradientThumbnail() },
+            { name: projectName.trim(), prompt, thumbnail: generateGradientThumbnail(), referenceUrls },
             { token }
         )
 

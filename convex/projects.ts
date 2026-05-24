@@ -25,13 +25,15 @@ export const createProject = mutation({
         userId: v.optional(v.id('users')),
         sketchesData: v.optional(v.any()),
         thumbnail: v.optional(v.string()),
+        referenceUrls: v.optional(v.array(v.string())),
     },
     handler: async (ctx, {
         name,
         prompt,
         userId: providedUserId,
         sketchesData,
-        thumbnail
+        thumbnail,
+        referenceUrls
     }) => {
         // Get userId from auth if not provided
         const authUserId = await getAuthUserId(ctx)
@@ -51,6 +53,7 @@ export const createProject = mutation({
             prompt,
             sketchesData: sketchesData || {},
             thumbnail,
+            referenceUrls,
             projectNumber,
             lastModified: Date.now(),
             createdAt: Date.now(),

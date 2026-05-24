@@ -274,6 +274,7 @@ export default function HomeShell({ profile, view = 'home' }: Props) {
                 body: JSON.stringify({
                     prompt: finalPrompt,  // ← merged prompt goes here
                     userId: me.id,
+                    ...(urlTags.length > 0 && { referenceUrls: urlTags }),
                     ...(imageStorageIds.length > 0 && { imageStorageIds }),
                 }),
             })

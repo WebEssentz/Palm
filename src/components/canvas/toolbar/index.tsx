@@ -1,7 +1,6 @@
 'use client'
 import ZoomBar from "./zoom"
 import ToolBarShapes from "./shapes"
-import { ChatInput } from "../chat-input"
 import AutoSave from "../../../components/canvas/autosave"
 import { ThemeToggle } from '../../theme/toggle'
 
@@ -15,7 +14,6 @@ const Toolbar = () => {
         </div>
       </div>
 
-
       {/* Bottom right — theme + autosave + zoom */}
       <div className="fixed bottom-5 right-5 z-50 flex items-center gap-2 pointer-events-none">
         <div className="pointer-events-auto">
@@ -26,13 +24,6 @@ const Toolbar = () => {
         </div>
         <div className="pointer-events-auto">
           <ZoomBar />
-        </div>
-      </div>
-
-      {/* Floating chat input — bottom center */}
-      <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-50 pointer-events-none">
-        <div className="pointer-events-auto">
-          <ChatInput onSend={(msg) => console.log(msg)} />
         </div>
       </div>
     </>
