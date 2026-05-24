@@ -1004,72 +1004,334 @@ function FAQ({ isLight }: { isLight: boolean }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// SUBSTRATE (CONTAINED) — optimized for CTABanner background
+// ─────────────────────────────────────────────────────────────────────────────
+const S_BOID_COUNT = 120
+const S_RD_SCALE   = 10
+const S_RD_STEPS   = 1
+const S_DU=0.2097, S_DV=0.1050, S_FEED=0.0545, S_KILL=0.0620
+const S_SEP_R=28, S_ALIGN_R=60, S_COH_R=80
+const S_MAX_SPEED=1.4, S_MAX_FORCE=0.06
+const S_SEP_W=1.6, S_ALIGN_W=0.35, S_COH_W=0.25, S_CHEM_W=0.9
+const S_VORTEX_STR=5000, S_FLEE_R=120, S_FLEE_STR=220
+const S_CELL = S_COH_R
+
+class SRDGrid {
+    cols:number; rows:number
+    u:Float32Array; v:Float32Array; nu:Float32Array; nv:Float32Array
+    constructor(cols:number,rows:number) {
+        this.cols=cols; this.rows=rows
+        const n=cols*rows
+        this.u=new Float32Array(n).fill(1); this.v=new Float32Array(n)
+        this.nu=new Float32Array(n); this.nv=new Float32Array(n)
+        for(let i=0;i<20;i++) {
+            const cx=Math.floor(Math.random()*cols),cy=Math.floor(Math.random()*rows)
+            for(let dy=-2;dy<=2;dy++) for(let dx=-2;dx<=2;dx++) {
+                const idx=this.w(cx+dx,cy+dy); this.v[idx]=1; this.u[idx]=0
+            }
+        }
+    }
+    w(x:number,y:number){return(((y%this.rows)+this.rows)%this.rows)*this.cols+(((x%this.cols)+this.cols)%this.cols)}
+    step(){
+        const{cols,rows,u,v,nu,nv}=this
+        for(let y=0;y<rows;y++) for(let x=0;x<cols;x++){
+            const i=y*cols+x,ui=u[i],vi=v[i]
+            const lu=u[this.w(x-1,y)]+u[this.w(x+1,y)]+u[this.w(x,y-1)]+u[this.w(x,y+1)]-4*ui
+            const lv=v[this.w(x-1,y)]+v[this.w(x+1,y)]+v[this.w(x,y-1)]+v[this.w(x,y+1)]-4*vi
+            const uvv=ui*vi*vi
+            nu[i]=Math.max(0,Math.min(1,ui+S_DU*lu-uvv+S_FEED*(1-ui)))
+            nv[i]=Math.max(0,Math.min(1,vi+S_DV*lv+uvv-(S_FEED+S_KILL)*vi))
+        }
+        this.u.set(nu); this.v.set(nv)
+    }
+    inject(wx:number,wy:number){
+        const cx=Math.floor(wx/S_RD_SCALE),cy=Math.floor(wy/S_RD_SCALE)
+        for(let dy=-3;dy<=3;dy++) for(let dx=-3;dx<=3;dx++){
+            const i=this.w(cx+dx,cy+dy)
+            this.v[i]=Math.min(1,this.v[i]+0.45); this.u[i]=Math.max(0,this.u[i]-0.25)
+        }
+    }
+    getV(wx:number,wy:number){return this.v[this.w(Math.floor(wx/S_RD_SCALE),Math.floor(wy/S_RD_SCALE))]}
+    grad(wx:number,wy:number):[number,number]{
+        const cx=Math.floor(wx/S_RD_SCALE),cy=Math.floor(wy/S_RD_SCALE)
+        return[(this.v[this.w(cx+1,cy)]-this.v[this.w(cx-1,cy)])*.5,
+               (this.v[this.w(cx,cy+1)]-this.v[this.w(cx,cy-1)])*.5]
+    }
+}
+
+class SSpatialHash {
+    private cells=new Map<number,number[]>()
+    clear(){this.cells.clear()}
+    private key(cx:number,cy:number){return cx*100003+cy}
+    insert(i:number,x:number,y:number){
+        const k=this.key(Math.floor(x/S_CELL),Math.floor(y/S_CELL))
+        let c=this.cells.get(k); if(!c){c=[];this.cells.set(k,c)} c.push(i)
+    }
+    nearby(x:number,y:number):number[]{
+        const cx=Math.floor(x/S_CELL),cy=Math.floor(y/S_CELL),out:number[]=[]
+        for(let dy=-1;dy<=1;dy++) for(let dx=-1;dx<=1;dx++){
+            const c=this.cells.get(this.key(cx+dx,cy+dy)); if(c) for(const i of c) out.push(i)
+        }
+        return out
+    }
+}
+
+function sClamp(vx:number,vy:number,max:number):[number,number]{
+    const m=Math.sqrt(vx*vx+vy*vy); return m>max?[vx/m*max,vy/m*max]:[vx,vy]
+}
+function sSteer(bvx:number,bvy:number,tx:number,ty:number):[number,number]{
+    const m=Math.sqrt(tx*tx+ty*ty); if(m===0)return[0,0]
+    const dx=tx/m*S_MAX_SPEED-bvx,dy=ty/m*S_MAX_SPEED-bvy
+    return sClamp(dx,dy,S_MAX_FORCE)
+}
+
+function SubstrateContained({ isLight }: { isLight: boolean }) {
+    const canvasRef = useRef<HTMLCanvasElement>(null)
+    const activeRef = useRef(false)
+
+    useEffect(() => {
+        const canvas = canvasRef.current
+        if (!canvas) return
+        const ctx = canvas.getContext('2d')!
+
+        let W = canvas.offsetWidth || 820
+        let H = canvas.offsetHeight || 500
+        canvas.width = W; canvas.height = H
+
+        let rd   = new SRDGrid(Math.ceil(W/S_RD_SCALE), Math.ceil(H/S_RD_SCALE))
+        const hash = new SSpatialHash()
+
+        interface SBoid { x:number; y:number; vx:number; vy:number }
+        let boids: SBoid[] = Array.from({length:S_BOID_COUNT},()=>({
+            x:Math.random()*W, y:Math.random()*H,
+            vx:(Math.random()-.5)*2, vy:(Math.random()-.5)*2,
+        }))
+
+        let mx=-9999, my=-9999, animId:number
+
+        const onMove = (e:MouseEvent) => {
+            const rect = canvas.getBoundingClientRect()
+            mx = e.clientX - rect.left
+            my = e.clientY - rect.top
+            if (mx>=0 && mx<=W && my>=0 && my<=H) rd.inject(mx, my)
+        }
+        window.addEventListener('mousemove', onMove)
+
+        const io = new IntersectionObserver(([e]) => {
+            activeRef.current = e.isIntersecting
+        }, { threshold: 0.05 })
+        io.observe(canvas)
+
+        const ro = new ResizeObserver(() => {
+            W = canvas.offsetWidth; H = canvas.offsetHeight
+            canvas.width = W; canvas.height = H
+            rd = new SRDGrid(Math.ceil(W/S_RD_SCALE), Math.ceil(H/S_RD_SCALE))
+            boids = boids.map(b => ({
+                ...b,
+                x: Math.min(b.x, W),
+                y: Math.min(b.y, H),
+            }))
+        })
+        ro.observe(canvas)
+
+        const rgb = isLight ? '80,60,30' : '255,255,255'
+
+        function frame() {
+            animId = requestAnimationFrame(frame)
+            if (!activeRef.current) return
+
+            for (let s=0; s<S_RD_STEPS; s++) rd.step()
+
+            hash.clear()
+            for (let i=0;i<boids.length;i++) hash.insert(i,boids[i].x,boids[i].y)
+
+            for (let i=0;i<boids.length;i++) {
+                const b=boids[i]
+                let sx=0,sy=0,sn=0,ax=0,ay=0,an=0,cx=0,cy=0,cn=0
+                for (const j of hash.nearby(b.x,b.y)) {
+                    if(i===j) continue
+                    const o=boids[j],dx=b.x-o.x,dy=b.y-o.y,d=Math.sqrt(dx*dx+dy*dy)
+                    if(d<S_SEP_R&&d>0){sx+=dx/d;sy+=dy/d;sn++}
+                    if(d<S_ALIGN_R){ax+=o.vx;ay+=o.vy;an++}
+                    if(d<S_COH_R){cx+=o.x;cy+=o.y;cn++}
+                }
+                let fx=0,fy=0
+                if(sn>0){const[a,b2]=sSteer(b.vx,b.vy,sx/sn,sy/sn);fx+=a*S_SEP_W;fy+=b2*S_SEP_W}
+                if(an>0){const[a,b2]=sSteer(b.vx,b.vy,ax/an,ay/an);fx+=a*S_ALIGN_W;fy+=b2*S_ALIGN_W}
+                if(cn>0){const[a,b2]=sSteer(b.vx,b.vy,cx/cn-b.x,cy/cn-b.y);fx+=a*S_COH_W;fy+=b2*S_COH_W}
+                const cdx=b.x-mx,cdy=b.y-my,cr2=cdx*cdx+cdy*cdy+1
+                fx+=(-cdy*S_VORTEX_STR)/cr2; fy+=(cdx*S_VORTEX_STR)/cr2
+                const cd=Math.sqrt(cr2)
+                if(cd<S_FLEE_R){const f=S_FLEE_STR*(1-cd/S_FLEE_R)/(cd+1);fx+=cdx/cd*f;fy+=cdy/cd*f}
+                const[gx,gy]=rd.grad(b.x,b.y)
+                fx+=gx*S_CHEM_W; fy+=gy*S_CHEM_W
+                b.vx+=fx; b.vy+=fy;[b.vx,b.vy]=sClamp(b.vx,b.vy,S_MAX_SPEED)
+                b.x+=b.vx; b.y+=b.vy
+                if(b.x<0)b.x+=W; else if(b.x>W)b.x-=W
+                if(b.y<0)b.y+=H; else if(b.y>H)b.y-=H
+            }
+
+            ctx.clearRect(0,0,W,H)
+
+            ctx.lineWidth=0.5
+            for(let i=0;i<boids.length;i++) {
+                for(const j of hash.nearby(boids[i].x,boids[i].y)) {
+                    if(j<=i) continue
+                    const dx=boids[i].x-boids[j].x,dy=boids[i].y-boids[j].y,d2=dx*dx+dy*dy
+                    if(d2<2500){
+                        ctx.strokeStyle=`rgba(${rgb},${((1-d2/2500)*(isLight?.05:.04)).toFixed(3)})`
+                        ctx.beginPath(); ctx.moveTo(boids[i].x,boids[i].y)
+                        ctx.lineTo(boids[j].x,boids[j].y); ctx.stroke()
+                    }
+                }
+            }
+
+            for(const b of boids){
+                const v=rd.getV(b.x,b.y)
+                ctx.beginPath()
+                ctx.arc(b.x,b.y,1.2+v*1.8,0,Math.PI*2)
+                ctx.fillStyle=`rgba(${rgb},${(isLight?.10+v*.45:.13+v*.55).toFixed(3)})`
+                ctx.fill()
+            }
+        }
+
+        frame()
+        return()=>{
+            cancelAnimationFrame(animId)
+            window.removeEventListener('mousemove',onMove)
+            ro.disconnect(); io.disconnect()
+        }
+    }, [isLight])
+
+    return (
+        <canvas
+            ref={canvasRef}
+            className='absolute inset-0 w-full h-full pointer-events-none'
+        />
+    )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // CTA BANNER
 // ─────────────────────────────────────────────────────────────────────────────
 function CTABanner({ isLight }: { isLight: boolean }) {
-  const ref = useRef<HTMLDivElement>(null)
-  const [visible, setVisible] = useState(false)
-  useEffect(() => {
-    const obs = new IntersectionObserver(([e]) => { if (e.isIntersecting) setVisible(true) }, { threshold: 0.3 })
-    if (ref.current) obs.observe(ref.current)
-    return () => obs.disconnect()
-  }, [])
+    const sectionRef = useRef<HTMLElement>(null)
 
-  return (
-    <section ref={ref} style={{ background: isLight ? '#F5F0E8' : '#070707', padding: '60px 48px 130px' }}>
-      <motion.div
-        initial={{ opacity: 0, y: 40 }}
-        animate={visible ? { opacity: 1, y: 0 } : {}}
-        transition={{ duration: 0.85, ease: EASE_OUT_EXPO }}
-        style={{
-          maxWidth: 820, margin: '0 auto', borderRadius: 28,
-          background: isLight ? 'rgba(0,0,0,0.03)' : 'rgba(255,255,255,0.04)',
-          border: isLight ? '1px solid rgba(0,0,0,0.08)' : '1px solid rgba(255,255,255,0.09)',
-          backdropFilter: 'blur(24px)',
-          boxShadow: isLight
-            ? '0 8px 40px rgba(0,0,0,0.08),inset 0 1px 0 rgba(255,255,255,0.75)'
-            : '0 24px 80px rgba(0,0,0,0.5),inset 0 1px 0 rgba(255,255,255,0.08)',
-          padding: '80px 64px', textAlign: 'center', position: 'relative', overflow: 'hidden',
-        }}
-      >
-        <div style={{
-          position: 'absolute', top: 0, left: '15%', right: '15%', height: 1,
-          background: isLight
-            ? 'linear-gradient(90deg,transparent,rgba(255,255,255,0.90),transparent)'
-            : 'linear-gradient(90deg,transparent,rgba(255,255,255,0.14),transparent)',
-        }}/>
-        <div style={{
-          position: 'absolute', inset: 0, pointerEvents: 'none',
-          background: 'radial-gradient(ellipse 60% 40% at 50% 100%, rgba(160,120,80,0.11) 0%, transparent 70%)',
-        }}/>
-        <p style={{ fontSize: 11, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'rgba(160,120,80,0.65)', marginBottom: 18 }}>
-          Limited early access
-        </p>
-        <h2 style={{
-          fontSize: 'clamp(2rem,4vw,3.4rem)', fontWeight: 800,
-          letterSpacing: '-0.038em', color: isLight ? '#0a0a0a' : '#fff', margin: '0 0 18px',
-        }}>
-          Build something beautiful today.
-        </h2>
-        <p style={{
-          fontSize: '1.07rem',
-          color: isLight ? 'rgba(0,0,0,0.44)' : 'rgba(255,255,255,0.36)',
-          margin: '0 0 44px', lineHeight: 1.68,
-        }}>
-          No design skills needed. No waiting. No compromise.
-        </p>
-        <PhysicsLink
-          href="/auth/sign-up" dark={isLight}
-          style={{ boxShadow: isLight ? '0 4px 20px rgba(0,0,0,0.18)' : '0 4px 24px rgba(255,255,255,0.15)' }}
+    const { scrollYProgress } = useScroll({
+        target: sectionRef,
+        offset: ['start end', 'center center'],
+    })
+    const sp = useSpring(scrollYProgress, { stiffness: 55, damping: 22 })
+
+    const subY      = useTransform(sp, [0, 1], [60, -30])
+    const subOpac   = useTransform(sp, [0, 0.35, 1], [0, 1, 1])
+    const subScale  = useTransform(sp, [0, 0.6], [1.08, 1])
+
+    const cardY     = useTransform(sp, [0.1, 0.75], [48, 0])
+    const cardOpac  = useTransform(sp, [0.1, 0.55], [0, 1])
+
+    return (
+        <section
+            ref={sectionRef}
+            style={{
+                background: isLight ? '#F5F0E8' : '#070707',
+                padding: '60px 48px 130px',
+                position: 'relative',
+                overflow: 'hidden',
+            }}
         >
-          Start for free
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-            <path d="M2 7h10M8 3l4 4-4 4" stroke={isLight ? '#F5F0E8' : '#070707'} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
-        </PhysicsLink>
-      </motion.div>
-    </section>
-  )
+            <motion.div
+                style={{
+                    position: 'absolute',
+                    inset: 0,
+                    y: subY,
+                    opacity: subOpac,
+                    scale: subScale,
+                }}
+            >
+                <SubstrateContained isLight={isLight} />
+            </motion.div>
+
+            <div style={{
+                position: 'absolute', inset: 0, pointerEvents: 'none',
+                background: isLight
+                    ? 'radial-gradient(ellipse 70% 60% at 50% 50%, transparent 30%, rgba(245,240,232,0.82) 100%)'
+                    : 'radial-gradient(ellipse 70% 60% at 50% 50%, transparent 30%, rgba(7,7,7,0.80) 100%)',
+                zIndex: 1,
+            }}/>
+
+            <motion.div
+                style={{
+                    position: 'relative', zIndex: 2,
+                    y: cardY,
+                    opacity: cardOpac,
+                    maxWidth: 820,
+                    margin: '0 auto',
+                    borderRadius: 28,
+                    background: isLight ? 'rgba(245,240,232,0.55)' : 'rgba(10,10,10,0.55)',
+                    backdropFilter: 'blur(28px)',
+                    WebkitBackdropFilter: 'blur(28px)',
+                    border: isLight
+                        ? '1px solid rgba(255,255,255,0.70)'
+                        : '1px solid rgba(255,255,255,0.10)',
+                    boxShadow: isLight
+                        ? '0 8px 40px rgba(0,0,0,0.08), inset 0 1px 0 rgba(255,255,255,0.90)'
+                        : '0 24px 80px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.08)',
+                    padding: '80px 64px',
+                    textAlign: 'center',
+                    overflow: 'hidden',
+                }}
+            >
+                <div style={{
+                    position: 'absolute', top: 0, left: '15%', right: '15%', height: 1,
+                    background: isLight
+                        ? 'linear-gradient(90deg,transparent,rgba(255,255,255,0.95),transparent)'
+                        : 'linear-gradient(90deg,transparent,rgba(255,255,255,0.18),transparent)',
+                    pointerEvents: 'none',
+                }}/>
+
+                <p style={{
+                    fontSize: 11, letterSpacing: '0.18em',
+                    textTransform: 'uppercase',
+                    color: 'rgba(160,120,80,0.65)',
+                    marginBottom: 18,
+                }}>
+                    Limited early access
+                </p>
+
+                <h2 style={{
+                    fontSize: 'clamp(2rem,4vw,3.4rem)', fontWeight: 800,
+                    letterSpacing: '-0.038em',
+                    color: isLight ? '#0a0a0a' : '#fff',
+                    margin: '0 0 18px',
+                }}>
+                    Build something beautiful today.
+                </h2>
+
+                <p style={{
+                    fontSize: '1.07rem',
+                    color: isLight ? 'rgba(0,0,0,0.44)' : 'rgba(255,255,255,0.36)',
+                    margin: '0 0 44px', lineHeight: 1.68,
+                }}>
+                    No design skills needed. No waiting. No compromise.
+                </p>
+
+                <PhysicsLink
+                    href="/auth/sign-up"
+                    dark={isLight}
+                    style={{ boxShadow: isLight
+                        ? '0 4px 20px rgba(0,0,0,0.18)'
+                        : '0 4px 24px rgba(255,255,255,0.15)',
+                    }}
+                >
+                    Start for free
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                        <path d="M2 7h10M8 3l4 4-4 4" stroke={isLight?'#F5F0E8':'#070707'} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                </PhysicsLink>
+            </motion.div>
+        </section>
+    )
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

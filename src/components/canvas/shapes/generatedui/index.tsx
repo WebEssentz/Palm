@@ -1,4 +1,5 @@
 import React from 'react'
+import { useTheme } from 'next-themes'
 import { GeneratedUIShape } from '@/redux/slice/shapes'
 
 type Props = {
@@ -18,10 +19,52 @@ function stripCodeFences(html: string): string {
         .trim()
 }
 
+
+
+async function fetchTitle(userPrompt: string, htmlSnippet: string): Promise<string> {
+    const res = await fetch('/api/generate-title', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userPrompt, htmlSnippet }),
+    })
+    const { title, error } = await res.json()
+    if (!res.ok || !title) throw new Error(error)
+    return title
+}
+
 const GeneratedUI = ({ shape }: Props) => {
     const iframeRef = React.useRef<HTMLIFrameElement>(null)
+    const hasFetchedTitle = React.useRef(false)
+
+    const { resolvedTheme } = useTheme()
+    const isLight = resolvedTheme === 'light'
+
     const scale = shape.w / DESKTOP_WIDTH
     const internalHeight = shape.h / scale
+
+    // Grab prompt from shape — add `prompt?: string` to GeneratedUIShape
+    const prompt = (shape as any).prompt as string | undefined
+
+    const [title, setTitle] = React.useState<string>('Generated UI')
+
+    // Fire once when uiSpecData settles (streaming is done)
+    React.useEffect(() => {
+        if (!shape.uiSpecData || hasFetchedTitle.current) return
+
+        // Guard: don't fetch mid-stream — wait until the HTML looks complete
+        const html = stripCodeFences(shape.uiSpecData)
+        const isComplete = html.trimEnd().endsWith('>') || html.includes('</body>') || html.includes('</div>')
+        if (!isComplete) return
+
+        hasFetchedTitle.current = true
+
+        fetchTitle(prompt ?? 'UI design', html)
+            .then(setTitle)
+            .catch(() => {
+                // Graceful fallback — use first ~40 chars of prompt
+                if (prompt) setTitle(prompt.slice(0, 40).trim())
+            })
+    }, [shape.uiSpecData, prompt])
 
     React.useEffect(() => {
         if (!iframeRef.current || !shape.uiSpecData) return
@@ -50,26 +93,22 @@ const GeneratedUI = ({ shape }: Props) => {
             className='absolute pointer-events-none'
             style={{ left: shape.x, top: shape.y, width: shape.w, height: shape.h }}
         >
-            {/* Label */}
             <div
                 style={{
                     position: 'absolute',
-                    top: -24,
+                    top: -20,
                     left: 0,
-                    fontSize: 10,
+                    fontSize: 11,
                     fontWeight: 500,
-                    color: 'rgba(255,255,255,0.5)',
-                    background: 'rgba(0,0,0,0.4)',
-                    padding: '3px 8px',
-                    borderRadius: 6,
+                    color: isLight ? 'rgba(0,0,0,0.5)' : 'rgba(255,255,255,0.65)',
                     whiteSpace: 'nowrap',
-                    letterSpacing: '0.03em',
+                    letterSpacing: '0.01em',
                     pointerEvents: 'none',
+                    userSelect: 'none',
                 }}
             >
-                Generated UI
+                {title}
             </div>
-
             {shape.uiSpecData ? (
                 <div style={{
                     width: shape.w,
@@ -80,7 +119,6 @@ const GeneratedUI = ({ shape }: Props) => {
                     pointerEvents: 'auto',
                     overflow: 'hidden',
                 }}>
-                    {/* Clip wrapper — overflow:hidden on transform:scale doesn't clip without this */}
                     <div style={{
                         position: 'absolute',
                         top: 0,
@@ -105,7 +143,6 @@ const GeneratedUI = ({ shape }: Props) => {
                         />
                     </div>
 
-                    {/* Click passthrough overlay for canvas selection */}
                     <div style={{
                         position: 'absolute',
                         inset: 0,

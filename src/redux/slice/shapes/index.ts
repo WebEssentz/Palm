@@ -89,6 +89,7 @@ export interface GeneratedUIShape extends BaseShape {
   uiSpecData: string | null;
   sourceFrameId: string;
   isWorkflowPage?: boolean; // Flag to identify workflow pages
+  prompt?: string; // User's original prompt for this generated UI
 }
 
 export interface GroupShape extends BaseShape {

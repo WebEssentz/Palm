@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from 'react'
 import { useGlobalChat, useInfiniteCanvas } from '@/hooks/use-canvas'
+import Substrate from '@/components/home/substrate'
 import TextSidebar from './text-sidebar'
 import { cn } from '@/lib/utils'
 import ShapeRenderer from './shapes'
@@ -127,6 +128,8 @@ const InfiniteCanvas = () => {
           onContextMenu={(e) => e.preventDefault()}
           draggable={false}
         >
+          <Substrate />
+
           <div
             className='absolute origin-top-left pointer-events-none z-10'
             style={{

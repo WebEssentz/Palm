@@ -2071,6 +2071,7 @@ export const useGlobalChat = () => {
                                     id: newId,
                                     uiSpecData: null,
                                     sourceFrameId: null,
+                                    prompt,
                                 })
                             )
                             shapeId = newId
