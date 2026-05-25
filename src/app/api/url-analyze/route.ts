@@ -10,7 +10,7 @@ export async function POST(req: NextRequest) {
         const urlList = urls.join('\n')
 
         const { text } = await generateText({
-            model: google('gemini-3.5-flash'),
+            model: google('gemini-3.1-flash-lite'),
             tools: {
                 url_context: google.tools.urlContext({}),
             },

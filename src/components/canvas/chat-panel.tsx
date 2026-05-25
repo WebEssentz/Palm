@@ -220,6 +220,32 @@ export function ChatPanel({ turns, expandedTurnId, onExpandTurn, profile, isOpen
                                                                     <Globe className='w-3 h-3 text-foreground/40' />
                                                                 </div>
                                                             )}
+                                                            {/* Uploaded images */}
+                                                            {activeTurn.imageStorageIds && activeTurn.imageStorageIds.length > 0 && (
+                                                                <div className='flex gap-1 flex-shrink-0'>
+                                                                    {activeTurn.imageStorageIds.slice(0, 2).map((id) => (
+                                                                        <div
+                                                                            key={id}
+                                                                            className='w-5 h-5 rounded-lg overflow-hidden flex-shrink-0'
+                                                                            style={{ background: isLight ? 'rgba(120,96,60,0.08)' : 'rgba(255,255,255,0.08)' }}
+                                                                        >
+                                                                            <img
+                                                                                src={`/api/storage/${id}`}
+                                                                                alt='reference'
+                                                                                className='w-full h-full object-cover'
+                                                                            />
+                                                                        </div>
+                                                                    ))}
+                                                                    {activeTurn.imageStorageIds.length > 2 && (
+                                                                        <div
+                                                                            className='w-5 h-5 rounded-lg flex items-center justify-center text-[8px] font-semibold flex-shrink-0'
+                                                                            style={{ background: isLight ? 'rgba(120,96,60,0.08)' : 'rgba(255,255,255,0.08)' }}
+                                                                        >
+                                                                            +{activeTurn.imageStorageIds.length - 2}
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            )}
                                                             {/* Frame chip — same slot as URLs */}
                                                             {activeTurn.attachedFrameId && (
                                                                 <div
@@ -288,6 +314,32 @@ export function ChatPanel({ turns, expandedTurnId, onExpandTurn, profile, isOpen
                                                                         <span className='text-[10px] text-foreground/40 flex-shrink-0'>
                                                                             +{turnUrls.length - 2}
                                                                         </span>
+                                                                    )}
+                                                                </div>
+                                                            )}
+                                                            {/* Uploaded images */}
+                                                            {activeTurn.imageStorageIds && activeTurn.imageStorageIds.length > 0 && (
+                                                                <div className='flex gap-1 flex-shrink-0'>
+                                                                    {activeTurn.imageStorageIds.slice(0, 2).map((id) => (
+                                                                        <div
+                                                                            key={id}
+                                                                            className='w-5 h-5 rounded-lg overflow-hidden flex-shrink-0'
+                                                                            style={{ background: isLight ? 'rgba(120,96,60,0.08)' : 'rgba(255,255,255,0.08)' }}
+                                                                        >
+                                                                            <img
+                                                                                src={`/api/storage/${id}`}
+                                                                                alt='reference'
+                                                                                className='w-full h-full object-cover'
+                                                                            />
+                                                                        </div>
+                                                                    ))}
+                                                                    {activeTurn.imageStorageIds.length > 2 && (
+                                                                        <div
+                                                                            className='w-5 h-5 rounded-lg flex items-center justify-center text-[8px] font-semibold flex-shrink-0'
+                                                                            style={{ background: isLight ? 'rgba(120,96,60,0.08)' : 'rgba(255,255,255,0.08)' }}
+                                                                        >
+                                                                            +{activeTurn.imageStorageIds.length - 2}
+                                                                        </div>
                                                                     )}
                                                                 </div>
                                                             )}

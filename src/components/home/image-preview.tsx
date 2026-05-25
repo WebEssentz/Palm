@@ -8,6 +8,7 @@ export interface ImageItem {
     id: string
     previewUrl: string
     storageId: string | null
+    error?: boolean
 }
 
 interface Props {
@@ -99,7 +100,13 @@ export function ImagePreview({ images, onRemove }: Props) {
                                 }}
                             />
 
-                            {img.storageId === null && (
+                            {img.error && (
+                                <div className='absolute inset-0 bg-red-500/20 flex items-center justify-center rounded-lg'>
+                                    <span className='text-[10px] text-red-400 font-medium'>Failed</span>
+                                </div>
+                            )}
+
+                            {img.storageId === null && !img.error && (
                                 <div className='absolute inset-0 flex items-center justify-center rounded-lg'>
                                     <div className='w-4 h-4 border-2 border-white/50 border-t-transparent rounded-full animate-spin' />
                                 </div>

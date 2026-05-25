@@ -1730,6 +1730,7 @@ export interface ChatTurn {
     isLoading: boolean
     timestamp: number
     urls?: string[]
+    imageStorageIds?: string[]
     attachedFrameId?: string | null
     attachedFrameName?: string | null
     attachedFrameSnapshot?: string | null  // base64, shown in chat panel chip
@@ -2131,6 +2132,7 @@ export const useGlobalChat = () => {
                     isLoading: true,
                     timestamp,
                     urls: opts?.urls,
+                    imageStorageIds: opts?.imageStorageIds,
                     attachedFrameId: targetId ?? null,
                     attachedFrameName: frameName,
                     attachedFrameSnapshot: attachedFrameSnapshot ?? null,

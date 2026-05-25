@@ -10,7 +10,7 @@ export async function POST(req: NextRequest) {
     }
 
     const { text } = await generateText({
-        model: google('gemini-3.5-flash'),
+        model: google('gemini-3.1-flash-lite'),
         system: `You are an expert UI/UX design prompt engineer. Your job is to take a user's rough idea and transform it into a rich, specific, well-structured prompt that will produce an exceptional UI design generation.
 
 Follow these rules strictly:

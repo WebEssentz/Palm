@@ -61,10 +61,12 @@ export function ChatInput({ onSend, isLoading, attachedFrameId, attachedFrameNam
             const form = new FormData()
             form.append('file', file)
             const res = await fetch('/api/upload', { method: 'POST', body: form })
+            if (!res.ok) throw new Error('Upload failed')
             const { storageId } = await res.json()
             setUploadedImages(prev => prev.map(img => img.id === id ? { ...img, storageId } : img))
-        } catch {
-            setUploadedImages(prev => prev.filter(img => img.id !== id))
+        } catch (err) {
+            console.error('Upload error:', err)
+            setUploadedImages(prev => prev.map(img => img.id === id ? { ...img, error: true } : img))
         }
     }
 
@@ -99,7 +101,7 @@ export function ChatInput({ onSend, isLoading, attachedFrameId, attachedFrameNam
     const handleSend = () => {
         if (!message.trim() || isLoading) return
         const imageStorageIds = uploadedImages
-            .filter(img => img.storageId !== null)
+            .filter(img => img.storageId !== null && !img.error)
             .map(img => img.storageId as string)
         onSend(message.trim(), {
             urls: urlTags.length > 0 ? urlTags : undefined,

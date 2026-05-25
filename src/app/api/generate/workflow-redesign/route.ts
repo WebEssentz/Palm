@@ -111,7 +111,7 @@ export async function POST(req: Request) {
         `
 
         const result = streamText({
-            model: google('gemini-3.5-flash'),
+            model: google('gemini-3.1-flash-lite'),
             system: prompts.generativeUi.system,
             messages: [
                 { 

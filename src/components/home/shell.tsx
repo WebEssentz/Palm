@@ -164,11 +164,12 @@ export default function HomeShell({ profile, view = 'home' }: Props) {
             const form = new FormData()
             form.append('file', file)
             const res = await fetch('/api/upload', { method: 'POST', body: form })
+            if (!res.ok) throw new Error('Upload failed')
             const { storageId } = await res.json()
             setUploadedImages(prev => prev.map(img => img.id === id ? { ...img, storageId } : img))
         } catch (err) {
             console.error('Image upload failed:', err)
-            setUploadedImages(prev => prev.filter(img => img.id !== id))
+            setUploadedImages(prev => prev.map(img => img.id === id ? { ...img, error: true } : img))
         }
     }
 
@@ -274,7 +275,7 @@ export default function HomeShell({ profile, view = 'home' }: Props) {
             }
 
             const imageStorageIds = uploadedImages
-                .filter(img => img.storageId !== null)
+                .filter(img => img.storageId !== null && !img.error)
                 .map(img => img.storageId as string)
 
             const res = await fetch('/api/projects/create', {

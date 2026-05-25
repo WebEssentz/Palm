@@ -140,6 +140,7 @@ export async function POST(req: NextRequest) {
     }
 
     let imageDNAContext = ''
+    let referenceImageBytes: { type: 'image'; image: Uint8Array }[] = []
 
     if (imageStorageIds.length > 0) {
         try {
@@ -147,7 +148,8 @@ export async function POST(req: NextRequest) {
                 imageStorageIds.map(async (storageId: string) => {
                     // Fetch image from Convex storage
                     const res = await fetch(`${process.env.CONVEX_SITE_URL}/api/storage/${storageId}`)
-                    const buffer = Buffer.from(await res.arrayBuffer())
+                    const arrayBuffer = await res.arrayBuffer()
+                    const buffer = Buffer.from(arrayBuffer)
                     const { width = 1440, height = 900 } = await sharp(buffer).metadata()
 
                     // Full-image DNA — treat the whole image as one bounding box
@@ -165,6 +167,19 @@ export async function POST(req: NextRequest) {
                 .join('\n')
         } catch (e) {
             console.error('DNA extraction failed:', e)
+        }
+
+        // Fetch actual image bytes for Gemini to see
+        try {
+            referenceImageBytes = await Promise.all(
+                imageStorageIds.map(async (storageId: string) => {
+                    const res = await fetch(`${process.env.CONVEX_SITE_URL}/api/storage/${storageId}`)
+                    const buffer = new Uint8Array(await res.arrayBuffer())
+                    return { type: 'image' as const, image: buffer }
+                })
+            )
+        } catch (e) {
+            console.error('Failed to fetch reference images:', e)
         }
     }
 
@@ -185,7 +200,7 @@ export async function POST(req: NextRequest) {
 
     // ── LLM call ────────────────────────────────────────────
     const result = streamText({
-        model: google('gemini-3.5-flash'),
+        model: google('gemini-3.1-flash-lite'),
 system: `You are Palm by Rhinestone, a helpful UI design assistant.
 
 CRITICAL: Before calling generateUI, you MUST always write 1-2 short sentences first. Never call a tool as your first action. Always narrate what you're about to do.
@@ -223,9 +238,15 @@ ${editType === 'surgical'
             ]),
             { 
                 role: 'user' as const, 
-                content: imageDNAContext 
-                    ? `${prompt}\n\n[Reference image design analysis]\n${imageDNAContext}` 
-                    : prompt 
+                content: [
+                    ...referenceImageBytes,
+                    {
+                        type: 'text' as const,
+                        text: imageDNAContext 
+                            ? `${prompt}\n\n[Reference image design analysis]\n${imageDNAContext}` 
+                            : prompt
+                    }
+                ]
             },
         ],
 
