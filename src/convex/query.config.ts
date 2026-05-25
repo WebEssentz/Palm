@@ -160,6 +160,16 @@ export const RefundCreditsQuery = async ({ amount }: { amount?: number }) => {
     return { ok: result.ok, balance: result.balance, profile }
 }
 
+export const SaveStyleGuideQuery = async (projectId: string, styleGuide: object) => {
+    const token = await convexAuthNextjsToken()
+    const result = await fetchMutation(
+        api.projects.updateProjectStyleGuide,
+        { projectId: projectId as Id<'projects'>, styleGuide },
+        { token }
+    )
+    return result
+}
+
 export const InspirationImagesQuery = async (projectId: string) => {
     const images = await preloadQuery(
         api.inspiration.getInspirationImages,

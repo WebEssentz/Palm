@@ -91,6 +91,8 @@ export interface GeneratedUIShape extends BaseShape {
   sourceFrameId: string;
   isWorkflowPage?: boolean; // Flag to identify workflow pages
   prompt?: string; // User's original prompt for this generated UI
+  title?: string; // Generated or fetched title for display
+  name?: string; // Name of the frame for the chat attachment
 }
 
 export interface GroupShape extends BaseShape {

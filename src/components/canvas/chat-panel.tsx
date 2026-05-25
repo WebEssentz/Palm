@@ -7,6 +7,7 @@ import { ChatTurn } from '@/hooks/use-canvas'
 import { useState } from 'react'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import ReactMarkdown from 'react-markdown'
+import { ToolStatusBubble } from './ToolStatusBubble'
 
 interface Props {
     turns: ChatTurn[]
@@ -15,6 +16,7 @@ interface Props {
     profile?: { name: string; image?: string | null }
     isOpen: boolean
     onToggle: () => void
+    toolStatus?: { label: string; state: 'running' | 'done' } | null
 }
 
 // ── Pulsing glass dot — shown while loading with no text yet ──
@@ -62,7 +64,7 @@ function StreamingDot({ isLight }: { isLight: boolean }) {
     )
 }
 
-export function ChatPanel({ turns, expandedTurnId, onExpandTurn, profile, isOpen, onToggle }: Props) {
+export function ChatPanel({ turns, expandedTurnId, onExpandTurn, profile, isOpen, onToggle, toolStatus }: Props) {
     const { theme, systemTheme } = useTheme()
     const isLight = (theme === 'system' ? systemTheme : theme) === 'light'
     const [copiedId, setCopiedId] = useState<string | null>(null)
@@ -152,9 +154,9 @@ export function ChatPanel({ turns, expandedTurnId, onExpandTurn, profile, isOpen
             <div
                 onClick={(e) => {
                     e.stopPropagation()
-                    onToggle()
+                    if (!isOpen) onToggle()
                 }}
-                className='relative flex flex-col overflow-hidden'
+                className={`relative flex flex-col overflow-hidden ${isOpen ? 'h-full' : ''}`}
                 style={{
                     ...glass,
                     borderRadius: 20,
@@ -182,10 +184,9 @@ export function ChatPanel({ turns, expandedTurnId, onExpandTurn, profile, isOpen
 
                 {/* ── Body ── */}
                 {isOpen && (
-                  <div className='relative'>
+                  <div className='relative flex-1 min-h-0 flex flex-col'>
                     <div
-                        className='chat-scroll px-3 pb-8 pt-1 flex flex-col gap-4 overflow-y-auto'
-                        style={{ maxHeight: '60vh' }}
+                        className='chat-scroll px-3 pb-8 pt-1 flex flex-col gap-4 overflow-y-auto flex-1 min-h-0'
                     >
                         {activeTurn ? (
                             <div key={activeTurn.id} className='flex flex-col'>
@@ -198,7 +199,7 @@ export function ChatPanel({ turns, expandedTurnId, onExpandTurn, profile, isOpen
                                             <div className='rounded-2xl overflow-hidden' style={chipGlass}>
                                                 {!isExpanded && (
                                                     <button
-                                                        onClick={() => onExpandTurn(activeTurn.id)}
+                                                        onClick={(e) => { e.stopPropagation(); onExpandTurn(activeTurn.id) }}
                                                         className='w-full text-left px-3 py-2.5 cursor-pointer group'
                                                     >
                                                         <div className='flex items-center gap-2'>
@@ -217,6 +218,28 @@ export function ChatPanel({ turns, expandedTurnId, onExpandTurn, profile, isOpen
                                                                     style={urlPill}
                                                                 >
                                                                     <Globe className='w-3 h-3 text-foreground/40' />
+                                                                </div>
+                                                            )}
+                                                            {/* Frame chip — same slot as URLs */}
+                                                            {activeTurn.attachedFrameId && (
+                                                                <div
+                                                                    className='flex items-center gap-1.5 rounded-xl px-1.5 py-0.5 flex-shrink-0'
+                                                                    style={chipGlass}
+                                                                >
+                                                                    {/* Thumbnail */}
+                                                                    <div className='w-4 h-4 rounded-md overflow-hidden flex-shrink-0'
+                                                                        style={{ background: isLight ? 'rgba(120,96,60,0.12)' : 'rgba(255,255,255,0.10)' }}
+                                                                    >
+                                                                        {activeTurn.attachedFrameSnapshot && (
+                                                                            <img src={activeTurn.attachedFrameSnapshot} className='w-full h-full object-cover' alt='' />
+                                                                        )}
+                                                                    </div>
+                                                                    <span
+                                                                        className='text-[10px] text-foreground/55'
+                                                                        style={{ maxWidth: 80, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                                                                    >
+                                                                        {activeTurn.attachedFrameName ?? 'Frame'}
+                                                                    </span>
                                                                 </div>
                                                             )}
                                                             <ChevronDown className='w-3.5 h-3.5 text-foreground/35 group-hover:text-foreground/60 transition-colors flex-shrink-0' />
@@ -268,6 +291,28 @@ export function ChatPanel({ turns, expandedTurnId, onExpandTurn, profile, isOpen
                                                                     )}
                                                                 </div>
                                                             )}
+                                                            {/* Frame chip — same slot as URLs */}
+                                                            {activeTurn.attachedFrameId && (
+                                                                <div
+                                                                    className='flex items-center gap-1.5 rounded-xl px-1.5 py-0.5 flex-shrink-0'
+                                                                    style={chipGlass}
+                                                                >
+                                                                    {/* Thumbnail */}
+                                                                    <div className='w-4 h-4 rounded-md overflow-hidden flex-shrink-0'
+                                                                        style={{ background: isLight ? 'rgba(120,96,60,0.12)' : 'rgba(255,255,255,0.10)' }}
+                                                                    >
+                                                                        {activeTurn.attachedFrameSnapshot && (
+                                                                            <img src={activeTurn.attachedFrameSnapshot} className='w-full h-full object-cover' alt='' />
+                                                                        )}
+                                                                    </div>
+                                                                    <span
+                                                                        className='text-[10px] text-foreground/55'
+                                                                        style={{ maxWidth: 80, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                                                                    >
+                                                                        {activeTurn.attachedFrameName ?? 'Frame'}
+                                                                    </span>
+                                                                </div>
+                                                            )}
                                                             <div className='flex items-center gap-1 ml-auto flex-shrink-0'>
                                                                 <button
                                                                     onClick={(e) => handleCopy(e, activeTurn.prompt, activeTurn.id)}
@@ -277,7 +322,7 @@ export function ChatPanel({ turns, expandedTurnId, onExpandTurn, profile, isOpen
                                                                     <Copy className='w-3 h-3 text-foreground/50' />
                                                                 </button>
                                                                 <button
-                                                                    onClick={() => onExpandTurn(null)}
+                                                                    onClick={(e) => { e.stopPropagation(); onExpandTurn(null) }}
                                                                     className='w-6 h-6 flex items-center justify-center cursor-pointer hover:opacity-70 transition-opacity'
                                                                     style={iconBtn}
                                                                 >
@@ -336,8 +381,19 @@ export function ChatPanel({ turns, expandedTurnId, onExpandTurn, profile, isOpen
                                                                 {activeTurn.response}
                                                             </ReactMarkdown>
 
-                                                            {/* Glass dot while still streaming text */}
-                                                            {activeTurn.isLoading && (
+                                                            {/* Tool status sits right below the preamble text */}
+                                                            {toolStatus && (
+                                                                <div className='mt-2'>
+                                                                    <ToolStatusBubble
+                                                                        label={toolStatus.label}
+                                                                        state={toolStatus.state}
+                                                                        isLight={isLight}
+                                                                    />
+                                                                </div>
+                                                            )}
+
+                                                            {/* Streaming dot: hides while tool is running, shows when done */}
+                                                            {activeTurn.isLoading && toolStatus?.state !== 'running' && (
                                                                 <div className='mt-1.5'>
                                                                     <StreamingDot isLight={isLight} />
                                                                 </div>

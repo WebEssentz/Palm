@@ -1,6 +1,7 @@
 "use client"
 
 import { generateFrameSnapshot } from "@/lib/frame-snapshot"
+import { captureAndUploadSnapshot } from "@/lib/snapshot"
 import { measureText } from "@/lib/measure-text"
 import { StyleTokens } from "@/lib/generate-ui"
 import { useGenerateWorkflowMutation } from "@/redux/api/generation"
@@ -82,6 +83,7 @@ export const useInfiniteCanvas = () => {
     const [isSidebarOpen, setIsSidebarOpen] = React.useState(false)
     const [isEditingText, setIsEditingText] = React.useState(false)
     const [hoveredShapeId, setHoveredShapeId] = React.useState<string | null>(null)
+    const [isMoving, setIsMoving] = React.useState(false)
 
     const hasSelectedText = isEditingText
 
@@ -437,8 +439,13 @@ export const useInfiniteCanvas = () => {
                         // Force canvas focus so keyboard events work for generatedui
                         if (hitShape.type === 'generatedui') {
                             canvasRef.current?.focus();
+                            // Dispatch event to attach frame to chat
+                            window.dispatchEvent(new CustomEvent('frame-selected', {
+                                detail: { id: hitShape.id }
+                            }))
                         }
                         isMovingRef.current = true
+                        setIsMoving(true)
                         moveStartRef.current = world
 
                         initialShapePositionsRef.current = {}
@@ -609,6 +616,10 @@ export const useInfiniteCanvas = () => {
                         // No shape hit — start marquee instead of just clearing
                         if (!e.shiftKey) dispatch(clearSelection())
                         blurActiveTextInput()
+                        // Deselect frame from chat
+                        window.dispatchEvent(new CustomEvent('frame-selected', {
+                            detail: { id: null }
+                        }))
                         isMarqueeingRef.current = true
                         marqueeStartRef.current = world
                         marqueeCurrentRef.current = world
@@ -953,6 +964,7 @@ export const useInfiniteCanvas = () => {
 
         if (isMovingRef.current) {
             isMovingRef.current = false
+            setIsMoving(false)
             moveStartRef.current = null
             initialShapePositionsRef.current = {}
         }
@@ -995,17 +1007,20 @@ export const useInfiniteCanvas = () => {
         const handleKeyDown = (e: KeyboardEvent) => {
             if (e.repeat) return
 
-            if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') {
-                isShiftPressedRef.current = true
-                isSpacedPressed.current = true
-                dispatch(handToolEnable())
-            }
-
+            // ── Check isTyping FIRST, before any Shift handling ──
             const activeElement = document.activeElement
             const isTyping =
                 activeElement?.tagName === 'INPUT' ||
                 activeElement?.tagName === 'TEXTAREA' ||
                 (activeElement as HTMLElement)?.isContentEditable
+
+            if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') {
+                isShiftPressedRef.current = true
+                if (!isTyping) {                    // ← only enable hand tool when NOT in an input
+                    isSpacedPressed.current = true
+                    dispatch(handToolEnable())
+                }
+            }
 
             if (isTyping) return
 
@@ -1375,18 +1390,23 @@ export const useInfiniteCanvas = () => {
     }, [dispatch, entityState.entities, viewport.translate, viewport.scale])
 
     const attachCanvasRef = (ref: HTMLDivElement | null): void => {
-        // Clean up any exisiting event Listeners on the old canvas
         if (canvasRef.current) {
             canvasRef.current.removeEventListener('wheel', onWheel)
         }
-
-        // Store the new canvas reference
         canvasRef.current = ref
-
-        // Add wheel event listener to the new canvas (for zoom/pan)
         if (ref) {
             ref.addEventListener('wheel', onWheel, { passive: false })
-            ref.focus() // gives focus immediately so shortcuts work on page load
+
+            // Only focus canvas if no input/textarea currently has focus
+            const active = document.activeElement
+            const isInputActive =
+                active?.tagName === 'INPUT' ||
+                active?.tagName === 'TEXTAREA' ||
+                (active as HTMLElement)?.isContentEditable
+
+            if (!isInputActive) {
+                ref.focus()
+            }
         }
     }
 
@@ -1415,6 +1435,7 @@ export const useInfiniteCanvas = () => {
         hasSelectedText,
         setIsSidebarOpen,
         hoveredShapeId,
+        isMoving,
         getPointToPoint: () => pointToPointRef.current,
         getMarquee: () => isMarqueeingRef.current
             ? { start: marqueeStartRef.current!, current: marqueeCurrentRef.current! }
@@ -1708,16 +1729,23 @@ export interface ChatTurn {
     response: string
     isLoading: boolean
     timestamp: number
-    urls?: string[]   // ← NEW: reference URLs attached when the prompt was sent
+    urls?: string[]
+    attachedFrameId?: string | null
+    attachedFrameName?: string | null
+    attachedFrameSnapshot?: string | null  // base64, shown in chat panel chip
+    attachedImages?: Array<{ previewUrl: string; name: string }>
+    generatedShapeId?: string  // the shape this turn generated
 }
 
 /**
  * Client event format from /api/chat stream.
  */
 interface ChatStreamEvent {
-    type: 'text' | 'html' | 'error' | 'styleguide' | 'done'
+    type: 'text' | 'html' | 'error' | 'styleguide' | 'done' | 'tool-status'
     text?: string
     tokens?: StyleTokens
+    label?: string
+    state?: 'running' | 'done'
 }
 
 /**
@@ -1730,15 +1758,27 @@ async function consumeChatStream(
     onHTML: (chunk: string) => void,
     onError: (msg: string) => void,
     onDone: () => void,
-    onStyleGuide?: (tokens: StyleTokens) => void
+    onStyleGuide?: (tokens: StyleTokens) => void,
+    onToolStatus?: (label: string, state: 'running' | 'done') => void,
 ) {
     const reader = res.body!.getReader()
     const decoder = new TextDecoder()
     let buffer = ''
+    let doneCalled = false  // ← guard: ensure onDone fires exactly once
+
+    const callDone = () => {
+        if (doneCalled) return
+        doneCalled = true
+        onDone()
+    }
 
     while (true) {
         const { done, value } = await reader.read()
-        if (done) break
+        if (done) {
+            // ✅ Fallback: server closed stream without sending `done` event
+            callDone()
+            break
+        }
 
         buffer += decoder.decode(value, { stream: true })
 
@@ -1758,7 +1798,10 @@ async function consumeChatStream(
                 else if (event.type === 'styleguide' && event.tokens && onStyleGuide) {
                     onStyleGuide(event.tokens)
                 }
-                else if (event.type === 'done') onDone()
+                else if (event.type === 'tool-status' && event.label && onToolStatus) {
+                    onToolStatus(event.label, event.state ?? 'running')
+                }
+                else if (event.type === 'done') callDone()  // ← use guard here too
             } catch {
                 // malformed chunk, skip
             }
@@ -1933,16 +1976,73 @@ export const useGlobalChat = () => {
     const [chatTurns, setChatTurns] = React.useState<ChatTurn[]>([])
     const [expandedTurnId, setExpandedTurnId] = React.useState<string | null>(null)
     const [isSending, setIsSending] = React.useState(false)
+    const [toolStatus, setToolStatus] = React.useState<{ label: string; state: 'running' | 'done' } | null>(null)
     const isSendingRef = React.useRef(false)
     const [isLoadingHistory, setIsLoadingHistory] = React.useState(true)
     const hasInitRef = React.useRef(false)
     const { generateWorkflow } = useWorkflowGeneration()
+    const [attachedFrameSnapshot, setAttachedFrameSnapshot] = React.useState<string | null>(null)
+    const [attachedThumbnailUrl, setAttachedThumbnailUrl] = React.useState<string | null>(null)
+    const [attachedFrameName, setAttachedFrameName] = React.useState<string | null>(null)
+
 
     const allShapes = useAppSelector((state) =>
         Object.values(state.shapes.shapes?.entities || {}).filter(
             (s): s is Shape => s !== undefined
         )
     )
+
+    const allShapesRef = React.useRef(allShapes)
+    React.useEffect(() => {
+        allShapesRef.current = allShapes
+    }, [allShapes])
+
+    /**
+     * Listen for frame selection from canvas
+     */
+    React.useEffect(() => {
+        const handler = (e: Event) => {
+            const { id } = (e as CustomEvent).detail
+            setActiveGeneratedUIId(id)
+        }
+        window.addEventListener('frame-selected', handler)
+        return () => window.removeEventListener('frame-selected', handler)
+    }, [])
+
+    /**
+     * Capture snapshot + name whenever active frame changes
+     */
+    React.useEffect(() => {
+        if (!activeGeneratedUIId) {
+            setAttachedThumbnailUrl(null)
+            setAttachedFrameName(null)
+            return
+        }
+
+        const shape = allShapesRef.current.find(s => s.id === activeGeneratedUIId)
+        if (!shape) return
+
+        setAttachedFrameName((shape as any).name ?? 'Frame')
+
+        // Just fetch from Convex — instant
+        fetch(`/api/snapshots/get?shapeId=${activeGeneratedUIId}`)
+            .then(r => r.json())
+            .then(r => setAttachedThumbnailUrl(r.url ?? null))
+            .catch(() => setAttachedThumbnailUrl(null))
+
+    }, [activeGeneratedUIId])
+
+    /**
+     * Update a turn's attached frame name when the shape name becomes available
+     */
+    const updateTurnFrameName = React.useCallback((shapeId: string, frameName: string) => {
+        setChatTurns(prev => prev.map(t => {
+            if (t.attachedFrameId === shapeId && (!t.attachedFrameName || t.attachedFrameName === 'Frame')) {
+                return { ...t, attachedFrameName: frameName }
+            }
+            return t
+        }))
+    }, [])
 
     /**
      * Load chat history from Convex on mount
@@ -1959,7 +2059,7 @@ export const useGlobalChat = () => {
                         prompt: t.prompt,
                         response: t.response,
                         isLoading: false,
-                        timestamp: t.timestamp,
+                    timestamp: t.timestamp,
                         urls: t.urls ?? [],
                     }))
                 )
@@ -2005,7 +2105,7 @@ export const useGlobalChat = () => {
         async (
             prompt: string,
             projectId: string,
-            opts?: { urls?: string[]; targetShapeId?: string; isInit?: boolean }
+            opts?: { urls?: string[]; targetShapeId?: string; isInit?: boolean; imageStorageIds?: string[] }
         ) => {
             if (isSendingRef.current) return
             isSendingRef.current = true
@@ -2015,7 +2115,13 @@ export const useGlobalChat = () => {
             const targetId = opts?.targetShapeId ?? activeGeneratedUIId
             const timestamp = Date.now()
 
-            // Optimistically add the turn
+            // Read frame name fresh from shape at send time
+            const attachedShape = targetId
+                ? allShapesRef.current.find(s => s.id === targetId)
+                : null
+            const frameName = (attachedShape as any)?.name ?? null
+
+            // Optimistically add turn — include frame attachment info
             setChatTurns((prev) => [
                 ...(opts?.isInit ? [] : prev),
                 {
@@ -2025,6 +2131,9 @@ export const useGlobalChat = () => {
                     isLoading: true,
                     timestamp,
                     urls: opts?.urls,
+                    attachedFrameId: targetId ?? null,
+                    attachedFrameName: frameName,
+                    attachedFrameSnapshot: attachedFrameSnapshot ?? null,
                 },
             ])
             setExpandedTurnId(turnId)
@@ -2048,19 +2157,42 @@ export const useGlobalChat = () => {
             }
 
             try {
-                // Get current HTML if we're editing an existing shape
-                const currentShape = targetId
-                    ? allShapes.find((s) => s.id === targetId)
+                // Get HTML from attached frame if one is selected
+                const attachedShape = activeGeneratedUIId
+                    ? allShapesRef.current.find(s => s.id === activeGeneratedUIId && s.type === 'generatedui')
                     : null
-                const currentHTML =
-                    currentShape?.type === 'generatedui'
-                        ? currentShape.uiSpecData ?? undefined
-                        : undefined
+                const currentHTML = attachedShape?.uiSpecData ?? undefined
+
+                let finalPrompt = prompt
+
+                // ── Analyze reference URLs if present ──────────────────────
+                if (opts?.urls && opts.urls.length > 0) {
+                    try {
+                        const analyzeRes = await fetch('/api/url-analyze', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ urls: opts.urls, prompt }),
+                        })
+                        const { enhanced } = await analyzeRes.json()
+                        if (enhanced) finalPrompt = enhanced
+                    } catch {
+                        // fallback to original prompt silently
+                    }
+                }
 
                 const res = await fetch('/api/chat', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ prompt, projectId, currentHTML }),
+                    body: JSON.stringify({
+                        prompt: finalPrompt,
+                        projectId,
+                        currentHTML,
+                        frameSnapshot: attachedFrameSnapshot ?? undefined,  // ← send image
+                        history: chatTurns
+                            .filter(t => !t.isLoading)
+                            .map(t => ({ prompt: t.prompt, response: t.response })),
+                        imageStorageIds: opts?.imageStorageIds ?? [],
+                    }),
                 })
 
                 if (!res.ok) throw new Error('Chat request failed')
@@ -2100,6 +2232,11 @@ export const useGlobalChat = () => {
                             shapeId = newId
                             setActiveGeneratedUIId(newId)
                             shapeCreated = true
+
+                            // ✅ Link this turn to the shape it's generating
+                            setChatTurns(prev => prev.map(t =>
+                                t.id === turnId ? { ...t, generatedShapeId: newId } : t
+                            ))
                         }
                         htmlBuffer += chunk
                         flushHTML()
@@ -2128,6 +2265,18 @@ export const useGlobalChat = () => {
                                 return t
                             })
                         )
+                        
+                        // Capture and upload snapshot after HTML is complete
+                        if (shapeId && htmlBuffer) {
+                            captureAndUploadSnapshot(
+                                shapeId,
+                                htmlBuffer,
+                                { w: 1200, h: 900 },
+                                projectId
+                            ).catch(() => {
+                                // Silently fail — not critical
+                            })
+                        }
                     },
                     // onStyleGuide — render style guide frame to the left of the generated UI
                     (tokens) => {
@@ -2144,6 +2293,14 @@ export const useGlobalChat = () => {
                                 sourceFrameId: null,
                             })
                         )
+                    },
+                    // onToolStatus — track tool execution status
+                    (label, state) => {
+                        setToolStatus({ label, state })
+                        // Auto-clear after done
+                        if (state === 'done') {
+                            setTimeout(() => setToolStatus(null), 2000)
+                        }
                     }
                 )
             } catch (err) {
@@ -2164,7 +2321,7 @@ export const useGlobalChat = () => {
                 setIsSending(false)
             }
         },
-        [activeGeneratedUIId, dispatch, allShapes, saveTurn]
+        [activeGeneratedUIId, chatTurns, dispatch, saveTurn, attachedFrameSnapshot, attachedFrameName]
     )
 
     const projectMetadata = useAppSelector((s) => s.project)
@@ -2206,5 +2363,10 @@ export const useGlobalChat = () => {
         initFromUrlPrompt,
         sendMessage,
         generateWorkflow,
+        attachedFrameName,
+        attachedThumbnailUrl,
+        attachedFrameSnapshot,
+        updateTurnFrameName,
+        toolStatus,
     }
 }

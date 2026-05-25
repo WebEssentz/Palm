@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { ImageIcon, Globe, Sparkles, Plus } from 'lucide-react'
 import { useTheme } from 'next-themes'
@@ -16,16 +17,22 @@ interface Props {
 
 export function AttachmentMenu({ onUpload, onUrl, onEnhance, enhancing, hasInput }: Props) {
     const [open, setOpen] = useState(false)
+    const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null)
     const { theme, systemTheme } = useTheme()
     const fileRef = useRef<HTMLInputElement>(null)
+    const triggerRef = useRef<HTMLButtonElement>(null)
     const menuRef = useRef<HTMLDivElement>(null)
+    const portalMenuRef = useRef<HTMLDivElement>(null)
 
     const effectiveTheme = theme === 'system' ? systemTheme : theme
     const isLight = effectiveTheme === 'light'
 
     useEffect(() => {
         const handler = (e: MouseEvent) => {
-            if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+            if (
+                menuRef.current && !menuRef.current.contains(e.target as Node) &&
+                portalMenuRef.current && !portalMenuRef.current.contains(e.target as Node)
+            ) {
                 setOpen(false)
             }
         }
@@ -36,6 +43,17 @@ export function AttachmentMenu({ onUpload, onUrl, onEnhance, enhancing, hasInput
     const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0]
         if (file) { onUpload(file); setOpen(false) }
+    }
+
+    const handleToggle = () => {
+        if (!open && triggerRef.current) {
+            const rect = triggerRef.current.getBoundingClientRect()
+            setMenuPos({
+                top: rect.top,
+                left: rect.left,
+            })
+        }
+        setOpen(o => !o)
     }
 
     const glassStyle = isLight ? {
@@ -76,7 +94,8 @@ export function AttachmentMenu({ onUpload, onUrl, onEnhance, enhancing, hasInput
 
             {/* Trigger */}
             <button
-                onClick={() => setOpen(o => !o)}
+                ref={triggerRef}
+                onClick={handleToggle}
                 className='w-8 h-8 rounded-full flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors cursor-pointer'
                 style={isLight ? {
                     background: 'rgba(250,246,238,0.88)',
@@ -107,16 +126,22 @@ export function AttachmentMenu({ onUpload, onUrl, onEnhance, enhancing, hasInput
                 <Plus className='w-4 h-4' />
             </button>
 
-            <AnimatePresence>
-                {open && (
-                    <motion.div
-                        initial={{ opacity: 0, y: 6, scale: 0.97 }}
-                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                        exit={{ opacity: 0, y: 6, scale: 0.97 }}
-                        transition={{ type: 'spring', damping: 22, stiffness: 320 }}
-                        className='absolute bottom-14 left-0 w-48 rounded-2xl overflow-hidden z-50'
-                        style={glassStyle}
-                    >
+            {typeof window !== 'undefined' && open && menuPos && createPortal(
+                <AnimatePresence>
+                    {open && (
+                        <motion.div
+                            ref={portalMenuRef}
+                            initial={{ opacity: 0, y: 6, scale: 0.97 }}
+                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                            exit={{ opacity: 0, y: 6, scale: 0.97 }}
+                            transition={{ type: 'spring', damping: 22, stiffness: 320 }}
+                            className='fixed w-48 rounded-2xl overflow-hidden z-[9999]'
+                            style={{
+                                ...glassStyle,
+                                bottom: window.innerHeight - menuPos.top + 8,
+                                left: menuPos.left,
+                            }}
+                        >
                         {/* Specular rim */}
                         <div
                             className='pointer-events-none absolute inset-x-0 top-0 h-[1px] z-10'
@@ -151,7 +176,9 @@ export function AttachmentMenu({ onUpload, onUrl, onEnhance, enhancing, hasInput
                         </div>
                     </motion.div>
                 )}
-            </AnimatePresence>
+            </AnimatePresence>,
+            document.body
+            )}
         </div>
     )
 }

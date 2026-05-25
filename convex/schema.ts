@@ -77,6 +77,13 @@ const schema = defineSchema({
     timestamp: v.number(),
     urls: v.optional(v.array(v.string())),
   }).index('by_project', ['projectId']),
+
+  generatedui_snapshots: defineTable({
+    projectId: v.string(),
+    shapeId: v.string(),
+    thumbnailUrl: v.string(),
+    storageId: v.string(),  // so you can delete the old file
+  }).index('by_shapeId', ['shapeId']),
 });
 
 export default schema;

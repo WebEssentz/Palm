@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { useGlobalChat, useInfiniteCanvas } from '@/hooks/use-canvas'
 import Substrate from '@/components/home/substrate'
 import TextSidebar from './text-sidebar'
@@ -47,7 +47,8 @@ const InfiniteCanvas = () => {
     getPointToPoint,
     isSidebarOpen,
     hasSelectedText,
-    hoveredShapeId
+    hoveredShapeId,
+    isMoving
   } = useInfiniteCanvas()
 
   const {
@@ -65,6 +66,11 @@ const InfiniteCanvas = () => {
   const freeDrawPoints = getFreeDrawPoints()
   const marquee = getMarquee()
   const pointToPoint = getPointToPoint()
+  
+  const hoveredShape = hoveredShapeId
+    ? shapes.find(s => s.id === hoveredShapeId)
+    : null
+  const isHoveringGeneratedUI = hoveredShape?.type === 'generatedui'
 
   const promptFromUrl = searchParams.get('prompt')
   const projectId = searchParams.get('project')
@@ -77,11 +83,23 @@ const InfiniteCanvas = () => {
   // Sidebar open state (lifted from ChatPanel)
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [agentPanelOpen, setAgentPanelOpen] = useState(false) // ← add this
+  const planLogRef = React.useRef<HTMLDivElement>(null)
+  const [planLogHeight, setPlanLogHeight] = useState(36) // collapsed default
+
+  // Measure PlanLog whenever it opens/closes
+  React.useEffect(() => {
+    if (!planLogRef.current) return
+    const observer = new ResizeObserver(entries => {
+      setPlanLogHeight(entries[0].contentRect.height)
+    })
+    observer.observe(planLogRef.current)
+    return () => observer.disconnect()
+  }, [])
 
   // Wire ChatInput to sendMessage
-  const handleSend = (msg: string) => {
+  const handleSend = (msg: string, opts?: { urls?: string[]; imageStorageIds?: string[] }) => {
     if (!projectId) return
-    chat.sendMessage(msg, projectId)
+    chat.sendMessage(msg, projectId, opts)
   }
 
   // Load chat history from Convex on mount
@@ -103,19 +121,37 @@ const InfiniteCanvas = () => {
     )
   }, [isLoadingHistory, promptFromUrl, projectId, chat.chatTurns.length, existingShapes.length, initFromUrlPrompt])
 
+  // Listen for frame selection and auto-jump to the generating turn
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { id } = (e as CustomEvent).detail
+      if (!id) return
+
+      // Find the turn that generated this shape
+      const turn = chat.chatTurns.find(t => t.generatedShapeId === id)
+      if (turn) {
+        chat.setExpandedTurnId(turn.id)
+        setSidebarOpen(true)   // open panel if collapsed
+      }
+    }
+    window.addEventListener('frame-selected', handler)
+    return () => window.removeEventListener('frame-selected', handler)
+  }, [chat.chatTurns, chat])
+
   return (
     <div className='fixed inset-0 flex flex-col'>
       <TextSidebar isOpen={isSidebarOpen && hasSelectedText} />
 
-      {/* ── ChatPanel — independently fixed top-left ── */}
+      {/* ── ChatPanel — stops above PlanLog dynamically ── */}
       <div
         className='fixed left-3 top-14 z-50 pointer-events-none'
         style={{
           width: sidebarOpen ? 296 : 72,
+          bottom: planLogHeight + 28, // 20px bottom offset + 8px gap
           transition: 'width 0.35s cubic-bezier(0.32, 0.72, 0, 1)',
         }}
       >
-        <div className='pointer-events-auto'>
+        <div className={`pointer-events-auto flex flex-col ${sidebarOpen ? 'h-full' : ''}`}>
           <ChatPanel
             turns={chat.chatTurns}
             expandedTurnId={chat.expandedTurnId}
@@ -123,12 +159,14 @@ const InfiniteCanvas = () => {
             profile={profile}
             isOpen={sidebarOpen}
             onToggle={() => setSidebarOpen(o => !o)}
+            toolStatus={chat.toolStatus}
           />
         </div>
       </div>
 
-      {/* ── PlanLog — independently fixed bottom-left ── */}
+      {/* ── PlanLog — fully independent, owns its own width ── */}
       <div
+        ref={planLogRef}
         className='fixed left-3 bottom-5 z-50 pointer-events-none'
         style={{
           width: agentPanelOpen ? 296 : 80,
@@ -158,10 +196,13 @@ const InfiniteCanvas = () => {
             className={cn(
               'relative flex-1 overflow-hidden select-none z-0',
               {
-                'cursor-grabbing': viewport.mode === 'panning' || viewport.mode === 'shiftPanning',
-                'cursor-grab': currentTool === 'pan' && viewport.mode === 'idle',
+                // canvas pan takes priority
+                'cursor-grabbing': viewport.mode === 'panning' || viewport.mode === 'shiftPanning'
+                  || (isMoving && isHoveringGeneratedUI),
+                'cursor-grab': (currentTool === 'pan' && viewport.mode === 'idle')
+                  || (currentTool === 'select' && isHoveringGeneratedUI && !isMoving && viewport.mode === 'idle'),
                 'cursor-crosshair': currentTool !== 'select' && currentTool !== 'eraser' && currentTool !== 'pan' && viewport.mode === 'idle',
-                'cursor-default': currentTool === 'select' && viewport.mode === 'idle'
+                'cursor-default': currentTool === 'select' && !isHoveringGeneratedUI && viewport.mode === 'idle'
               }
             )}
             style={{
@@ -303,6 +344,10 @@ const InfiniteCanvas = () => {
           <ChatInput
             onSend={handleSend}
             isLoading={chat.isSending}
+            attachedFrameId={activeGeneratedUIId}
+            attachedFrameName={chat.attachedFrameName}
+            attachedThumbnailUrl={chat.attachedThumbnailUrl}
+            onDetachFrame={() => setActiveGeneratedUIId(null)}
           />
         </div>
       </div>

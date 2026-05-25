@@ -1,6 +1,9 @@
 import React from 'react'
 import { useTheme } from 'next-themes'
 import { GeneratedUIShape } from '@/redux/slice/shapes'
+import { useDispatch } from 'react-redux'
+import { updateShape } from '@/redux/slice/shapes'
+import { AppDispatch } from '@/redux/store'
 
 type Props = {
     shape: GeneratedUIShape
@@ -19,8 +22,6 @@ function stripCodeFences(html: string): string {
         .trim()
 }
 
-
-
 async function fetchTitle(userPrompt: string, htmlSnippet: string): Promise<string> {
     const res = await fetch('/api/generate-title', {
         method: 'POST',
@@ -33,6 +34,7 @@ async function fetchTitle(userPrompt: string, htmlSnippet: string): Promise<stri
 }
 
 const GeneratedUI = ({ shape }: Props) => {
+    const dispatch = useDispatch<AppDispatch>()
     const iframeRef = React.useRef<HTMLIFrameElement>(null)
     const hasFetchedTitle = React.useRef(false)
 
@@ -42,16 +44,13 @@ const GeneratedUI = ({ shape }: Props) => {
     const scale = shape.w / DESKTOP_WIDTH
     const internalHeight = shape.h / scale
 
-    // Grab prompt from shape — add `prompt?: string` to GeneratedUIShape
     const prompt = (shape as any).prompt as string | undefined
-
     const [title, setTitle] = React.useState<string>('Generated UI')
 
     // Fire once when uiSpecData settles (streaming is done)
     React.useEffect(() => {
         if (!shape.uiSpecData || hasFetchedTitle.current) return
 
-        // Guard: don't fetch mid-stream — wait until the HTML looks complete
         const html = stripCodeFences(shape.uiSpecData)
         const isComplete = html.trimEnd().endsWith('>') || html.includes('</body>') || html.includes('</div>')
         if (!isComplete) return
@@ -59,12 +58,16 @@ const GeneratedUI = ({ shape }: Props) => {
         hasFetchedTitle.current = true
 
         fetchTitle(prompt ?? 'UI design', html)
-            .then(setTitle)
-            .catch(() => {
-                // Graceful fallback — use first ~40 chars of prompt
-                if (prompt) setTitle(prompt.slice(0, 40).trim())
+            .then(t => {
+                setTitle(t)
+                dispatch(updateShape({ id: shape.id, patch: { name: t } }))
             })
-    }, [shape.uiSpecData, prompt])
+            .catch(() => {
+                const fallback = prompt?.slice(0, 40).trim() ?? 'Generated UI'
+                setTitle(fallback)
+                dispatch(updateShape({ id: shape.id, patch: { name: fallback } }))
+            })
+    }, [shape.uiSpecData, prompt, dispatch, shape.id])
 
     React.useEffect(() => {
         if (!iframeRef.current || !shape.uiSpecData) return
@@ -78,7 +81,7 @@ const GeneratedUI = ({ shape }: Props) => {
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=1440"/>
-<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.tailwindcss.com"><\/script>
 <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     html, body { width: 1440px; height: 100%; overflow: hidden; background: ${bgColor}; }
@@ -93,6 +96,7 @@ const GeneratedUI = ({ shape }: Props) => {
             className='absolute pointer-events-none'
             style={{ left: shape.x, top: shape.y, width: shape.w, height: shape.h }}
         >
+            {/* Label above the frame */}
             <div
                 style={{
                     position: 'absolute',
@@ -109,65 +113,67 @@ const GeneratedUI = ({ shape }: Props) => {
             >
                 {title}
             </div>
+
             {shape.uiSpecData ? (
-                <div style={{
-                    width: shape.w,
-                    height: shape.h,
-                    borderRadius: 8,
-                    border: '1px solid rgba(255,255,255,0.12)',
-                    position: 'relative',
-                    pointerEvents: 'auto',
-                    overflow: 'hidden',
-                }}>
-                    <div style={{
-                        position: 'absolute',
-                        top: 0,
-                        left: 0,
+                <div
+                    style={{
                         width: shape.w,
                         height: shape.h,
-                        overflow: 'hidden',
-                    }}>
-                        <iframe
-                            ref={iframeRef}
-                            sandbox="allow-scripts"
-                            scrolling="no"
-                            style={{
-                                width: DESKTOP_WIDTH,
-                                height: internalHeight,
-                                border: 'none',
-                                transformOrigin: 'top left',
-                                transform: `scale(${scale})`,
-                                display: 'block',
-                                pointerEvents: 'none',
-                            }}
-                        />
-                    </div>
-
-                    <div style={{
-                        position: 'absolute',
-                        inset: 0,
-                        zIndex: 10,
+                        borderRadius: 8,
+                        border: '1px solid rgba(255,255,255,0.12)',
+                        position: 'relative',
+                        // ✅ pointer-events auto so canvas receives clicks/drags through the iframe
+                        //    (iframe itself has pointer-events:none so it never eats events)
                         pointerEvents: 'auto',
-                        cursor: 'default',
-                    }} />
+                        overflow: 'hidden',
+                        // cursor is intentionally NOT set here — the canvas div owns the cursor
+                    }}
+                >
+                    <iframe
+                        ref={iframeRef}
+                        sandbox="allow-scripts"
+                        scrolling="no"
+                        style={{
+                            width: DESKTOP_WIDTH,
+                            height: internalHeight,
+                            border: 'none',
+                            transformOrigin: 'top left',
+                            transform: `scale(${scale})`,
+                            display: 'block',
+                            // ✅ already none — this is why the overlay was never needed
+                            pointerEvents: 'none',
+                        }}
+                    />
+                    {/*
+                     * ❌ Removed: the overlay div that had onPointerDown/Up/Leave + cursor:'move'
+                     *    It was intercepting events before they could bubble to the canvas,
+                     *    and its cursor style was overriding the canvas-level cursor class.
+                     *    The iframe's pointer-events:none already handles event passthrough.
+                     */}
                 </div>
             ) : (
-                <div style={{
-                    width: shape.w,
-                    height: shape.h,
-                    borderRadius: 8,
-                    border: '1px solid rgba(255,255,255,0.12)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                }}>
-                    <span style={{
-                        fontSize: 12,
-                        color: 'rgba(255,255,255,0.4)',
-                        fontWeight: 500,
-                        letterSpacing: '0.04em',
-                        animation: 'pulse 1.5s ease-in-out infinite',
-                    }}>
+                <div
+                    style={{
+                        width: shape.w,
+                        height: shape.h,
+                        borderRadius: 8,
+                        border: '1px solid rgba(255,255,255,0.12)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        // also allow pointer events when empty so user can still click/move it
+                        pointerEvents: 'auto',
+                    }}
+                >
+                    <span
+                        style={{
+                            fontSize: 12,
+                            color: 'rgba(255,255,255,0.4)',
+                            fontWeight: 500,
+                            letterSpacing: '0.04em',
+                            animation: 'pulse 1.5s ease-in-out infinite',
+                        }}
+                    >
                         Generating UI…
                     </span>
                 </div>

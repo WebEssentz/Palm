@@ -175,7 +175,16 @@ export default function HomeShell({ profile, view = 'home' }: Props) {
     const handleRemoveImage = (id: string) => {
         setUploadedImages(prev => {
             const img = prev.find(i => i.id === id)
-            if (img) URL.revokeObjectURL(img.previewUrl)
+            if (img) {
+                URL.revokeObjectURL(img.previewUrl)
+                if (img.storageId) {
+                    fetch('/api/files/delete', {
+                        method: 'DELETE',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ storageId: img.storageId }),
+                    }).catch(console.error)
+                }
+            }
             return prev.filter(i => i.id !== id)
         })
     }
