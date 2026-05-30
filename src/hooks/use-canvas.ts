@@ -2333,7 +2333,8 @@ export const useGlobalChat = () => {
             prompt: string,
             projectId: string,
             onStream: (html: string) => void,
-            onDone: () => void
+            onDone: () => void,
+            imageStorageIds: string[] = []
         ) => {
             if (hasInitRef.current) return
             hasInitRef.current = true
@@ -2341,8 +2342,8 @@ export const useGlobalChat = () => {
             // Get reference URLs from Redux project metadata
             const referenceUrls = projectMetadata.referenceUrls ?? []
 
-            // Delegate to sendMessage with isInit flag and referenceUrls
-            await sendMessage(prompt, projectId, { isInit: true, urls: referenceUrls })
+            // Delegate to sendMessage with isInit flag, referenceUrls, and images
+            await sendMessage(prompt, projectId, { isInit: true, urls: referenceUrls, imageStorageIds })
 
             // Note: The actual HTML streaming happens via the canvas dispatch,
             // but for the init flow's onStream callback, we'd need to

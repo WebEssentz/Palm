@@ -12,7 +12,7 @@ import { useQuery } from 'convex/react'
 import { api } from '../../../convex/_generated/api'
 import { Id } from '../../../convex/_generated/dataModel'
 import { formatDistanceToNow } from 'date-fns'
-import { Home, LayoutGrid, ChevronRight, ChevronLeft, ArrowUp, Trash2, MoreHorizontal, Globe, X } from 'lucide-react'
+import { Home, LayoutGrid, ArrowUp, Trash2, MoreHorizontal, Globe, X, PanelLeft } from 'lucide-react'
 import { ThemeToggle } from '@/components/theme/toggle'
 import { AvatarDropdown } from '@/components/avatar-dropdown'
 import { GlassTooltip } from '@/components/ui/glass-tooltip'
@@ -125,6 +125,7 @@ export default function HomeShell({ profile, view = 'home' }: Props) {
     const [isFocused, setIsFocused] = useState(false)
     const [enhancing, setEnhancing] = useState(false)
     const [isLoading, setIsLoading] = useState(false)
+    const [pendingSend, setPendingSend] = useState(false)
     const [isRecordingActive, setIsRecordingActive] = useState(false)
     const [suggestedPrompts] = useState(() => getRandomPrompts())
     const [hasDeletedOptimistic, setHasDeletedOptimistic] = useState(false)
@@ -134,9 +135,14 @@ export default function HomeShell({ profile, view = 'home' }: Props) {
     const [urlMode, setUrlMode] = useState(false)
     const [urlTags, setUrlTags] = useState<string[]>([])
     const [urlInputValue, setUrlInputValue] = useState('')
+    const [logoHovered, setLogoHovered] = useState(false)
     const textareaRef = useRef<HTMLTextAreaElement>(null)
     const dragCounter = useRef(0)
+    const pendingSendRef = useRef(false)
     const { toast } = usePalmToast()
+
+    // Check if any images are still uploading
+    const isUploading = uploadedImages.some(img => img.storageId === null && !img.error)
 
     const creditBalance = useQuery(
         api.subscription.getCreditsBalance,
@@ -166,10 +172,22 @@ export default function HomeShell({ profile, view = 'home' }: Props) {
             const res = await fetch('/api/upload', { method: 'POST', body: form })
             if (!res.ok) throw new Error('Upload failed')
             const { storageId } = await res.json()
-            setUploadedImages(prev => prev.map(img => img.id === id ? { ...img, storageId } : img))
+
+            setUploadedImages(prev => {
+                const updated = prev.map(img => img.id === id ? { ...img, storageId } : img)
+                const stillUploading = updated.some(img => img.storageId === null && !img.error)
+                if (!stillUploading && pendingSendRef.current) {
+                    pendingSendRef.current = false
+                    setPendingSend(false)
+                    setTimeout(() => handleSubmit(), 0)
+                }
+                return updated
+            })
         } catch (err) {
             console.error('Image upload failed:', err)
             setUploadedImages(prev => prev.map(img => img.id === id ? { ...img, error: true } : img))
+            pendingSendRef.current = false
+            setPendingSend(false)
         }
     }
 
@@ -252,6 +270,14 @@ export default function HomeShell({ profile, view = 'home' }: Props) {
 
     const handleSubmit = async () => {
         if (!prompt.trim() || isLoading) return
+
+        // If images are still uploading, queue the send
+        if (uploadedImages.some(img => img.storageId === null && !img.error)) {
+            pendingSendRef.current = true
+            setPendingSend(true)
+            return
+        }
+
         setIsLoading(true)
 
         try {
@@ -293,7 +319,11 @@ export default function HomeShell({ profile, view = 'home' }: Props) {
             if (!res.ok || !projectId) throw new Error(details || error)
 
             router.push(
-                `/dashboard/${me.name}/canvas?project=${projectId}&prompt=${encodeURIComponent(finalPrompt)}`
+                `/dashboard/${me.name}/canvas?project=${projectId}&prompt=${encodeURIComponent(finalPrompt)}${
+                    imageStorageIds.length > 0
+                        ? `&images=${encodeURIComponent(JSON.stringify(imageStorageIds))}`
+                        : ''
+                }`
             )
         } catch (err) {
             console.error('Submit failed:', err)
@@ -401,18 +431,56 @@ export default function HomeShell({ profile, view = 'home' }: Props) {
                         sideOpen ? 'w-52' : 'w-14'
                     )}
                 >
-                    {/* Logo */}
-                    <div className={cn('flex items-center px-3.5 py-4', sideOpen && 'gap-2.5')}>
-                        <Link
-                            href={`/dashboard/${me.name}`}
-                            className='w-6 h-6 rounded-lg bg-primary flex-shrink-0 flex items-center justify-center'
-                        >
-                            <div className='w-3.5 h-3.5 rounded-full bg-primary-foreground' />
-                        </Link>
-                        {sideOpen && (
-                            <span className='font-semibold text-sm text-foreground tracking-tight'>Palm</span>
-                        )}
-                    </div>
+                    {/* Logo row */}
+                    {sideOpen ? (
+                        /* Expanded: logo + "Palm" text + close button inline */
+                        <div className='flex items-center justify-between px-3.5 py-4 gap-2.5'>
+                            <div className='flex items-center gap-2.5'>
+                                <Link
+                                    href={`/dashboard/${me.name}`}
+                                    className='w-6 h-6 rounded-lg bg-primary flex-shrink-0 flex items-center justify-center'
+                                >
+                                    <div className='w-3.5 h-3.5 rounded-full bg-primary-foreground' />
+                                </Link>
+                                <span className='font-semibold text-sm text-foreground tracking-tight'>Palm</span>
+                            </div>
+                            <GlassTooltip content="Close sidebar" side="right">
+                                <button
+                                    onClick={() => dispatch(toggleSidebar())}
+                                    className='w-6 h-6 flex items-center justify-center text-muted-foreground hover:text-foreground hover:cursor-ew-resize transition-colors flex-shrink-0'
+                                    aria-label="Collapse sidebar"
+                                >
+                                    <PanelLeft className='w-4 h-4' />
+                                </button>
+                            </GlassTooltip>
+                        </div>
+                    ) : (
+                        /* Collapsed: Palm logo normally; on hover swap to plain PanelLeft with tooltip */
+                        <div className='flex items-center justify-center px-3.5 py-4'>
+                            {logoHovered ? (
+                                <GlassTooltip content="Open sidebar" side="right">
+                                    <button
+                                        className='w-6 h-6 flex items-center justify-center text-muted-foreground hover:text-foreground hover:cursor-ew-resize transition-colors flex-shrink-0'
+                                        onMouseLeave={() => setLogoHovered(false)}
+                                        onClick={() => dispatch(toggleSidebar())}
+                                        aria-label="Expand sidebar"
+                                    >
+                                        <PanelLeft className='w-4 h-4' />
+                                    </button>
+                                </GlassTooltip>
+                            ) : (
+                                <GlassTooltip content="Open sidebar" side="right">
+                                    <Link
+                                        href={`/dashboard/${me.name}`}
+                                        className='w-6 h-6 rounded-lg bg-primary flex-shrink-0 flex items-center justify-center'
+                                        onMouseEnter={() => setLogoHovered(true)}
+                                    >
+                                        <div className='w-3.5 h-3.5 rounded-full bg-primary-foreground' />
+                                    </Link>
+                                </GlassTooltip>
+                            )}
+                        </div>
+                    )}
 
                     {/* Nav */}
                     <nav className='flex flex-col gap-0.5 px-2 mt-1'>
@@ -469,16 +537,13 @@ export default function HomeShell({ profile, view = 'home' }: Props) {
                                     >
                                         {(() => {
                                             const src = thumbnailToSrc(p.thumbnail)
-                                            const dark = isColorDark(p.thumbnail)
 
                                             return src
                                                 ? <img src={src} className='w-5 h-5 rounded flex-shrink-0' alt='' />
                                                 : <div
                                                     className='w-5 h-5 rounded flex-shrink-0'
                                                     style={{
-                                                        background: (!isLightMode && dark)
-                                                            ? '#ffffff'
-                                                            : p.thumbnail || '#888888'
+                                                        background: p.thumbnail || '#888888'
                                                     }}
                                                 />
                                         })()}
@@ -506,22 +571,6 @@ export default function HomeShell({ profile, view = 'home' }: Props) {
                             }}
                         />
                     )}
-
-                    {/* Sidebar toggle — liquid glass */}
-                    <div className='mt-auto flex items-center justify-center pb-4'>
-                        <GlassTooltip content="Expand sidebar" disabled={sideOpen}>
-                            <button
-                                onClick={() => dispatch(toggleSidebar())}
-                                className={cn(
-                                    'w-7 h-7 rounded-full flex items-center justify-center text-muted-foreground hover:text-foreground hover:cursor-pointer transition-colors',
-                                    sideOpen ? 'ml-auto mr-2' : 'mx-auto'
-                                )}
-                                style={liquidGlassStyle(isLightMode)}
-                            >
-                                {sideOpen ? <ChevronLeft className='w-3.5 h-3.5' /> : <ChevronRight className='w-3.5 h-3.5' />}
-                            </button>
-                        </GlassTooltip>
-                    </div>
                 </aside>
 
                 {/* ── Main ── */}
@@ -839,12 +888,12 @@ export default function HomeShell({ profile, view = 'home' }: Props) {
                                                                         disabled={!prompt.trim() || isLoading}
                                                                         className={cn(
                                                                             'w-8 h-8 rounded-full flex items-center justify-center transition-all flex-shrink-0',
-                                                                            prompt.trim() && !isLoading
+                                                                            prompt.trim() && !isLoading && !pendingSend
                                                                                 ? 'bg-black dark:bg-white'
                                                                                 : 'bg-transparent opacity-30'
                                                                         )}
                                                                     >
-                                                                        {isLoading
+                                                                        {(isLoading || pendingSend)
                                                                             ? <div className='w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin' />
                                                                             : <ArrowUp className={cn('w-4 h-4', prompt.trim() ? 'text-white dark:text-black' : 'text-muted-foreground')} />
                                                                         }

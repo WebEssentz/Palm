@@ -74,6 +74,10 @@ const InfiniteCanvas = () => {
 
   const promptFromUrl = searchParams.get('prompt')
   const projectId = searchParams.get('project')
+  const imagesParam = searchParams.get('images')
+  const initialImageIds: string[] = imagesParam
+    ? JSON.parse(decodeURIComponent(imagesParam))
+    : []
 
   // Check if shapes already exist from Convex load
   const existingShapes = useAppSelector((s) => s.shapes.shapes?.ids ?? [])
@@ -117,9 +121,11 @@ const InfiniteCanvas = () => {
       decodeURIComponent(promptFromUrl),
       projectId,
       () => { },
-      () => console.log('Initial generation done')
+      () => console.log('Initial generation done'),
+      initialImageIds
     )
-  }, [isLoadingHistory, promptFromUrl, projectId, chat.chatTurns.length, existingShapes.length, initFromUrlPrompt])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoadingHistory, promptFromUrl, projectId, chat.chatTurns.length, existingShapes.length, initialImageIds])
 
   // Listen for frame selection and auto-jump to the generating turn
   useEffect(() => {

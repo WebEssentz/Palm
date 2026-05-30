@@ -222,7 +222,7 @@ export const updateProjectStyleGuide = mutation({
             throw new Error("Access Denied")
         }
 
-        // Extract primary color from style guide for thumbnail
+        // Only set thumbnail if one isn't already set (preserve gradients)
         let thumbnailColor = '#888888'
         if (styleGuide?.colorSections && styleGuide.colorSections.length > 0) {
             const primarySection = styleGuide.colorSections[0]
@@ -231,11 +231,16 @@ export const updateProjectStyleGuide = mutation({
             }
         }
 
-        await ctx.db.patch(projectId, { 
+        const patchData: any = { 
             styleGuides: JSON.stringify(styleGuide), 
-            thumbnail: thumbnailColor,
             lastModified: Date.now() 
-        })
+        }
+
+        if (!project.thumbnail) {
+            patchData.thumbnail = thumbnailColor
+        }
+
+        await ctx.db.patch(projectId, patchData)
         return { success: true, styleGuide }
     }
 })
