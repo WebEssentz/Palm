@@ -12,10 +12,10 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
     const body = await req.json()
-    const { projectId, turnId, prompt, response, timestamp, urls } = body
+    const { projectId, turnId, prompt, response, timestamp, urls, imageStorageIds } = body
 
     if (!projectId || !turnId) return new Response('Missing fields', { status: 400 })
 
-    await fetchMutation(api.chat.saveTurn, { projectId, turnId, prompt, response, timestamp, urls })
+    await fetchMutation(api.chat.saveTurn, { projectId, turnId, prompt, response, timestamp, urls, imageStorageIds })
     return Response.json({ success: true })
 }

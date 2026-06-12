@@ -76,6 +76,7 @@ const schema = defineSchema({
     response: v.string(),
     timestamp: v.number(),
     urls: v.optional(v.array(v.string())),
+    imageStorageIds: v.optional(v.array(v.string())),
   }).index('by_project', ['projectId']),
 
   generatedui_snapshots: defineTable({

@@ -8,7 +8,8 @@ const nextConfig: NextConfig = {
         hostname: "**.convex.cloud",
       }
     ]
-  }
+  },
+  allowedDevOrigins: ['unthinkable-unatoned-patsy.ngrok-free.dev'],
 };
 
 export default nextConfig;

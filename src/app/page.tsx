@@ -17,21 +17,28 @@ const SPRING_SNAPPY  = { type: 'spring', stiffness: 400, damping: 18 } as const
 const SPRING_SOFT    = { type: 'spring', stiffness: 180, damping: 22 } as const
 const EASE_OUT_EXPO  = [0.16, 1, 0.3, 1] as const
 
-// ─────────────────────────────────────────────────────────────────────────────
-// GLASS SCROLLBAR — injected globally so every section benefits
-// ─────────────────────────────────────────────────────────────────────────────
+// ─── Glass scrollbar ──────────────────────────────────────────────────────
 const SCROLLBAR_CSS = `
   * { scrollbar-width: thin; scrollbar-color: rgba(160,120,80,0.28) transparent; }
   ::-webkit-scrollbar { width: 5px; }
   ::-webkit-scrollbar-track { background: transparent; }
-  ::-webkit-scrollbar-thumb {
-    background: rgba(160,120,80,0.28);
-    border-radius: 9999px;
-  }
-  ::-webkit-scrollbar-thumb:hover {
-    background: rgba(160,120,80,0.52);
-  }
+  ::-webkit-scrollbar-thumb { background: rgba(160,120,80,0.28); border-radius: 9999px; }
+  ::-webkit-scrollbar-thumb:hover { background: rgba(160,120,80,0.52); }
 `
+
+// ─────────────────────────────────────────────────────────────────────────────
+// useIsMobile — SSR-safe, resize-reactive
+// ─────────────────────────────────────────────────────────────────────────────
+function useIsMobile(breakpoint = 768) {
+  const [isMobile, setIsMobile] = useState(false)
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < breakpoint)
+    check()
+    window.addEventListener('resize', check, { passive: true })
+    return () => window.removeEventListener('resize', check)
+  }, [breakpoint])
+  return isMobile
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PHYSICS BUTTON
@@ -73,20 +80,18 @@ function PhysicsLink({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// CUSTOM CURSOR — liquid glass circle
-// Uses useMotionTemplate for inner specular highlight (glass realism)
-// Uses SPRING_SOFT for the characteristic liquid lag
+// CUSTOM CURSOR — killed entirely on touch/pointer:coarse
 // ─────────────────────────────────────────────────────────────────────────────
 function CustomCursor() {
-  const mouseX   = useMotionValue(-200)
-  const mouseY   = useMotionValue(-200)
+  // Default true so we never flash the cursor on mobile during hydration
+  const [isTouch, setIsTouch] = useState(true)
+  const mouseX = useMotionValue(-200)
+  const mouseY = useMotionValue(-200)
   const [isHovered, setIsHovered] = useState(false)
 
-  // SPRING_SOFT gives the glass-circle its liquid trailing feel
   const x = useSpring(mouseX, SPRING_SOFT)
   const y = useSpring(mouseY, SPRING_SOFT)
 
-  // useMotionTemplate: a static specular highlight that sells the glass illusion
   const glassHighlight = useMotionTemplate`radial-gradient(
     circle at 30% 28%,
     rgba(255,255,255,0.55) 0%,
@@ -95,42 +100,38 @@ function CustomCursor() {
   )`
 
   useEffect(() => {
-    const onMove = (e: MouseEvent) => {
-      mouseX.set(e.clientX)
-      mouseY.set(e.clientY)
-    }
+    setIsTouch(window.matchMedia('(pointer: coarse)').matches)
+  }, [])
+
+  useEffect(() => {
+    if (isTouch) return
+    const onMove = (e: MouseEvent) => { mouseX.set(e.clientX); mouseY.set(e.clientY) }
     const onOver = (e: MouseEvent) => {
       if ((e.target as Element).closest('a,button,[data-cursor]')) setIsHovered(true)
     }
     const onOut = () => setIsHovered(false)
-
     window.addEventListener('mousemove', onMove)
     document.addEventListener('mouseover', onOver)
-    document.addEventListener('mouseout',  onOut)
+    document.addEventListener('mouseout', onOut)
     return () => {
       window.removeEventListener('mousemove', onMove)
       document.removeEventListener('mouseover', onOver)
-      document.removeEventListener('mouseout',  onOut)
+      document.removeEventListener('mouseout', onOut)
     }
-  }, [mouseX, mouseY])
+  }, [mouseX, mouseY, isTouch])
+
+  if (isTouch) return null
 
   return (
     <motion.div
       style={{
         position: 'fixed', top: 0, left: 0, zIndex: 99999,
-        pointerEvents: 'none',
-        x, y,
-        translateX: '-50%',
-        translateY: '-50%',
+        pointerEvents: 'none', x, y,
+        translateX: '-50%', translateY: '-50%',
       }}
     >
-      {/* Outer glass disc */}
       <motion.div
-        animate={{
-          width:  isHovered ? 54 : 32,
-          height: isHovered ? 54 : 32,
-          opacity: isHovered ? 0.92 : 0.80,
-        }}
+        animate={{ width: isHovered ? 54 : 32, height: isHovered ? 54 : 32, opacity: isHovered ? 0.92 : 0.80 }}
         transition={SPRING_SOFT}
         style={{
           borderRadius: '50%',
@@ -143,39 +144,26 @@ function CustomCursor() {
             'inset 0 -1px 0 rgba(0,0,0,0.08)',
             '0 4px 20px rgba(160,120,80,0.14)',
           ].join(', '),
-          overflow: 'hidden',
-          position: 'relative',
+          overflow: 'hidden', position: 'relative',
         }}
       >
-        {/* Specular glass highlight via useMotionTemplate */}
-        <motion.div
-          style={{
-            position: 'absolute', inset: 0,
-            borderRadius: '50%',
-            background: glassHighlight,
-          }}
-        />
+        <motion.div style={{ position: 'absolute', inset: 0, borderRadius: '50%', background: glassHighlight }} />
       </motion.div>
     </motion.div>
   )
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// NAV — pill morph with BIDIRECTIONAL transitions
-// Going down → fast EASE_OUT_EXPO (beautiful snap into pill)
-// Going back → SPRING_SOFT (relaxed, natural return to full bar)
-// useMotionTemplate drives backdrop blur as a continuous motion value
+// NAV — links hidden on mobile, padding responsive, pill morph intact
 // ─────────────────────────────────────────────────────────────────────────────
 function Nav({ isLight }: { isLight: boolean }) {
   const [scrolled, setScrolled] = useState(false)
+  const isMobile = useIsMobile()
 
-  // Motion value: 0 = top, 1 = scrolled. Spring smooths it continuously.
   const scrollProg = useMotionValue(0)
   const sp = useSpring(scrollProg, SPRING_SOFT)
-
-  // useMotionTemplate: backdrop blur animates fluidly between states
-  const blurAmt       = useTransform(sp, [0, 1], [0, 28])
-  const backdropBlur  = useMotionTemplate`blur(${blurAmt}px)`
+  const blurAmt = useTransform(sp, [0, 1], [0, 28])
+  const backdropBlur = useMotionTemplate`blur(${blurAmt}px)`
 
   useEffect(() => {
     const fn = () => {
@@ -192,11 +180,7 @@ function Nav({ isLight }: { isLight: boolean }) {
       <svg style={{ position: 'absolute', width: 0, height: 0, overflow: 'hidden' }} aria-hidden="true">
         <defs>
           {['dark', 'light'].map(m => (
-            <filter
-              key={m} id={`nav-glass-${m}`}
-              x="-10%" y="-40%" width="120%" height="180%"
-              colorInterpolationFilters="sRGB"
-            >
+            <filter key={m} id={`nav-glass-${m}`} x="-10%" y="-40%" width="120%" height="180%" colorInterpolationFilters="sRGB">
               <feTurbulence type="fractalNoise" baseFrequency="0.65 0.42" numOctaves="3" seed="7" result="noise">
                 <animate attributeName="baseFrequency" values="0.65 0.42;0.67 0.44;0.65 0.42" dur="10s" repeatCount="indefinite"/>
               </feTurbulence>
@@ -208,39 +192,27 @@ function Nav({ isLight }: { isLight: boolean }) {
         </defs>
       </svg>
 
-      <div style={{
-        position: 'fixed', top: 0, left: 0, right: 0, zIndex: 1000,
-        display: 'flex', justifyContent: 'center', pointerEvents: 'none',
-      }}>
+      <div style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 1000, display: 'flex', justifyContent: 'center', pointerEvents: 'none' }}>
         <motion.nav
           initial={{ y: -32, opacity: 0 }}
           animate={{
-            y:             scrolled ? 14   : 0,
+            y:             scrolled ? 12   : 0,
             opacity:       1,
             maxWidth:      scrolled ? 580  : 2000,
-            paddingTop:    scrolled ? 10   : 18,
-            paddingBottom: scrolled ? 10   : 18,
-            paddingLeft:   scrolled ? 20   : 48,
-            paddingRight:  scrolled ? 20   : 48,
+            paddingTop:    scrolled ? 10   : 16,
+            paddingBottom: scrolled ? 10   : 16,
+            // Tighter horizontal padding on mobile in both states
+            paddingLeft:   scrolled ? 16   : (isMobile ? 20 : 48),
+            paddingRight:  scrolled ? 16   : (isMobile ? 20 : 48),
             borderRadius:  scrolled ? 9999 : 0,
           }}
-          // ─── BIDIRECTIONAL TRANSITION ──────────────────────────────────
-          // Scrolling down → snappy expo (satisfying pill morph)
-          // Scrolling back → SPRING_SOFT (gentle, organic relaxation)
-          transition={scrolled
-            ? { duration: 0.52, ease: EASE_OUT_EXPO }
-            : SPRING_SOFT
-          }
+          transition={scrolled ? { duration: 0.52, ease: EASE_OUT_EXPO } : SPRING_SOFT}
           style={{
             pointerEvents: 'auto', width: '100%',
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 40,
-            background: scrolled
-              ? (isLight ? 'rgba(245,240,232,0.78)' : 'rgba(8,8,8,0.80)')
-              : 'transparent',
-            // ─── useMotionTemplate powers this ────────────────────────────
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            background: scrolled ? (isLight ? 'rgba(245,240,232,0.78)' : 'rgba(8,8,8,0.80)') : 'transparent',
             backdropFilter: backdropBlur as unknown as string,
             WebkitBackdropFilter: backdropBlur as unknown as string,
-            // ──────────────────────────────────────────────────────────────
             border: scrolled
               ? (isLight ? '1px solid rgba(0,0,0,0.09)' : '1px solid rgba(255,255,255,0.10)')
               : '1px solid transparent',
@@ -278,10 +250,7 @@ function Nav({ isLight }: { isLight: boolean }) {
               background: isLight ? 'rgba(0,0,0,0.85)' : 'rgba(255,255,255,0.88)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
             }}>
-              <div style={{
-                width: 10, height: 10, borderRadius: '50%',
-                background: isLight ? '#F5F0E8' : '#070707',
-              }}/>
+              <div style={{ width: 10, height: 10, borderRadius: '50%', background: isLight ? '#F5F0E8' : '#070707' }}/>
             </div>
             <span style={{
               color: isLight ? 'rgba(0,0,0,0.65)' : 'rgba(255,255,255,0.70)',
@@ -289,31 +258,40 @@ function Nav({ isLight }: { isLight: boolean }) {
             }}>Palm</span>
           </div>
 
-          {/* Links */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 32 }}>
-            {['Features', 'Pricing', 'Docs'].map(l => (
-              <motion.a
-                key={l} href="#"
-                whileHover={{ y: -1 }}
-                transition={SPRING_SNAPPY}
-                style={{
-                  color: isLight ? 'rgba(0,0,0,0.40)' : 'rgba(255,255,255,0.38)',
-                  fontSize: 13, fontWeight: 500, letterSpacing: '-0.01em',
-                  transition: 'color 0.15s', textDecoration: 'none',
-                }}
-                onMouseEnter={e => (e.currentTarget.style.color = isLight ? 'rgba(0,0,0,0.75)' : 'rgba(255,255,255,0.80)')}
-                onMouseLeave={e => (e.currentTarget.style.color = isLight ? 'rgba(0,0,0,0.40)' : 'rgba(255,255,255,0.38)')}
-              >{l}</motion.a>
-            ))}
+          {/* Right side — links only on desktop, CTA always */}
+          <div style={{ display: 'flex', alignItems: 'center' }}>
+            {!isMobile && (
+              <>
+                {[
+                  { label: 'Features', href: '#' },
+                  { label: 'Pricing', href: '/pricing' },
+                  { label: 'Docs', href: '#' },
+                ].map(({ label, href }) => (
+                  <motion.a
+                    key={label} href={href}
+                    whileHover={{ y: -1 }}
+                    transition={SPRING_SNAPPY}
+                    style={{
+                      color: isLight ? 'rgba(0,0,0,0.40)' : 'rgba(255,255,255,0.38)',
+                      fontSize: 13, fontWeight: 500, letterSpacing: '-0.01em',
+                      transition: 'color 0.15s', textDecoration: 'none', marginRight: 32,
+                    }}
+                    onMouseEnter={e => (e.currentTarget.style.color = isLight ? 'rgba(0,0,0,0.75)' : 'rgba(255,255,255,0.80)')}
+                    onMouseLeave={e => (e.currentTarget.style.color = isLight ? 'rgba(0,0,0,0.40)' : 'rgba(255,255,255,0.38)')}
+                  >{label}</motion.a>
+                ))}
+              </>
+            )}
             <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.97 }} transition={SPRING_SNAPPY}>
               <Link
                 href="/auth/sign-up"
                 style={{
-                  padding: '8px 18px', borderRadius: 9999,
+                  padding: isMobile ? '7px 14px' : '8px 18px',
+                  borderRadius: 9999,
                   background: isLight ? 'rgba(0,0,0,0.88)' : 'rgba(255,255,255,0.92)',
                   color: isLight ? '#F5F0E8' : '#070707',
                   fontSize: 13, fontWeight: 600, letterSpacing: '-0.01em',
-                  textDecoration: 'none', display: 'block',
+                  textDecoration: 'none', display: 'block', whiteSpace: 'nowrap',
                 }}
               >
                 Get started
@@ -327,13 +305,14 @@ function Nav({ isLight }: { isLight: boolean }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// HERO — 4 independent z-planes of parallax
+// HERO — no hardcoded <br/>, font sizes tightened for mobile
 // ─────────────────────────────────────────────────────────────────────────────
 const HERO_WORDS = ['instantly.', 'effortlessly.', 'beautifully.', 'magically.']
 
 function Hero({ isLight }: { isLight: boolean }) {
   const [wordIdx, setWordIdx] = useState(0)
   const heroRef = useRef<HTMLElement>(null)
+  const isMobile = useIsMobile()
 
   const { scrollYProgress } = useScroll({ target: heroRef, offset: ['start start', 'end start'] })
   const sp = useSpring(scrollYProgress, { stiffness: 60, damping: 18 })
@@ -371,12 +350,10 @@ function Hero({ isLight }: { isLight: boolean }) {
       display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
       overflow: 'hidden', background: bg,
     }}>
-      {/* Plane 0 — particles */}
       <motion.div style={{ position: 'absolute', inset: 0, y: particleY }}>
         <ParticleBackground />
       </motion.div>
 
-      {/* Glow */}
       <motion.div style={{
         position: 'absolute', inset: 0, pointerEvents: 'none', y: glowY,
         background: isLight
@@ -389,14 +366,18 @@ function Hero({ isLight }: { isLight: boolean }) {
           variants={stagger} initial="hidden" animate="show"
           style={{ textAlign: 'center', padding: '0 24px', maxWidth: 940, margin: '0 auto' }}
         >
-          {/* Plane 1 — title */}
           <motion.div variants={itemUp} style={{ y: titleY, scale: titleScale, transformOrigin: '50% 60%' }}>
             <h1 style={{
-              fontSize: 'clamp(3.2rem, 8vw, 7rem)', fontWeight: 800,
-              lineHeight: 1.02, letterSpacing: '-0.045em', color: text, margin: 0,
+              // Tighter clamp on mobile so heading doesn't blow past the screen
+              fontSize: isMobile ? 'clamp(2.2rem, 10vw, 3.2rem)' : 'clamp(3.2rem, 8vw, 7rem)',
+              fontWeight: 800,
+              lineHeight: 1.06, letterSpacing: '-0.045em', color: text, margin: 0,
             }}>
-              Turn ideas into interfaces,
-              <br/>
+              {/*
+                KEY FIX: removed hardcoded <br/> — on mobile it forced a bad break
+                mid-phrase. The animated word now flows inline naturally.
+              */}
+              Turn ideas into interfaces,{' '}
               <AnimatePresence mode="wait">
                 <motion.span
                   key={wordIdx}
@@ -412,20 +393,19 @@ function Hero({ isLight }: { isLight: boolean }) {
             </h1>
           </motion.div>
 
-          {/* Plane 2 — subtitle */}
           <motion.div variants={itemFade} style={{ y: subtitleY }}>
             <p style={{
-              marginTop: 32,
-              fontSize: 'clamp(1rem, 2.2vw, 1.22rem)',
+              marginTop: isMobile ? 20 : 32,
+              fontSize: isMobile ? '0.94rem' : 'clamp(1rem, 2.2vw, 1.22rem)',
               color: sub, fontWeight: 400, lineHeight: 1.68, letterSpacing: '0.005em',
             }}>
-              Describe what you want to build. Palm generates production-ready UI<br/>
+              {/* Also removed the <br/> here — was breaking into ugly fragments on mobile */}
+              Describe what you want to build. Palm generates production-ready UI{' '}
               that you can refine, export, and ship — no design tools required.
             </p>
           </motion.div>
 
-          {/* Plane 3 — CTA */}
-          <motion.div variants={itemFade} style={{ marginTop: 48, display: 'flex', justifyContent: 'center', y: ctaY }}>
+          <motion.div variants={itemFade} style={{ marginTop: isMobile ? 32 : 48, display: 'flex', justifyContent: 'center', y: ctaY }}>
             <PhysicsLink href="/auth/sign-up" dark={isLight}>
               Start building free
               <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
@@ -436,7 +416,6 @@ function Hero({ isLight }: { isLight: boolean }) {
         </motion.div>
       </motion.div>
 
-      {/* Scroll cue */}
       <motion.div
         initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 2.4, duration: 1.2 }}
         style={{ position: 'absolute', bottom: 36, left: '50%', transform: 'translateX(-50%)', zIndex: 10 }}
@@ -457,10 +436,11 @@ function Hero({ isLight }: { isLight: boolean }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// HOW IT WORKS
+// HOW IT WORKS — 3-column grid → vertical stack on mobile
 // ─────────────────────────────────────────────────────────────────────────────
 function HowItWorks({ isLight }: { isLight: boolean }) {
   const ref = useRef<HTMLElement>(null)
+  const isMobile = useIsMobile()
   const { scrollYProgress } = useScroll({ target: ref, offset: ['start 0.85', 'end 0.3'] })
   const sp = useSpring(scrollYProgress, { stiffness: 60, damping: 20 })
 
@@ -485,64 +465,82 @@ function HowItWorks({ isLight }: { isLight: boolean }) {
   ]
 
   return (
-    <section ref={ref} style={{ background: bg, padding: '140px 48px' }}>
+    <section ref={ref} style={{ background: bg, padding: isMobile ? '80px 24px' : '140px 48px' }}>
       <div style={{ maxWidth: 1100, margin: '0 auto' }}>
         <motion.div
           initial={{ opacity: 0, y: 32 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true, margin: '-80px' }}
           transition={{ duration: 0.8, ease: EASE_OUT_EXPO }}
-          style={{ marginBottom: 100 }}
+          style={{ marginBottom: isMobile ? 52 : 100 }}
         >
           <span style={{ fontSize: 11, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'rgba(160,120,80,0.65)' }}>
             How it works
           </span>
           <h2 style={{
             marginTop: 14,
-            fontSize: 'clamp(2rem, 4vw, 3.4rem)',
+            fontSize: isMobile ? 'clamp(1.7rem, 7vw, 2.4rem)' : 'clamp(2rem, 4vw, 3.4rem)',
             fontWeight: 800, letterSpacing: '-0.038em', color: text, maxWidth: 520,
           }}>
             Three steps from idea to interface.
           </h2>
         </motion.div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
-          {steps.map((s, i) => (
-            <motion.div
-              key={s.n}
-              initial={{ opacity: 0, x: -24 }}
-              whileInView={{ opacity: 1, x: 0 }}
-              viewport={{ once: true, margin: '-60px' }}
-              transition={{ duration: 0.7, ease: EASE_OUT_EXPO, delay: i * 0.14 }}
-              style={{
-                display: 'grid', gridTemplateColumns: '80px 1fr',
-                gap: '0 48px', paddingTop: 48, paddingBottom: 48,
-                borderTop: `1px solid ${lineClr}`, position: 'relative',
-              }}
-            >
-              <div style={{ paddingTop: 4 }}>
-                <span style={{
-                  fontSize: 'clamp(2.4rem, 4vw, 3.2rem)', fontWeight: 800,
-                  letterSpacing: '-0.05em', color: 'rgba(160,120,80,0.25)', lineHeight: 1,
-                }}>{s.n}</span>
-              </div>
+        <div style={{ display: 'flex', flexDirection: 'column' }}>
+          {steps.map((s, i) => {
+            // Hooks extracted above the JSX return to keep call order stable across renders
+            const dotOpacity = useTransform(sp, [i / 3, (i + 0.5) / 3], [0, 1])
+            const dotScale   = useTransform(sp, [i / 3, (i + 0.5) / 3], [0.5, 1])
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 80px', alignItems: 'start' }}>
-                <h3 style={{
-                  fontSize: 'clamp(1.3rem, 2.2vw, 1.8rem)',
-                  fontWeight: 700, letterSpacing: '-0.03em', color: text, margin: 0,
-                }}>{s.title}</h3>
-                <p style={{ fontSize: '1rem', lineHeight: 1.72, color: sub, margin: 0 }}>{s.body}</p>
-              </div>
+            return (
+              <motion.div
+                key={s.n}
+                initial={{ opacity: 0, x: -24 }}
+                whileInView={{ opacity: 1, x: 0 }}
+                viewport={{ once: true, margin: '-60px' }}
+                transition={{ duration: 0.7, ease: EASE_OUT_EXPO, delay: i * 0.14 }}
+                style={isMobile ? {
+                  // Mobile: number → title → body stacked vertically
+                  display: 'flex', flexDirection: 'column', gap: 10,
+                  paddingTop: 32, paddingBottom: 32,
+                  borderTop: `1px solid ${lineClr}`, position: 'relative',
+                } : {
+                  // Desktop: unchanged 2-column grid
+                  display: 'grid', gridTemplateColumns: '80px 1fr',
+                  gap: '0 48px', paddingTop: 48, paddingBottom: 48,
+                  borderTop: `1px solid ${lineClr}`, position: 'relative',
+                }}
+              >
+                <div style={{ paddingTop: isMobile ? 0 : 4 }}>
+                  <span style={{
+                    fontSize: isMobile ? '1.8rem' : 'clamp(2.4rem, 4vw, 3.2rem)',
+                    fontWeight: 800, letterSpacing: '-0.05em',
+                    color: 'rgba(160,120,80,0.25)', lineHeight: 1,
+                  }}>{s.n}</span>
+                </div>
 
-              <motion.div style={{
-                position: 'absolute', left: 0, top: '50%', transform: 'translateY(-50%)',
-                width: 6, height: 6, borderRadius: '50%', background: '#A07850',
-                opacity: useTransform(sp, [i / 3, (i + 0.5) / 3], [0, 1]),
-                scale:   useTransform(sp, [i / 3, (i + 0.5) / 3], [0.5, 1]),
-              }}/>
-            </motion.div>
-          ))}
+                <div style={isMobile ? {
+                  display: 'flex', flexDirection: 'column', gap: 8,
+                } : {
+                  display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 80px', alignItems: 'start',
+                }}>
+                  <h3 style={{
+                    fontSize: isMobile ? '1.1rem' : 'clamp(1.3rem, 2.2vw, 1.8rem)',
+                    fontWeight: 700, letterSpacing: '-0.03em', color: text, margin: 0,
+                  }}>{s.title}</h3>
+                  <p style={{ fontSize: isMobile ? '0.9rem' : '1rem', lineHeight: 1.72, color: sub, margin: 0 }}>{s.body}</p>
+                </div>
+
+                {/* Dot: hidden on mobile via display:none so it doesn't conflict with flex layout */}
+                <motion.div style={{
+                  position: 'absolute', left: 0, top: '50%', transform: 'translateY(-50%)',
+                  width: 6, height: 6, borderRadius: '50%', background: '#A07850',
+                  display: isMobile ? 'none' : 'block',
+                  opacity: dotOpacity, scale: dotScale,
+                }}/>
+              </motion.div>
+            )
+          })}
           <div style={{ borderTop: `1px solid ${lineClr}` }}/>
         </div>
       </div>
@@ -551,17 +549,35 @@ function HowItWorks({ isLight }: { isLight: boolean }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 3D CAMERA SECTION
+// 3D CAMERA SECTION — scene scaled down on mobile, 220vh instead of 350vh
 // ─────────────────────────────────────────────────────────────────────────────
 function CameraSection({ isLight }: { isLight: boolean }) {
   const containerRef = useRef<HTMLDivElement>(null)
+  const isMobile = useIsMobile()
   const { scrollYProgress } = useScroll({ target: containerRef, offset: ['start start', 'end end'] })
   const sp = useSpring(scrollYProgress, { stiffness: 55, damping: 22 })
+
+  // Compute a CSS scale so the 700px scene fits within the mobile viewport.
+  // We do this in a separate useEffect (not useIsMobile) so it also
+  // reacts to resize without needing window access during SSR.
+  const [sceneScale, setSceneScale] = useState(1)
+  useEffect(() => {
+    const compute = () => {
+      setSceneScale(
+        window.innerWidth < 768
+          ? Math.min(1, (window.innerWidth * 0.88) / 700)
+          : 1
+      )
+    }
+    compute()
+    window.addEventListener('resize', compute, { passive: true })
+    return () => window.removeEventListener('resize', compute)
+  }, [])
 
   const rotateX    = useTransform(sp, [0, 0.55], [56, 0])
   const rotateY    = useTransform(sp, [0, 0.55], [-22, 0])
   const camZ       = useTransform(sp, [0, 0.65], [-1100, 0])
-  const sceneScale = useTransform(sp, [0, 0.65], [0.44, 1])
+  const sceneScaleMV = useTransform(sp, [0, 0.65], [0.44, 1])
   const sceneOpac  = useTransform(sp, [0, 0.07, 0.88, 1], [0, 1, 1, 0])
   const titleOpac  = useTransform(sp, [0.10, 0.34, 0.76, 0.88], [0, 1, 1, 0])
   const titleY     = useTransform(sp, [0.10, 0.34], [36, 0])
@@ -578,7 +594,8 @@ function CameraSection({ isLight }: { isLight: boolean }) {
   const subClr  = isLight ? 'rgba(0,0,0,0.42)' : 'rgba(255,255,255,0.32)'
 
   return (
-    <div ref={containerRef} style={{ height: '350vh', position: 'relative', background: bg }}>
+    // Reduced scroll canvas on mobile — 220vh feels right for the scale of the scene
+    <div ref={containerRef} style={{ height: isMobile ? '220vh' : '350vh', position: 'relative', background: bg }}>
       <div style={{
         position: 'sticky', top: 0, height: '100vh', overflow: 'hidden',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -590,18 +607,29 @@ function CameraSection({ isLight }: { isLight: boolean }) {
             : 'radial-gradient(ellipse 70% 50% at 50% 70%, rgba(160,120,80,0.09) 0%, transparent 70%)',
         }}/>
 
-        <div style={{ position: 'absolute', top: '10%', left: 0, right: 0, textAlign: 'center', zIndex: 20, pointerEvents: 'none' }}>
-          <motion.p style={{ fontSize: 11, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'rgba(160,120,80,0.65)', marginBottom: 12, opacity: titleOpac, y: titleY }}>
+        <div style={{
+          position: 'absolute', top: isMobile ? '7%' : '10%',
+          left: 0, right: 0, textAlign: 'center', zIndex: 20, pointerEvents: 'none',
+          padding: '0 24px',
+        }}>
+          <motion.p style={{
+            fontSize: 11, letterSpacing: '0.18em', textTransform: 'uppercase',
+            color: 'rgba(160,120,80,0.65)', marginBottom: 12, opacity: titleOpac, y: titleY,
+          }}>
             The experience
           </motion.p>
           <motion.h2 style={{
-            fontSize: 'clamp(2rem,4.5vw,3.8rem)', fontWeight: 800,
-            letterSpacing: '-0.038em', color: titleClr, margin: 0,
+            fontSize: isMobile ? 'clamp(1.6rem, 7vw, 2.4rem)' : 'clamp(2rem,4.5vw,3.8rem)',
+            fontWeight: 800, letterSpacing: '-0.038em', color: titleClr, margin: 0,
             opacity: titleOpac, y: titleY,
           }}>
             From thought to interface
           </motion.h2>
-          <motion.p style={{ marginTop: 14, fontSize: '1.05rem', color: subClr, opacity: subOpac, y: subY }}>
+          <motion.p style={{
+            marginTop: 14,
+            fontSize: isMobile ? '0.9rem' : '1.05rem',
+            color: subClr, opacity: subOpac, y: subY,
+          }}>
             Describe anything. Watch it materialize.
           </motion.p>
         </div>
@@ -611,112 +639,115 @@ function CameraSection({ isLight }: { isLight: boolean }) {
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           perspective: 900, opacity: sceneOpac,
         }}>
-          <motion.div style={{
-            width: 700, height: 460, position: 'relative',
-            transformStyle: 'preserve-3d',
-            rotateX, rotateY, z: camZ, scale: sceneScale,
-          }}>
-            <svg width="700" height="460" viewBox="0 0 700 460" style={{ position: 'absolute', inset: 0 }}>
-              <defs>
-                <radialGradient id="gridGlow2" cx="50%" cy="50%" r="50%">
-                  <stop offset="0%"   stopColor="#A07850" stopOpacity="0.22"/>
-                  <stop offset="100%" stopColor="#A07850" stopOpacity="0"/>
-                </radialGradient>
-              </defs>
-              {Array.from({ length: 11 }).map((_, i) => {
-                const x = (i / 10) * 700
-                return <line key={`v${i}`} x1={x} y1={0} x2={x} y2={460} stroke={isLight ? 'rgba(0,0,0,0.08)' : 'rgba(160,120,80,0.12)'} strokeWidth={0.6}/>
-              })}
-              {Array.from({ length: 8 }).map((_, i) => {
-                const y = (i / 7) * 460
-                return <line key={`h${i}`} x1={0} y1={y} x2={700} y2={y} stroke={isLight ? 'rgba(0,0,0,0.08)' : 'rgba(160,120,80,0.12)'} strokeWidth={0.6}/>
-              })}
-              {[0, 0.16, 0.33, 0.5, 0.66, 0.84, 1].map((t, i) => (
-                <line key={`r${i}`} x1={t * 700} y1={0} x2={350} y2={230} stroke={isLight ? 'rgba(0,0,0,0.08)' : 'rgba(160,120,80,0.16)'} strokeWidth={0.5}/>
-              ))}
-              <ellipse cx="350" cy="230" rx="220" ry="140" fill="url(#gridGlow2)"/>
-              <motion.line x1="0" y1="230" x2="700" y2="230" stroke="#A07850" strokeWidth={1} strokeDasharray="20 8" style={{ opacity: glowOpac }} animate={{ strokeDashoffset: [0, -280] }} transition={{ duration: 3, repeat: Infinity, ease: 'linear' }}/>
-              <motion.line x1="350" y1="0" x2="350" y2="460" stroke="#A07850" strokeWidth={1} strokeDasharray="20 8" style={{ opacity: glowOpac }} animate={{ strokeDashoffset: [0, -280] }} transition={{ duration: 3, repeat: Infinity, ease: 'linear', delay: 1.5 }}/>
-            </svg>
+          {/*
+            Scale wrapper: the 3D scene is always 700×460 internally so all the
+            translateZ / card positions stay correct. We just shrink the wrapper
+            on mobile so it fits without overflow.
+          */}
+          <div style={{ transform: `scale(${sceneScale})`, transformOrigin: 'center center' }}>
+            <motion.div style={{
+              width: 700, height: 460, position: 'relative',
+              transformStyle: 'preserve-3d',
+              rotateX, rotateY, z: camZ, scale: sceneScaleMV,
+            }}>
+              <svg width="700" height="460" viewBox="0 0 700 460" style={{ position: 'absolute', inset: 0 }}>
+                <defs>
+                  <radialGradient id="gridGlow2" cx="50%" cy="50%" r="50%">
+                    <stop offset="0%"   stopColor="#A07850" stopOpacity="0.22"/>
+                    <stop offset="100%" stopColor="#A07850" stopOpacity="0"/>
+                  </radialGradient>
+                </defs>
+                {Array.from({ length: 11 }).map((_, i) => {
+                  const x = (i / 10) * 700
+                  return <line key={`v${i}`} x1={x} y1={0} x2={x} y2={460} stroke={isLight ? 'rgba(0,0,0,0.08)' : 'rgba(160,120,80,0.12)'} strokeWidth={0.6}/>
+                })}
+                {Array.from({ length: 8 }).map((_, i) => {
+                  const y = (i / 7) * 460
+                  return <line key={`h${i}`} x1={0} y1={y} x2={700} y2={y} stroke={isLight ? 'rgba(0,0,0,0.08)' : 'rgba(160,120,80,0.12)'} strokeWidth={0.6}/>
+                })}
+                {[0, 0.16, 0.33, 0.5, 0.66, 0.84, 1].map((t, i) => (
+                  <line key={`r${i}`} x1={t * 700} y1={0} x2={350} y2={230} stroke={isLight ? 'rgba(0,0,0,0.08)' : 'rgba(160,120,80,0.16)'} strokeWidth={0.5}/>
+                ))}
+                <ellipse cx="350" cy="230" rx="220" ry="140" fill="url(#gridGlow2)"/>
+                <motion.line x1="0" y1="230" x2="700" y2="230" stroke="#A07850" strokeWidth={1} strokeDasharray="20 8" style={{ opacity: glowOpac }} animate={{ strokeDashoffset: [0, -280] }} transition={{ duration: 3, repeat: Infinity, ease: 'linear' }}/>
+                <motion.line x1="350" y1="0" x2="350" y2="460" stroke="#A07850" strokeWidth={1} strokeDasharray="20 8" style={{ opacity: glowOpac }} animate={{ strokeDashoffset: [0, -280] }} transition={{ duration: 3, repeat: Infinity, ease: 'linear', delay: 1.5 }}/>
+              </svg>
 
-            {/* Centre card */}
-            <motion.div
-              style={{
-                position: 'absolute', top: '50%', left: '50%',
-                transform: 'translate(-50%,-50%)',
-                width: 280, height: 200, borderRadius: 20,
-                background: cardBg, backdropFilter: 'blur(24px)',
-                WebkitBackdropFilter: 'blur(24px)', border: cardBdr,
-                boxShadow: isLight ? '0 12px 48px rgba(0,0,0,0.12)' : '0 24px 80px rgba(0,0,0,0.6)',
-                padding: '22px 20px', display: 'flex', flexDirection: 'column', gap: 10,
-                translateZ: 60,
-              }}
-              animate={{ y: [0, -7, 0] }} transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                <div style={{ width: 28, height: 28, borderRadius: 8, background: 'rgba(160,120,80,0.25)' }}/>
-                <div style={{ width: 80, height: 7, borderRadius: 4, background: skelHi }}/>
-              </div>
-              {[null, null, null].map((_, i) => (
-                <div key={i} style={{ width: i === 1 ? '80%' : i === 2 ? '90%' : '100%', height: 7, borderRadius: 4, background: skelLo }}/>
-              ))}
-              <div style={{ marginTop: 6, display: 'flex', gap: 8 }}>
-                <div style={{ flex: 1, height: 32, borderRadius: 8, background: 'rgba(160,120,80,0.42)' }}/>
-                <div style={{ width: 72, height: 32, borderRadius: 8, background: skelLo }}/>
-              </div>
-            </motion.div>
+              <motion.div
+                style={{
+                  position: 'absolute', top: '50%', left: '50%',
+                  transform: 'translate(-50%,-50%)',
+                  width: 280, height: 200, borderRadius: 20,
+                  background: cardBg, backdropFilter: 'blur(24px)',
+                  WebkitBackdropFilter: 'blur(24px)', border: cardBdr,
+                  boxShadow: isLight ? '0 12px 48px rgba(0,0,0,0.12)' : '0 24px 80px rgba(0,0,0,0.6)',
+                  padding: '22px 20px', display: 'flex', flexDirection: 'column', gap: 10,
+                  translateZ: 60,
+                }}
+                animate={{ y: [0, -7, 0] }} transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                  <div style={{ width: 28, height: 28, borderRadius: 8, background: 'rgba(160,120,80,0.25)' }}/>
+                  <div style={{ width: 80, height: 7, borderRadius: 4, background: skelHi }}/>
+                </div>
+                {[null, null, null].map((_, i) => (
+                  <div key={i} style={{ width: i === 1 ? '80%' : i === 2 ? '90%' : '100%', height: 7, borderRadius: 4, background: skelLo }}/>
+                ))}
+                <div style={{ marginTop: 6, display: 'flex', gap: 8 }}>
+                  <div style={{ flex: 1, height: 32, borderRadius: 8, background: 'rgba(160,120,80,0.42)' }}/>
+                  <div style={{ width: 72, height: 32, borderRadius: 8, background: skelLo }}/>
+                </div>
+              </motion.div>
 
-            {/* Left card */}
-            <motion.div
-              style={{
-                position: 'absolute', top: '30%', left: '4%',
-                width: 130, height: 90, borderRadius: 14,
-                background: cardBg, border: cardBdr,
-                padding: '14px', display: 'flex', flexDirection: 'column', gap: 7,
-                translateZ: 30,
-              }}
-              animate={{ y: [0, 6, 0] }} transition={{ duration: 5.5, repeat: Infinity, ease: 'easeInOut', delay: 0.8 }}
-            >
-              <div style={{ width: '70%', height: 6, borderRadius: 3, background: skelHi }}/>
-              <div style={{ width: '100%', height: 6, borderRadius: 3, background: skelLo }}/>
-              <div style={{ width: '60%', height: 6, borderRadius: 3, background: skelLo }}/>
-            </motion.div>
+              <motion.div
+                style={{
+                  position: 'absolute', top: '30%', left: '4%',
+                  width: 130, height: 90, borderRadius: 14,
+                  background: cardBg, border: cardBdr,
+                  padding: '14px', display: 'flex', flexDirection: 'column', gap: 7,
+                  translateZ: 30,
+                }}
+                animate={{ y: [0, 6, 0] }} transition={{ duration: 5.5, repeat: Infinity, ease: 'easeInOut', delay: 0.8 }}
+              >
+                <div style={{ width: '70%', height: 6, borderRadius: 3, background: skelHi }}/>
+                <div style={{ width: '100%', height: 6, borderRadius: 3, background: skelLo }}/>
+                <div style={{ width: '60%', height: 6, borderRadius: 3, background: skelLo }}/>
+              </motion.div>
 
-            {/* Right card */}
-            <motion.div
-              style={{
-                position: 'absolute', top: '20%', right: '4%',
-                width: 120, height: 80, borderRadius: 14,
-                background: cardBg, border: cardBdr,
-                padding: '12px', display: 'flex', flexDirection: 'column', gap: 6,
-                translateZ: 20,
-              }}
-              animate={{ y: [0, -9, 0] }} transition={{ duration: 6, repeat: Infinity, ease: 'easeInOut', delay: 1.4 }}
-            >
-              <div style={{ width: '80%', height: 6, borderRadius: 3, background: 'rgba(160,120,80,0.35)' }}/>
-              <div style={{ width: '60%', height: 6, borderRadius: 3, background: skelLo }}/>
-              <div style={{ width: '90%', height: 6, borderRadius: 3, background: skelLo }}/>
-            </motion.div>
+              <motion.div
+                style={{
+                  position: 'absolute', top: '20%', right: '4%',
+                  width: 120, height: 80, borderRadius: 14,
+                  background: cardBg, border: cardBdr,
+                  padding: '12px', display: 'flex', flexDirection: 'column', gap: 6,
+                  translateZ: 20,
+                }}
+                animate={{ y: [0, -9, 0] }} transition={{ duration: 6, repeat: Infinity, ease: 'easeInOut', delay: 1.4 }}
+              >
+                <div style={{ width: '80%', height: 6, borderRadius: 3, background: 'rgba(160,120,80,0.35)' }}/>
+                <div style={{ width: '60%', height: 6, borderRadius: 3, background: skelLo }}/>
+                <div style={{ width: '90%', height: 6, borderRadius: 3, background: skelLo }}/>
+              </motion.div>
 
-            {/* Bottom card */}
-            <motion.div
-              style={{
-                position: 'absolute', bottom: '8%', left: '50%',
-                transform: 'translateX(-50%)',
-                width: 200, height: 52, borderRadius: 12,
-                background: cardBg, border: cardBdr,
-                padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 10,
-                translateZ: 10,
-              }}
-              animate={{ y: [0, 5, 0] }} transition={{ duration: 4.5, repeat: Infinity, ease: 'easeInOut', delay: 2 }}
-            >
-              <div style={{ width: 28, height: 28, borderRadius: 8, background: 'rgba(160,120,80,0.25)', flexShrink: 0 }}/>
-              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 5 }}>
-                <div style={{ height: 5, borderRadius: 3, background: skelHi }}/>
-                <div style={{ height: 5, width: '60%', borderRadius: 3, background: skelLo }}/>
-              </div>
+              <motion.div
+                style={{
+                  position: 'absolute', bottom: '8%', left: '50%',
+                  transform: 'translateX(-50%)',
+                  width: 200, height: 52, borderRadius: 12,
+                  background: cardBg, border: cardBdr,
+                  padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 10,
+                  translateZ: 10,
+                }}
+                animate={{ y: [0, 5, 0] }} transition={{ duration: 4.5, repeat: Infinity, ease: 'easeInOut', delay: 2 }}
+              >
+                <div style={{ width: 28, height: 28, borderRadius: 8, background: 'rgba(160,120,80,0.25)', flexShrink: 0 }}/>
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 5 }}>
+                  <div style={{ height: 5, borderRadius: 3, background: skelHi }}/>
+                  <div style={{ height: 5, width: '60%', borderRadius: 3, background: skelLo }}/>
+                </div>
+              </motion.div>
             </motion.div>
-          </motion.div>
+          </div>
         </motion.div>
       </div>
     </div>
@@ -724,7 +755,8 @@ function CameraSection({ isLight }: { isLight: boolean }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// FEATURES BENTO — magnetic hover physics
+// FEATURES BENTO — 12-col grid on desktop, flex column on mobile
+// MagneticCard tilt still works on desktop; no-ops naturally on touch
 // ─────────────────────────────────────────────────────────────────────────────
 function MagneticCard({
   children, delay = 0, isLight, style = {},
@@ -790,6 +822,7 @@ function MagneticCard({
 }
 
 function Features({ isLight }: { isLight: boolean }) {
+  const isMobile = useIsMobile()
   const text    = isLight ? '#0a0a0a' : '#ffffff'
   const subText = isLight ? 'rgba(0,0,0,0.44)' : 'rgba(255,255,255,0.38)'
 
@@ -827,41 +860,67 @@ function Features({ isLight }: { isLight: boolean }) {
   ]
 
   return (
-    <section style={{ background: isLight ? '#F5F0E8' : '#070707', padding: '130px 48px' }}>
+    <section style={{ background: isLight ? '#F5F0E8' : '#070707', padding: isMobile ? '80px 24px' : '130px 48px' }}>
       <div style={{ maxWidth: 1100, margin: '0 auto' }}>
         <motion.div
           initial={{ opacity: 0, y: 28 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true, margin: '-80px' }}
           transition={{ duration: 0.8, ease: EASE_OUT_EXPO }}
-          style={{ textAlign: 'center', marginBottom: 80 }}
+          style={{ textAlign: 'center', marginBottom: isMobile ? 48 : 80 }}
         >
           <span style={{ fontSize: 11, letterSpacing: '0.18em', textTransform: 'uppercase', color: isLight ? 'rgba(160,120,80,0.70)' : 'rgba(160,120,80,0.60)' }}>
             Why Palm
           </span>
           <h2 style={{
-            marginTop: 14, fontSize: 'clamp(2rem,4vw,3.4rem)',
+            marginTop: 14,
+            fontSize: isMobile ? 'clamp(1.7rem, 7vw, 2.4rem)' : 'clamp(2rem,4vw,3.4rem)',
             fontWeight: 800, letterSpacing: '-0.038em', color: text,
           }}>
             Every detail. No friction.
           </h2>
         </motion.div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(12,1fr)', gridTemplateRows: 'auto auto', gap: 14 }}>
+        {/*
+          Desktop: 12-column bento grid with explicit col/row placement.
+          Mobile: plain flex column — gridColumn/gridRow on each card are ignored.
+        */}
+        <div style={isMobile ? {
+          display: 'flex', flexDirection: 'column', gap: 12,
+        } : {
+          display: 'grid', gridTemplateColumns: 'repeat(12,1fr)', gridTemplateRows: 'auto auto', gap: 14,
+        }}>
           {features.map((f, i) => (
             <MagneticCard
               key={f.title} isLight={isLight} delay={i * 0.07}
-              style={{ gridColumn: f.col, gridRow: f.row, padding: f.large ? '44px 40px' : '36px 32px', minHeight: f.large ? 300 : 210 }}
+              style={isMobile ? {
+                // No grid placement needed — flex handles it
+                padding: f.large ? '32px 24px' : '28px 20px',
+              } : {
+                gridColumn: f.col, gridRow: f.row,
+                padding: f.large ? '44px 40px' : '36px 32px',
+                minHeight: f.large ? 300 : 210,
+              }}
             >
               <div style={{
                 width: f.large ? 48 : 40, height: f.large ? 48 : 40,
                 borderRadius: f.large ? 14 : 12,
                 background: 'rgba(160,120,80,0.16)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                marginBottom: f.large ? 24 : 20,
+                marginBottom: f.large ? (isMobile ? 16 : 24) : (isMobile ? 14 : 20),
               }}>{f.icon}</div>
-              <h3 style={{ fontSize: f.large ? '1.6rem' : '1.22rem', fontWeight: 700, letterSpacing: '-0.028em', color: text, margin: '0 0 12px' }}>{f.title}</h3>
-              <p style={{ fontSize: f.large ? '0.97rem' : '0.9rem', lineHeight: 1.7, color: subText, margin: 0 }}>{f.body}</p>
+              <h3 style={{
+                fontSize: f.large
+                  ? (isMobile ? '1.15rem' : '1.6rem')
+                  : (isMobile ? '1.02rem' : '1.22rem'),
+                fontWeight: 700, letterSpacing: '-0.028em', color: text, margin: '0 0 10px',
+              }}>{f.title}</h3>
+              <p style={{
+                fontSize: f.large
+                  ? (isMobile ? '0.9rem' : '0.97rem')
+                  : (isMobile ? '0.86rem' : '0.9rem'),
+                lineHeight: 1.7, color: subText, margin: 0,
+              }}>{f.body}</p>
             </MagneticCard>
           ))}
         </div>
@@ -871,8 +930,7 @@ function Features({ isLight }: { isLight: boolean }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// FAQ — glass accordion with SPRING_SOFT animation
-// Positioned before the CTA to resolve objections at the decision moment
+// FAQ — padding fixed, answer paddingRight removed on mobile
 // ─────────────────────────────────────────────────────────────────────────────
 const FAQ_ITEMS = [
   {
@@ -899,6 +957,7 @@ const FAQ_ITEMS = [
 
 function FAQ({ isLight }: { isLight: boolean }) {
   const [open, setOpen] = useState<number | null>(null)
+  const isMobile = useIsMobile()
 
   const bg   = isLight ? '#F5F0E8' : '#070707'
   const text = isLight ? '#0a0a0a' : '#ffffff'
@@ -906,7 +965,7 @@ function FAQ({ isLight }: { isLight: boolean }) {
   const line = isLight ? 'rgba(0,0,0,0.07)'  : 'rgba(255,255,255,0.07)'
 
   return (
-    <section style={{ background: bg, padding: '130px 48px' }}>
+    <section style={{ background: bg, padding: isMobile ? '80px 24px' : '130px 48px' }}>
       <div style={{ maxWidth: 780, margin: '0 auto' }}>
         <motion.div
           initial={{ opacity: 0, y: 28 }}
@@ -920,7 +979,7 @@ function FAQ({ isLight }: { isLight: boolean }) {
           </span>
           <h2 style={{
             marginTop: 14,
-            fontSize: 'clamp(2rem, 4vw, 3.2rem)',
+            fontSize: isMobile ? 'clamp(1.7rem, 7vw, 2.4rem)' : 'clamp(2rem, 4vw, 3.2rem)',
             fontWeight: 800, letterSpacing: '-0.038em', color: text, margin: '14px 0 0',
           }}>
             Questions?
@@ -937,26 +996,23 @@ function FAQ({ isLight }: { isLight: boolean }) {
               transition={{ duration: 0.6, ease: EASE_OUT_EXPO, delay: i * 0.07 }}
               style={{ borderTop: `1px solid ${line}`, overflow: 'hidden' }}
             >
-              {/* Question row */}
               <motion.button
                 onClick={() => setOpen(open === i ? null : i)}
                 whileHover={{ x: 2 }}
                 transition={SPRING_SOFT}
                 style={{
                   width: '100%', display: 'flex', alignItems: 'center',
-                  justifyContent: 'space-between', padding: '28px 0',
-                  background: 'none', border: 'none', cursor: 'none',
-                  textAlign: 'left', gap: 24,
+                  justifyContent: 'space-between', padding: isMobile ? '22px 0' : '28px 0',
+                  background: 'none', border: 'none', cursor: 'pointer',
+                  textAlign: 'left', gap: 16,
                 }}
               >
                 <span style={{
-                  fontSize: 'clamp(0.97rem, 1.6vw, 1.12rem)',
+                  fontSize: isMobile ? '0.96rem' : 'clamp(0.97rem, 1.6vw, 1.12rem)',
                   fontWeight: 600, letterSpacing: '-0.02em', color: text,
                 }}>
                   {item.q}
                 </span>
-
-                {/* +/× icon — rotates with SPRING_SOFT */}
                 <motion.div
                   animate={{ rotate: open === i ? 45 : 0 }}
                   transition={SPRING_SOFT}
@@ -974,7 +1030,6 @@ function FAQ({ isLight }: { isLight: boolean }) {
                 </motion.div>
               </motion.button>
 
-              {/* Answer — springs open/close */}
               <AnimatePresence initial={false}>
                 {open === i && (
                   <motion.div
@@ -986,8 +1041,10 @@ function FAQ({ isLight }: { isLight: boolean }) {
                     style={{ overflow: 'hidden' }}
                   >
                     <p style={{
-                      paddingBottom: 28, paddingRight: 48,
-                      fontSize: '0.96rem', lineHeight: 1.78, color: sub, margin: 0,
+                      paddingBottom: 24,
+                      // On mobile, remove the right padding — it's too cramped on 412px
+                      paddingRight: isMobile ? 0 : 48,
+                      fontSize: '0.94rem', lineHeight: 1.78, color: sub, margin: 0,
                     }}>
                       {item.a}
                     </p>
@@ -1004,7 +1061,7 @@ function FAQ({ isLight }: { isLight: boolean }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SUBSTRATE (CONTAINED) — optimized for CTABanner background
+// SUBSTRATE (unchanged — physics classes stay identical)
 // ─────────────────────────────────────────────────────────────────────────────
 const S_BOID_COUNT = 120
 const S_RD_SCALE   = 10
@@ -1126,11 +1183,7 @@ function SubstrateContained({ isLight }: { isLight: boolean }) {
             W = canvas.offsetWidth; H = canvas.offsetHeight
             canvas.width = W; canvas.height = H
             rd = new SRDGrid(Math.ceil(W/S_RD_SCALE), Math.ceil(H/S_RD_SCALE))
-            boids = boids.map(b => ({
-                ...b,
-                x: Math.min(b.x, W),
-                y: Math.min(b.y, H),
-            }))
+            boids = boids.map(b => ({ ...b, x: Math.min(b.x, W), y: Math.min(b.y, H) }))
         })
         ro.observe(canvas)
 
@@ -1212,10 +1265,11 @@ function SubstrateContained({ isLight }: { isLight: boolean }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// CTA BANNER
+// CTA BANNER — padding and card reduced on mobile
 // ─────────────────────────────────────────────────────────────────────────────
 function CTABanner({ isLight }: { isLight: boolean }) {
     const sectionRef = useRef<HTMLElement>(null)
+    const isMobile = useIsMobile()
 
     const { scrollYProgress } = useScroll({
         target: sectionRef,
@@ -1223,32 +1277,23 @@ function CTABanner({ isLight }: { isLight: boolean }) {
     })
     const sp = useSpring(scrollYProgress, { stiffness: 55, damping: 22 })
 
-    const subY      = useTransform(sp, [0, 1], [60, -30])
-    const subOpac   = useTransform(sp, [0, 0.35, 1], [0, 1, 1])
-    const subScale  = useTransform(sp, [0, 0.6], [1.08, 1])
-
-    const cardY     = useTransform(sp, [0.1, 0.75], [48, 0])
-    const cardOpac  = useTransform(sp, [0.1, 0.55], [0, 1])
+    const subY     = useTransform(sp, [0, 1], [60, -30])
+    const subOpac  = useTransform(sp, [0, 0.35, 1], [0, 1, 1])
+    const subScale = useTransform(sp, [0, 0.6], [1.08, 1])
+    const cardY    = useTransform(sp, [0.1, 0.75], [48, 0])
+    const cardOpac = useTransform(sp, [0.1, 0.55], [0, 1])
 
     return (
         <section
             ref={sectionRef}
             style={{
                 background: isLight ? '#F5F0E8' : '#070707',
-                padding: '60px 48px 130px',
+                padding: isMobile ? '40px 20px 80px' : '60px 48px 130px',
                 position: 'relative',
                 overflow: 'hidden',
             }}
         >
-            <motion.div
-                style={{
-                    position: 'absolute',
-                    inset: 0,
-                    y: subY,
-                    opacity: subOpac,
-                    scale: subScale,
-                }}
-            >
+            <motion.div style={{ position: 'absolute', inset: 0, y: subY, opacity: subOpac, scale: subScale }}>
                 <SubstrateContained isLight={isLight} />
             </motion.div>
 
@@ -1263,23 +1308,18 @@ function CTABanner({ isLight }: { isLight: boolean }) {
             <motion.div
                 style={{
                     position: 'relative', zIndex: 2,
-                    y: cardY,
-                    opacity: cardOpac,
-                    maxWidth: 820,
-                    margin: '0 auto',
-                    borderRadius: 28,
+                    y: cardY, opacity: cardOpac,
+                    maxWidth: 820, margin: '0 auto',
+                    borderRadius: isMobile ? 20 : 28,
                     background: isLight ? 'rgba(245,240,232,0.55)' : 'rgba(10,10,10,0.55)',
-                    backdropFilter: 'blur(28px)',
-                    WebkitBackdropFilter: 'blur(28px)',
-                    border: isLight
-                        ? '1px solid rgba(255,255,255,0.70)'
-                        : '1px solid rgba(255,255,255,0.10)',
+                    backdropFilter: 'blur(28px)', WebkitBackdropFilter: 'blur(28px)',
+                    border: isLight ? '1px solid rgba(255,255,255,0.70)' : '1px solid rgba(255,255,255,0.10)',
                     boxShadow: isLight
                         ? '0 8px 40px rgba(0,0,0,0.08), inset 0 1px 0 rgba(255,255,255,0.90)'
                         : '0 24px 80px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.08)',
-                    padding: '80px 64px',
-                    textAlign: 'center',
-                    overflow: 'hidden',
+                    // Tighter padding on mobile — 80px vertical was crushing on small screens
+                    padding: isMobile ? '48px 28px' : '80px 64px',
+                    textAlign: 'center', overflow: 'hidden',
                 }}
             >
                 <div style={{
@@ -1291,27 +1331,25 @@ function CTABanner({ isLight }: { isLight: boolean }) {
                 }}/>
 
                 <p style={{
-                    fontSize: 11, letterSpacing: '0.18em',
-                    textTransform: 'uppercase',
-                    color: 'rgba(160,120,80,0.65)',
-                    marginBottom: 18,
+                    fontSize: 11, letterSpacing: '0.18em', textTransform: 'uppercase',
+                    color: 'rgba(160,120,80,0.65)', marginBottom: 18,
                 }}>
                     Limited early access
                 </p>
 
                 <h2 style={{
-                    fontSize: 'clamp(2rem,4vw,3.4rem)', fontWeight: 800,
-                    letterSpacing: '-0.038em',
+                    fontSize: isMobile ? 'clamp(1.7rem, 7vw, 2.6rem)' : 'clamp(2rem,4vw,3.4rem)',
+                    fontWeight: 800, letterSpacing: '-0.038em',
                     color: isLight ? '#0a0a0a' : '#fff',
-                    margin: '0 0 18px',
+                    margin: '0 0 16px',
                 }}>
                     Build something beautiful today.
                 </h2>
 
                 <p style={{
-                    fontSize: '1.07rem',
+                    fontSize: isMobile ? '0.94rem' : '1.07rem',
                     color: isLight ? 'rgba(0,0,0,0.44)' : 'rgba(255,255,255,0.36)',
-                    margin: '0 0 44px', lineHeight: 1.68,
+                    margin: '0 0 36px', lineHeight: 1.68,
                 }}>
                     No design skills needed. No waiting. No compromise.
                 </p>
@@ -1335,9 +1373,10 @@ function CTABanner({ isLight }: { isLight: boolean }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// FOOTER
+// FOOTER — columns stack on mobile, PALM watermark hidden on mobile
 // ─────────────────────────────────────────────────────────────────────────────
 function Footer({ isLight }: { isLight: boolean }) {
+  const isMobile = useIsMobile()
   const bg      = isLight ? '#F5F0E8'              : '#070707'
   const text    = isLight ? 'rgba(0,0,0,0.38)'     : 'rgba(255,255,255,0.38)'
   const textHov = isLight ? 'rgba(0,0,0,0.75)'     : 'rgba(255,255,255,0.70)'
@@ -1348,19 +1387,28 @@ function Footer({ isLight }: { isLight: boolean }) {
   return (
     <footer style={{
       background: bg, borderTop: `1px solid ${border}`,
-      padding: '80px 48px 48px', position: 'relative', overflow: 'hidden',
+      padding: isMobile ? '56px 24px 36px' : '80px 48px 48px',
+      position: 'relative', overflow: 'hidden',
     }}>
-      <div style={{
-        fontSize: 'clamp(6rem,20vw,18rem)', fontWeight: 900,
-        letterSpacing: '-0.05em', lineHeight: 0.88, color: mark,
-        userSelect: 'none', pointerEvents: 'none',
-        position: 'absolute', bottom: -20, left: 40, zIndex: 0,
-      }}>PALM</div>
+      {/* Giant PALM watermark — hidden on mobile, would overflow badly */}
+      {!isMobile && (
+        <div style={{
+          fontSize: 'clamp(6rem,20vw,18rem)', fontWeight: 900,
+          letterSpacing: '-0.05em', lineHeight: 0.88, color: mark,
+          userSelect: 'none', pointerEvents: 'none',
+          position: 'absolute', bottom: -20, left: 40, zIndex: 0,
+        }}>PALM</div>
+      )}
 
       <div style={{
         position: 'relative', zIndex: 1,
-        display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between',
-        flexWrap: 'wrap', gap: 48,
+        display: 'flex',
+        // Stack logo block + link columns vertically on mobile
+        flexDirection: isMobile ? 'column' : 'row',
+        alignItems: isMobile ? 'flex-start' : 'flex-start',
+        justifyContent: 'space-between',
+        flexWrap: 'wrap',
+        gap: isMobile ? 36 : 48,
       }}>
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
@@ -1369,10 +1417,7 @@ function Footer({ isLight }: { isLight: boolean }) {
               background: isLight ? 'rgba(0,0,0,0.85)' : 'rgba(255,255,255,0.85)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
             }}>
-              <div style={{
-                width: 10, height: 10, borderRadius: '50%',
-                background: isLight ? '#F5F0E8' : '#070707',
-              }}/>
+              <div style={{ width: 10, height: 10, borderRadius: '50%', background: isLight ? '#F5F0E8' : '#070707' }}/>
             </div>
             <span style={{ color: isLight ? 'rgba(0,0,0,0.60)' : 'rgba(255,255,255,0.60)', fontSize: 14, fontWeight: 600 }}>Palm</span>
           </div>
@@ -1381,7 +1426,7 @@ function Footer({ isLight }: { isLight: boolean }) {
           </p>
         </div>
 
-        <div style={{ display: 'flex', gap: 64, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: isMobile ? 36 : 64, flexWrap: 'wrap' }}>
           {[
             { label: 'Product', links: ['Features', 'Pricing', 'Changelog', 'Roadmap'] },
             { label: 'Company', links: ['About', 'Blog', 'Careers', 'Press'] },
@@ -1408,8 +1453,8 @@ function Footer({ isLight }: { isLight: boolean }) {
 
       <div style={{
         position: 'relative', zIndex: 1,
-        marginTop: 72, paddingTop: 24, borderTop: `1px solid ${border}`,
-        display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16,
+        marginTop: 56, paddingTop: 24, borderTop: `1px solid ${border}`,
+        display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12,
       }}>
         <p style={{ fontSize: 11, color: label }}>© {new Date().getFullYear()} Palm. All rights reserved.</p>
         <p style={{ fontSize: 11, color: label }}>Made with obsession, not templates.</p>
@@ -1424,26 +1469,26 @@ function Footer({ isLight }: { isLight: boolean }) {
 export default function HomePage() {
   const { theme, systemTheme } = useTheme()
   const [mounted, setMounted] = useState(false)
+  const isMobile = useIsMobile()
   useEffect(() => setMounted(true), [])
   if (!mounted) return <Loading />
   const isLight = (theme === 'system' ? systemTheme : theme) === 'light'
 
   return (
     <>
-      {/* Glass scrollbar — injected globally */}
       <style dangerouslySetInnerHTML={{ __html: SCROLLBAR_CSS }}/>
-
       <CustomCursor />
       <Nav isLight={isLight} />
 
-      <main style={{ cursor: 'none' }}>
-        <Hero       isLight={isLight} />
-        <HowItWorks isLight={isLight} />
+      {/* cursor:none only on desktop — pointless and potentially broken on touch */}
+      <main style={{ cursor: isMobile ? 'auto' : 'none' }}>
+        <Hero          isLight={isLight} />
+        <HowItWorks    isLight={isLight} />
         <CameraSection isLight={isLight} />
-        <Features   isLight={isLight} />
-        <FAQ        isLight={isLight} />
-        <CTABanner  isLight={isLight} />
-        <Footer     isLight={isLight} />
+        <Features      isLight={isLight} />
+        <FAQ           isLight={isLight} />
+        <CTABanner     isLight={isLight} />
+        <Footer        isLight={isLight} />
       </main>
 
       <div style={{ position: 'fixed', bottom: 24, right: 24, zIndex: 50 }}>

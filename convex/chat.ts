@@ -9,6 +9,7 @@ export const saveTurn = mutation({
         response: v.string(),
         timestamp: v.number(),
         urls: v.optional(v.array(v.string())),
+        imageStorageIds: v.optional(v.array(v.string())),
     },
     handler: async (ctx, args) => {
         // Upsert — update if exists, insert if not

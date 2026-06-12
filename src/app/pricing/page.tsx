@@ -1,35 +1,31 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
-import {
-  motion, AnimatePresence, useScroll, useTransform, useSpring,
-} from 'framer-motion'
+import { useEffect, useState } from 'react'
+import { motion, useSpring } from 'framer-motion'
 import { useTheme } from 'next-themes'
 import {
   Sparkles, Palette, Layers, ImagePlus, Move, Magnet, MessageSquare,
-  ShieldCheck, Zap, RefreshCw, ArrowLeft,
+  ShieldCheck, Zap, RefreshCw, ArrowLeft, ArrowRight,
 } from 'lucide-react'
 import Link from 'next/link'
-import SubscribeButton from '@/components/buttons/checkout'
 import { ThemeToggle } from '@/components/theme/toggle'
 import { GlassTooltip } from '@/components/ui/glass-tooltip'
 import ParticleBackground from '@/components/home/particle-background'
-import Loading from '@/app/(protected)/dashboard/loading'
+import { useIsMobile } from '@/hooks/use-mobile'
 
-// ─── Spring configs (shared with landing) ──────────────────────────────────
+// ─── Spring configs ──────────────────────────────────────────────────────────
 const SPRING_SNAPPY = { type: 'spring', stiffness: 400, damping: 18 } as const
-const SPRING_SOFT   = { type: 'spring', stiffness: 180, damping: 22 } as const
 const EASE_OUT_EXPO = [0.16, 1, 0.3, 1] as const
 
 // ─────────────────────────────────────────────────────────────────────────────
-// CIRCUIT FIELD — Manhattan-routed traces with traveling current pulses
+// CIRCUIT FIELD
 // ─────────────────────────────────────────────────────────────────────────────
 type ViaPoint = { x: number; y: number; begin: number }
 type Trace = { id: string; d: string; dur: number; begin: number; vias: ViaPoint[] }
 
 const TRACES: Trace[] = [
   {
-    id: 'circuit-t1-billing',
+    id: 'circuit-t1',
     d: 'M -50 200 L 300 200 L 300 400 L 700 400 L 700 100 L 1100 100 L 1100 500 L 1450 500',
     dur: 7, begin: 0,
     vias: [
@@ -42,7 +38,7 @@ const TRACES: Trace[] = [
     ],
   },
   {
-    id: 'circuit-t2-billing',
+    id: 'circuit-t2',
     d: 'M -50 620 L 200 620 L 200 820 L 600 820 L 600 520 L 900 520 L 900 720 L 1450 720',
     dur: 8.5, begin: 1.5,
     vias: [
@@ -55,7 +51,7 @@ const TRACES: Trace[] = [
     ],
   },
   {
-    id: 'circuit-t3-billing',
+    id: 'circuit-t3',
     d: 'M 1450 450 L 950 450 L 950 250 L 550 250 L 550 450 L 150 450 L 150 150 L -50 150',
     dur: 6.4, begin: 3.0,
     vias: [
@@ -68,7 +64,7 @@ const TRACES: Trace[] = [
     ],
   },
   {
-    id: 'circuit-t4-billing',
+    id: 'circuit-t4',
     d: 'M -50 50 L 400 50 L 400 250 L 800 250 L 800 50 L 1200 50 L 1200 350 L 1450 350',
     dur: 9, begin: 0.6,
     vias: [
@@ -81,7 +77,7 @@ const TRACES: Trace[] = [
     ],
   },
   {
-    id: 'circuit-t5-billing',
+    id: 'circuit-t5',
     d: 'M -50 850 L 300 850 L 300 650 L 700 650 L 700 850 L 1100 850 L 1100 750 L 1450 750',
     dur: 7.8, begin: 2.4,
     vias: [
@@ -95,7 +91,11 @@ const TRACES: Trace[] = [
   },
 ]
 
-function CircuitField({ isLight }: { isLight: boolean }) {
+// On mobile we use a simpler subset of traces to keep it performant
+const MOBILE_TRACES = [TRACES[0], TRACES[2], TRACES[4]]
+
+function CircuitField({ isLight, isMobile }: { isLight: boolean; isMobile: boolean }) {
+  const traces = isMobile ? MOBILE_TRACES : TRACES
   const traceColor = isLight ? 'rgba(0,0,0,0.055)' : 'rgba(160,120,80,0.12)'
   const viaColor   = isLight ? 'rgba(160,120,80,0.35)' : 'rgba(160,120,80,0.55)'
   const pulseCore  = isLight ? '#A07850' : '#FFD9A8'
@@ -109,19 +109,18 @@ function CircuitField({ isLight }: { isLight: boolean }) {
       style={{ position: 'absolute', inset: 0, opacity: isLight ? 0.55 : 0.85 }}
     >
       <defs>
-        <radialGradient id="billing-grid-glow" cx="50%" cy="42%" r="55%">
+        <radialGradient id="pricing-grid-glow" cx="50%" cy="42%" r="55%">
           <stop offset="0%"   stopColor="#A07850" stopOpacity={isLight ? 0.10 : 0.14} />
           <stop offset="100%" stopColor="#A07850" stopOpacity="0" />
         </radialGradient>
-        <filter id="billing-pulse-blur" x="-200%" y="-200%" width="500%" height="500%">
+        <filter id="pulse-blur" x="-200%" y="-200%" width="500%" height="500%">
           <feGaussianBlur stdDeviation="4" />
         </filter>
-        {TRACES.map(t => (
+        {traces.map(t => (
           <path key={`def-${t.id}`} id={t.id} d={t.d} fill="none" />
         ))}
       </defs>
 
-      {/* Faint background grid for depth */}
       {Array.from({ length: 15 }).map((_, i) => (
         <line key={`v${i}`} x1={(i / 14) * 1400} y1={0} x2={(i / 14) * 1400} y2={900}
           stroke={isLight ? 'rgba(0,0,0,0.025)' : 'rgba(160,120,80,0.04)'} strokeWidth={0.5} />
@@ -131,15 +130,13 @@ function CircuitField({ isLight }: { isLight: boolean }) {
           stroke={isLight ? 'rgba(0,0,0,0.025)' : 'rgba(160,120,80,0.04)'} strokeWidth={0.5} />
       ))}
 
-      <ellipse cx="700" cy="380" rx="520" ry="340" fill="url(#billing-grid-glow)" />
+      <ellipse cx="700" cy="380" rx="520" ry="340" fill="url(#pricing-grid-glow)" />
 
-      {/* Circuit traces */}
-      {TRACES.map(t => (
+      {traces.map(t => (
         <path key={t.id} d={t.d} fill="none" stroke={traceColor} strokeWidth={1.4} />
       ))}
 
-      {/* Via nodes — flash as current passes */}
-      {TRACES.map(t => t.vias.map((v, i) => (
+      {traces.map(t => t.vias.map((v, i) => (
         <circle key={`${t.id}-via-${i}`} cx={v.x} cy={v.y} r={3} fill={viaColor}>
           <animate
             attributeName="opacity"
@@ -151,10 +148,9 @@ function CircuitField({ isLight }: { isLight: boolean }) {
         </circle>
       )))}
 
-      {/* Current pulses — glow halo + core, traveling along each trace */}
-      {TRACES.map(t => (
+      {traces.map(t => (
         <g key={`pulse-${t.id}`}>
-          <circle r={8} fill={pulseGlow} filter="url(#billing-pulse-blur)">
+          <circle r={8} fill={pulseGlow} filter="url(#pulse-blur)">
             <animateMotion dur={`${t.dur}s`} begin={`${t.begin}s`} repeatCount="indefinite" rotate="auto">
               <mpath xlinkHref={`#${t.id}`} />
             </animateMotion>
@@ -171,7 +167,7 @@ function CircuitField({ isLight }: { isLight: boolean }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// COMET FIELD — slow diagonal streaks drifting across the void
+// COMET FIELD — reduced on mobile
 // ─────────────────────────────────────────────────────────────────────────────
 const COMETS = [
   { top: '6%',  size: 220, angle: -16, dur: 16, delay: 0 },
@@ -180,14 +176,16 @@ const COMETS = [
   { top: '82%', size: 180, angle: -18, dur: 24, delay: 3 },
 ]
 
-function CometField({ isLight }: { isLight: boolean }) {
+function CometField({ isLight, isMobile }: { isLight: boolean; isMobile: boolean }) {
+  // On mobile show only 2 comets for perf
+  const comets = isMobile ? COMETS.slice(0, 2) : COMETS
   const tail = isLight
     ? 'linear-gradient(90deg, transparent, rgba(160,120,80,0.0), rgba(160,120,80,0.35), rgba(255,255,255,0.7))'
     : 'linear-gradient(90deg, transparent, rgba(160,120,80,0.0), rgba(255,217,168,0.35), rgba(255,255,255,0.85))'
 
   return (
     <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', pointerEvents: 'none' }}>
-      {COMETS.map((c, i) => (
+      {comets.map((c, i) => (
         <motion.div
           key={i}
           initial={{ x: '-30vw' }}
@@ -195,7 +193,7 @@ function CometField({ isLight }: { isLight: boolean }) {
           transition={{ duration: c.dur, delay: c.delay, repeat: Infinity, ease: 'linear' }}
           style={{
             position: 'absolute', top: c.top, left: 0,
-            width: c.size, height: 2,
+            width: isMobile ? c.size * 0.65 : c.size, height: 2,
             background: tail,
             transform: `rotate(${c.angle}deg)`,
             filter: 'blur(0.5px)',
@@ -217,7 +215,7 @@ function CometField({ isLight }: { isLight: boolean }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ANIMATED PRICE — characters blur-stagger in, then a gentle idle float
+// ANIMATED PRICE
 // ─────────────────────────────────────────────────────────────────────────────
 function AnimatedPrice({ value, isLight }: { value: string; isLight: boolean }) {
   const chars = value.split('')
@@ -229,10 +227,7 @@ function AnimatedPrice({ value, isLight }: { value: string; isLight: boolean }) 
           initial={{ opacity: 0, y: 28, filter: 'blur(10px)' }}
           animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
           transition={{ duration: 0.7, ease: EASE_OUT_EXPO, delay: 0.25 + i * 0.05 }}
-          style={{
-            display: 'inline-block',
-            color: isLight ? '#0a0a0a' : '#ffffff',
-          }}
+          style={{ display: 'inline-block', color: isLight ? '#0a0a0a' : '#ffffff' }}
         >
           {c}
         </motion.span>
@@ -242,7 +237,7 @@ function AnimatedPrice({ value, isLight }: { value: string; isLight: boolean }) 
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// FEATURE ROW — glass pill, lifts + accent-glows on hover
+// FEATURE ROW
 // ─────────────────────────────────────────────────────────────────────────────
 const FEATURES = [
   { icon: Palette,       title: 'AI powered design generation', body: 'Generate unique design variations from a single prompt.' },
@@ -254,50 +249,57 @@ const FEATURES = [
 ]
 
 function FeatureRow({
-  icon: Icon, title, body, isLight, delay,
+  icon: Icon, title, body, isLight, delay, isMobile,
 }: {
   icon: typeof Palette
   title: string
   body: string
   isLight: boolean
   delay: number
+  isMobile: boolean
 }) {
   return (
     <motion.div
       initial={{ opacity: 0, x: -16 }}
       animate={{ opacity: 1, x: 0 }}
       transition={{ duration: 0.6, ease: EASE_OUT_EXPO, delay }}
-      whileHover={{ x: 4 }}
+      // Disable hover slide on touch devices
+      whileHover={isMobile ? {} : { x: 4 }}
       style={{
-        display: 'flex', alignItems: 'flex-start', gap: 14,
-        padding: '13px 14px', borderRadius: 14,
+        display: 'flex', alignItems: 'flex-start', gap: isMobile ? 12 : 14,
+        padding: isMobile ? '11px 12px' : '13px 14px', borderRadius: 14,
         background: isLight ? 'rgba(0,0,0,0.025)' : 'rgba(255,255,255,0.035)',
         border: isLight ? '1px solid rgba(0,0,0,0.05)' : '1px solid rgba(255,255,255,0.06)',
         transition: 'border-color 0.2s, background 0.2s',
       }}
-      onMouseEnter={e => {
+      onMouseEnter={isMobile ? undefined : e => {
         e.currentTarget.style.borderColor = 'rgba(160,120,80,0.35)'
         e.currentTarget.style.background = isLight ? 'rgba(160,120,80,0.06)' : 'rgba(160,120,80,0.08)'
       }}
-      onMouseLeave={e => {
+      onMouseLeave={isMobile ? undefined : e => {
         e.currentTarget.style.borderColor = isLight ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.06)'
         e.currentTarget.style.background = isLight ? 'rgba(0,0,0,0.025)' : 'rgba(255,255,255,0.035)'
       }}
     >
       <div style={{
-        width: 30, height: 30, borderRadius: 9, flexShrink: 0,
+        width: isMobile ? 28 : 30, height: isMobile ? 28 : 30,
+        borderRadius: 9, flexShrink: 0,
         background: 'rgba(160,120,80,0.16)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
       }}>
-        <Icon size={15} color="#A07850" />
+        <Icon size={isMobile ? 13 : 15} color="#A07850" />
       </div>
       <div>
         <p style={{
-          margin: 0, fontSize: 13.5, fontWeight: 600, letterSpacing: '-0.01em',
+          margin: 0,
+          fontSize: isMobile ? 13 : 13.5,
+          fontWeight: 600, letterSpacing: '-0.01em',
           color: isLight ? '#0a0a0a' : '#ffffff',
         }}>{title}</p>
         <p style={{
-          margin: '2px 0 0', fontSize: 12, lineHeight: 1.55,
+          margin: '2px 0 0',
+          fontSize: isMobile ? 11.5 : 12,
+          lineHeight: 1.55,
           color: isLight ? 'rgba(0,0,0,0.42)' : 'rgba(255,255,255,0.36)',
         }}>{body}</p>
       </div>
@@ -308,7 +310,7 @@ function FeatureRow({
 // ─────────────────────────────────────────────────────────────────────────────
 // TRUST STRIP
 // ─────────────────────────────────────────────────────────────────────────────
-function TrustStrip({ isLight }: { isLight: boolean }) {
+function TrustStrip({ isLight, isMobile }: { isLight: boolean; isMobile: boolean }) {
   const items = [
     { icon: ShieldCheck, label: 'Secure payments' },
     { icon: RefreshCw,   label: 'Cancel anytime' },
@@ -319,18 +321,26 @@ function TrustStrip({ isLight }: { isLight: boolean }) {
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.7, ease: EASE_OUT_EXPO, delay: 0.9 }}
-      style={{ display: 'flex', justifyContent: 'center', gap: 10, flexWrap: 'wrap', marginTop: 28 }}
+      style={{
+        display: 'flex',
+        justifyContent: 'center',
+        gap: isMobile ? 8 : 10,
+        flexWrap: 'wrap',
+        marginTop: isMobile ? 20 : 28,
+      }}
     >
       {items.map(({ icon: Icon, label }) => (
         <div key={label} style={{
           display: 'flex', alignItems: 'center', gap: 7,
-          padding: '8px 16px', borderRadius: 9999,
+          padding: isMobile ? '7px 13px' : '8px 16px',
+          borderRadius: 9999,
           background: isLight ? 'rgba(0,0,0,0.03)' : 'rgba(255,255,255,0.04)',
           border: isLight ? '1px solid rgba(0,0,0,0.06)' : '1px solid rgba(255,255,255,0.07)',
-          fontSize: 12, fontWeight: 500,
+          fontSize: isMobile ? 11 : 12,
+          fontWeight: 500,
           color: isLight ? 'rgba(0,0,0,0.50)' : 'rgba(255,255,255,0.46)',
         }}>
-          <Icon size={13} color="#A07850" />
+          <Icon size={isMobile ? 12 : 13} color="#A07850" />
           {label}
         </div>
       ))}
@@ -346,18 +356,20 @@ export default function PricingPage() {
   const [mounted, setMounted] = useState(false)
   useEffect(() => setMounted(true), [])
 
-  const cardRef = useRef<HTMLDivElement>(null)
+  const isMobile = useIsMobile()
+
   const rotX = useSpring(0, { stiffness: 260, damping: 24 })
   const rotY = useSpring(0, { stiffness: 260, damping: 24 })
 
-  if (!mounted) return <Loading />
+  const isLight = mounted ? (theme === 'system' ? systemTheme : theme) === 'light' : true
 
-  const isLight = (theme === 'system' ? systemTheme : theme) === 'light'
   const bg   = isLight ? '#F5F0E8' : '#070707'
   const text = isLight ? '#0a0a0a' : '#ffffff'
   const sub  = isLight ? 'rgba(0,0,0,0.44)' : 'rgba(255,255,255,0.38)'
 
+  // Mouse parallax only on desktop — pointless and janky on touch
   const onCardMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (isMobile) return
     const rect = e.currentTarget.getBoundingClientRect()
     rotX.set(((e.clientY - (rect.top + rect.height / 2)) / rect.height) * -4)
     rotY.set(((e.clientX - (rect.left + rect.width / 2)) / rect.width) * 4)
@@ -366,7 +378,7 @@ export default function PricingPage() {
 
   return (
     <div style={{ position: 'relative', minHeight: '100dvh', background: bg, overflow: 'hidden' }}>
-      {/* Liquid glass filter defs — used ONLY on the glow ring, never on text-bearing layers */}
+      {/* Liquid glass filter defs */}
       <svg style={{ position: 'absolute', width: 0, height: 0, overflow: 'hidden' }} aria-hidden="true">
         <defs>
           {['dark', 'light'].map(m => (
@@ -386,12 +398,14 @@ export default function PricingPage() {
         </defs>
       </svg>
 
-      {/* Ambient backdrop */}
-      <div style={{ position: 'absolute', inset: 0, opacity: 0.5 }}>
-        <ParticleBackground />
-      </div>
-      <CircuitField isLight={isLight} />
-      <CometField isLight={isLight} />
+      {/* Ambient backdrop — skip heavy particle layer on mobile */}
+      {!isMobile && (
+        <div style={{ position: 'absolute', inset: 0, opacity: 0.5 }}>
+          <ParticleBackground />
+        </div>
+      )}
+      <CircuitField isLight={isLight} isMobile={isMobile} />
+      <CometField isLight={isLight} isMobile={isMobile} />
       <div style={{
         position: 'absolute', inset: 0, pointerEvents: 'none',
         background: isLight
@@ -402,18 +416,17 @@ export default function PricingPage() {
       {/* Top bar */}
       <div style={{
         position: 'absolute', top: 0, left: 0, right: 0, zIndex: 20,
-        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-        padding: '24px 32px',
+        display: 'flex', justifyContent: 'flex-start', alignItems: 'center',
+        padding: isMobile ? '18px 20px' : '24px 32px',
       }}>
         <Link href="/" style={{
           display: 'flex', alignItems: 'center', gap: 8, textDecoration: 'none',
-          fontSize: 13, fontWeight: 500,
+          fontSize: isMobile ? 12 : 13, fontWeight: 500,
           color: isLight ? 'rgba(0,0,0,0.45)' : 'rgba(255,255,255,0.42)',
         }}>
-          <ArrowLeft size={14} />
+          <ArrowLeft size={isMobile ? 13 : 14} />
           Palm
         </Link>
-        <ThemeToggle />
       </div>
 
       {/* Content */}
@@ -421,56 +434,67 @@ export default function PricingPage() {
         position: 'relative', zIndex: 10,
         minHeight: '100dvh', display: 'flex', flexDirection: 'column',
         alignItems: 'center', justifyContent: 'center',
-        padding: '120px 24px 80px',
+        // Tighter top/bottom padding on mobile; narrower horizontal gutters
+        padding: isMobile ? '90px 16px 64px' : '120px 24px 80px',
       }}>
         {/* Heading */}
         <motion.div
           initial={{ opacity: 0, y: 24, filter: 'blur(4px)' }}
           animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
           transition={{ duration: 0.9, ease: EASE_OUT_EXPO }}
-          style={{ textAlign: 'center', marginBottom: 40 }}
+          style={{ textAlign: 'center', marginBottom: isMobile ? 28 : 40 }}
         >
           <span style={{
-            fontSize: 11, letterSpacing: '0.18em', textTransform: 'uppercase',
+            fontSize: isMobile ? 10 : 11,
+            letterSpacing: '0.18em', textTransform: 'uppercase',
             color: 'rgba(160,120,80,0.70)',
           }}>
             Pricing
           </span>
           <h1 style={{
-            marginTop: 14, fontSize: 'clamp(2.2rem, 5.5vw, 4rem)',
+            marginTop: isMobile ? 10 : 14,
+            // Tighter clamp on mobile to avoid overflow
+            fontSize: isMobile ? 'clamp(1.75rem, 8vw, 2.4rem)' : 'clamp(2.2rem, 5.5vw, 4rem)',
             fontWeight: 800, letterSpacing: '-0.04em', lineHeight: 1.05,
-            color: text, maxWidth: 620,
+            color: text, maxWidth: isMobile ? 300 : 620,
           }}>
             One plan. <span style={{ color: '#A07850' }}>Everything</span> unlocked.
           </h1>
           <p style={{
-            marginTop: 16, fontSize: '1.02rem', lineHeight: 1.6,
-            color: sub, maxWidth: 440, marginLeft: 'auto', marginRight: 'auto',
+            marginTop: isMobile ? 12 : 16,
+            fontSize: isMobile ? '0.9rem' : '1.02rem',
+            lineHeight: 1.6,
+            color: sub, maxWidth: isMobile ? 300 : 440,
+            marginLeft: 'auto', marginRight: 'auto',
           }}>
-            No tiers to compare, no features held hostage. <br/> Just the full Palm experience
-            ready the moment you are.
+            No tiers to compare, no features held hostage.{isMobile ? ' ' : <br />}
+            Just the full Palm experience ready the moment you are.
           </p>
         </motion.div>
 
         {/* The card */}
         <motion.div
-          ref={cardRef}
           onMouseMove={onCardMove}
           onMouseLeave={onCardLeave}
           initial={{ opacity: 0, y: 40, scale: 0.97 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
           transition={{ duration: 0.9, ease: EASE_OUT_EXPO, delay: 0.15 }}
           style={{
-            position: 'relative', width: '100%', maxWidth: 460,
-            rotateX: rotX, rotateY: rotY, transformStyle: 'preserve-3d',
+            position: 'relative',
+            width: '100%',
+            // Full bleed (minus gutter) on mobile, capped on desktop
+            maxWidth: isMobile ? '100%' : 460,
+            rotateX: isMobile ? 0 : rotX,
+            rotateY: isMobile ? 0 : rotY,
+            transformStyle: 'preserve-3d',
           }}
         >
-          {/* Glow ring — liquid filter lives here only (no text to distort) */}
+          {/* Glow ring */}
           <motion.div
             animate={{ opacity: [0.5, 0.9, 0.5] }}
             transition={{ duration: 5, repeat: Infinity, ease: 'easeInOut' }}
             style={{
-              position: 'absolute', inset: -1, borderRadius: 30,
+              position: 'absolute', inset: -1, borderRadius: isMobile ? 24 : 30,
               background: 'linear-gradient(135deg, rgba(160,120,80,0.45), transparent 40%, transparent 60%, rgba(160,120,80,0.35))',
               filter: `blur(18px) url(#pricing-glass-${isLight ? 'light' : 'dark'})`,
               zIndex: -1,
@@ -478,7 +502,9 @@ export default function PricingPage() {
           />
 
           <div style={{
-            position: 'relative', borderRadius: 28, overflow: 'hidden',
+            position: 'relative',
+            borderRadius: isMobile ? 24 : 28,
+            overflow: 'hidden',
             background: isLight ? 'rgba(245,240,232,0.62)' : 'rgba(12,12,12,0.62)',
             backdropFilter: 'blur(30px) saturate(1.5)',
             WebkitBackdropFilter: 'blur(30px) saturate(1.5)',
@@ -486,7 +512,8 @@ export default function PricingPage() {
             boxShadow: isLight
               ? '0 12px 50px rgba(0,0,0,0.10), inset 0 1px 0 rgba(255,255,255,0.85)'
               : '0 24px 90px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.08)',
-            padding: '40px 36px',
+            // Tighter card padding on mobile
+            padding: isMobile ? '28px 20px 28px' : '40px 36px',
           }}>
             {/* Top edge highlight */}
             <div style={{
@@ -501,59 +528,80 @@ export default function PricingPage() {
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ delay: 0.4, ...SPRING_SNAPPY }}
-              style={{ display: 'flex', justifyContent: 'center', marginBottom: 18 }}
+              style={{ display: 'flex', justifyContent: 'center', marginBottom: isMobile ? 14 : 18 }}
             >
               <div style={{
                 display: 'flex', alignItems: 'center', gap: 6,
-                padding: '6px 14px', borderRadius: 9999,
+                padding: isMobile ? '5px 12px' : '6px 14px',
+                borderRadius: 9999,
                 background: 'rgba(160,120,80,0.16)',
                 border: '1px solid rgba(160,120,80,0.30)',
-                fontSize: 11, fontWeight: 600, letterSpacing: '0.04em',
+                fontSize: isMobile ? 10 : 11,
+                fontWeight: 600, letterSpacing: '0.04em',
                 textTransform: 'uppercase', color: '#A07850',
               }}>
-                <Sparkles size={12} />
+                <Sparkles size={isMobile ? 11 : 12} />
                 Most popular
               </div>
             </motion.div>
 
             {/* Plan name + price */}
-            <div style={{ textAlign: 'center', marginBottom: 28 }}>
+            <div style={{ textAlign: 'center', marginBottom: isMobile ? 20 : 28 }}>
               <h2 style={{
-                margin: 0, fontSize: '1.3rem', fontWeight: 700,
+                margin: 0,
+                fontSize: isMobile ? '1.1rem' : '1.3rem',
+                fontWeight: 700,
                 letterSpacing: '-0.025em', color: text,
               }}>
                 Palm Pro
               </h2>
               <div style={{
-                marginTop: 14, display: 'flex', alignItems: 'baseline',
+                marginTop: isMobile ? 10 : 14,
+                display: 'flex', alignItems: 'baseline',
                 justifyContent: 'center', gap: 6,
               }}>
-                <span style={{ fontSize: 'clamp(3rem, 8vw, 4rem)', fontWeight: 800, letterSpacing: '-0.04em' }}>
+                <span style={{
+                  // Slightly smaller on mobile to stay comfortable
+                  fontSize: isMobile ? 'clamp(2.4rem, 12vw, 3.2rem)' : 'clamp(3rem, 8vw, 4rem)',
+                  fontWeight: 800, letterSpacing: '-0.04em',
+                }}>
                   <AnimatedPrice value="$20" isLight={isLight} />
                 </span>
-                <span style={{ fontSize: 15, fontWeight: 500, color: sub }}>/month</span>
+                <span style={{ fontSize: isMobile ? 13 : 15, fontWeight: 500, color: sub }}>/month</span>
               </div>
               <motion.p
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 transition={{ delay: 0.6, duration: 0.6 }}
-                style={{ marginTop: 10, fontSize: 13.5, lineHeight: 1.6, color: sub, maxWidth: 320, marginLeft: 'auto', marginRight: 'auto' }}
+                style={{
+                  marginTop: isMobile ? 8 : 10,
+                  fontSize: isMobile ? 12.5 : 13.5,
+                  lineHeight: 1.6, color: sub,
+                  maxWidth: isMobile ? 260 : 320,
+                  marginLeft: 'auto', marginRight: 'auto',
+                }}
               >
-                10 credits every month. Each credit unlocks a full AI-powered task —
+                10 credits every month. Each credit unlocks a full AI-powered task
                 built for freelancers and creators who ship.
               </motion.p>
             </div>
 
             {/* Divider */}
             <div style={{
-              height: 1, margin: '0 0 24px',
+              height: 1, margin: '0 0 20px',
               background: isLight ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.07)',
             }} />
 
             {/* Features */}
-            <div style={{ display: 'grid', gap: 8 }}>
+            <div style={{ display: 'grid', gap: isMobile ? 6 : 8 }}>
               {FEATURES.map((f, i) => (
-                <FeatureRow key={f.title} {...f} isLight={isLight} delay={0.5 + i * 0.06} />
+                <FeatureRow
+                  key={f.title}
+                  {...f}
+                  isLight={isLight}
+                  isMobile={isMobile}
+                  delay={0.5 + i * 0.06}
+                />
               ))}
             </div>
 
@@ -562,15 +610,33 @@ export default function PricingPage() {
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 1.0, duration: 0.6, ease: EASE_OUT_EXPO }}
-              whileHover={{ scale: 1.015 }}
-              whileTap={{ scale: 0.985 }}
-              style={{ marginTop: 28 }}
+              style={{ marginTop: isMobile ? 20 : 28 }}
             >
-              <SubscribeButton />
+              <motion.div whileHover={{ scale: 1.015 }} whileTap={{ scale: 0.985 }} transition={SPRING_SNAPPY}>
+                <Link
+                  href="/auth/sign-up"
+                  style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                    width: '100%',
+                    // Slightly taller tap target on mobile
+                    padding: isMobile ? '16px 0' : '15px 0',
+                    borderRadius: 9999,
+                    fontSize: isMobile ? 14 : 15,
+                    fontWeight: 700, letterSpacing: '-0.015em',
+                    textDecoration: 'none',
+                    background: isLight ? '#0a0a0a' : '#ffffff',
+                    color: isLight ? '#F5F0E8' : '#070707',
+                  }}
+                >
+                  Get started
+                  <ArrowRight size={isMobile ? 13 : 14} />
+                </Link>
+              </motion.div>
             </motion.div>
 
             <p style={{
-              marginTop: 12, textAlign: 'center', fontSize: 11.5,
+              marginTop: 10, textAlign: 'center',
+              fontSize: isMobile ? 11 : 11.5,
               color: isLight ? 'rgba(0,0,0,0.32)' : 'rgba(255,255,255,0.30)',
             }}>
               Cancel anytime · no questions asked
@@ -578,16 +644,24 @@ export default function PricingPage() {
           </div>
         </motion.div>
 
-        <TrustStrip isLight={isLight} />
+        <TrustStrip isLight={isLight} isMobile={isMobile} />
 
         {/* Legal links */}
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 1.1, duration: 0.6 }}
-          style={{ marginTop: 36, textAlign: 'center' }}
+          style={{ marginTop: isMobile ? 24 : 36, textAlign: 'center' }}
         >
-          <div style={{ display: 'flex', justifyContent: 'center', gap: 16, fontSize: 11.5 }}>
+          <div style={{
+            display: 'flex',
+            justifyContent: 'center',
+            // Stack vertically on mobile to avoid squishing
+            flexDirection: isMobile ? 'column' : 'row',
+            alignItems: 'center',
+            gap: isMobile ? 8 : 16,
+            fontSize: isMobile ? 11 : 11.5,
+          }}>
             {[
               { label: 'Terms of Service', href: '/terms' },
               { label: 'Privacy Policy', href: '/privacy' },
@@ -597,21 +671,38 @@ export default function PricingPage() {
                 <a href={l.href} style={{
                   color: sub, textDecoration: 'underline', textUnderlineOffset: 4,
                 }}>{l.label}</a>
-                {i < 2 && <span style={{ color: isLight ? 'rgba(0,0,0,0.10)' : 'rgba(255,255,255,0.10)' }}>|</span>}
+                {/* Separators only make sense in row layout */}
+                {!isMobile && i < 2 && (
+                  <span style={{ color: isLight ? 'rgba(0,0,0,0.10)' : 'rgba(255,255,255,0.10)' }}>|</span>
+                )}
               </span>
             ))}
           </div>
-          <p style={{ marginTop: 10, fontSize: 10.5, color: isLight ? 'rgba(0,0,0,0.28)' : 'rgba(255,255,255,0.24)' }}>
+          <p style={{
+            marginTop: 10,
+            fontSize: isMobile ? 10 : 10.5,
+            color: isLight ? 'rgba(0,0,0,0.28)' : 'rgba(255,255,255,0.24)',
+            maxWidth: isMobile ? 280 : undefined,
+            marginLeft: 'auto', marginRight: 'auto',
+          }}>
             Payments are securely processed. By subscribing, you agree to our terms and billing policy.
           </p>
         </motion.div>
       </div>
 
-      <div style={{ position: 'fixed', bottom: 24, right: 24, zIndex: 50 }}>
-        <GlassTooltip content="Toggle theme" side="left">
-          <ThemeToggle />
-        </GlassTooltip>
-      </div>
+      {/* Theme toggle — nudge inward on mobile so it doesn't clip */}
+      {mounted && (
+        <div style={{
+          position: 'fixed',
+          bottom: isMobile ? 20 : 24,
+          right: isMobile ? 16 : 24,
+          zIndex: 50,
+        }}>
+          <GlassTooltip content="Toggle theme" side="left">
+            <ThemeToggle />
+          </GlassTooltip>
+        </div>
+      )}
     </div>
   )
 }

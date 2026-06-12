@@ -8,6 +8,7 @@ import { useRouter } from 'next/navigation'
 import { useAppSelector, useAppDispatch } from '@/redux/store'
 import { toggleSidebar } from '@/redux/slice/ui'
 import { useProjects } from '@/components/projects/list/provider'
+import { usePersistentInput } from '@/hooks/use-persistent-input'
 import { useQuery } from 'convex/react'
 import { api } from '../../../convex/_generated/api'
 import { Id } from '../../../convex/_generated/dataModel'
@@ -121,7 +122,13 @@ export default function HomeShell({ profile, view = 'home' }: Props) {
     const projects = useProjects()
     const router = useRouter()
 
-    const [prompt, setPrompt] = useState('')
+    const {
+        prompt, setPrompt,
+        urlTags, setUrlTags,
+        uploadedImages, setUploadedImages,
+        clearPersistedInput,
+    } = usePersistentInput()
+
     const [isFocused, setIsFocused] = useState(false)
     const [enhancing, setEnhancing] = useState(false)
     const [isLoading, setIsLoading] = useState(false)
@@ -130,19 +137,24 @@ export default function HomeShell({ profile, view = 'home' }: Props) {
     const [suggestedPrompts] = useState(() => getRandomPrompts())
     const [hasDeletedOptimistic, setHasDeletedOptimistic] = useState(false)
     const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState(false)
-    const [uploadedImages, setUploadedImages] = useState<ImageItem[]>([])
     const [isDragging, setIsDragging] = useState(false)
     const [urlMode, setUrlMode] = useState(false)
-    const [urlTags, setUrlTags] = useState<string[]>([])
     const [urlInputValue, setUrlInputValue] = useState('')
     const [logoHovered, setLogoHovered] = useState(false)
     const textareaRef = useRef<HTMLTextAreaElement>(null)
     const dragCounter = useRef(0)
     const pendingSendRef = useRef(false)
+    const uploadAbortControllersRef = useRef<Map<string, AbortController>>(new Map())
+    const uploadedImagesRef = useRef<ImageItem[]>([])
     const { toast } = usePalmToast()
 
     // Check if any images are still uploading
     const isUploading = uploadedImages.some(img => img.storageId === null && !img.error)
+
+    // Keep ref in sync with state to avoid stale closures
+    React.useEffect(() => {
+        uploadedImagesRef.current = uploadedImages
+    }, [uploadedImages])
 
     const creditBalance = useQuery(
         api.subscription.getCreditsBalance,
@@ -163,15 +175,22 @@ export default function HomeShell({ profile, view = 'home' }: Props) {
         if (!file.type.startsWith('image/')) return
         const previewUrl = URL.createObjectURL(file)
         const id = Math.random().toString(36).slice(2, 9)
+        const abortController = new AbortController()
+        uploadAbortControllersRef.current.set(id, abortController)
 
         setUploadedImages(prev => [...prev, { id, previewUrl, storageId: null }])
 
         try {
             const form = new FormData()
             form.append('file', file)
-            const res = await fetch('/api/upload', { method: 'POST', body: form })
+            const res = await fetch('/api/upload', {
+                method: 'POST',
+                body: form,
+                signal: abortController.signal,
+            })
             if (!res.ok) throw new Error('Upload failed')
             const { storageId } = await res.json()
+            uploadAbortControllersRef.current.delete(id)
 
             setUploadedImages(prev => {
                 const updated = prev.map(img => img.id === id ? { ...img, storageId } : img)
@@ -184,14 +203,24 @@ export default function HomeShell({ profile, view = 'home' }: Props) {
                 return updated
             })
         } catch (err) {
+            if ((err as any)?.name === 'AbortError') return // silently cancelled
             console.error('Image upload failed:', err)
             setUploadedImages(prev => prev.map(img => img.id === id ? { ...img, error: true } : img))
             pendingSendRef.current = false
             setPendingSend(false)
+        } finally {
+            uploadAbortControllersRef.current.delete(id)
         }
     }
 
     const handleRemoveImage = (id: string) => {
+        // Abort in-flight upload if still running
+        const controller = uploadAbortControllersRef.current.get(id)
+        if (controller) {
+            controller.abort()
+            uploadAbortControllersRef.current.delete(id)
+        }
+
         setUploadedImages(prev => {
             const img = prev.find(i => i.id === id)
             if (img) {
@@ -204,7 +233,16 @@ export default function HomeShell({ profile, view = 'home' }: Props) {
                     }).catch(console.error)
                 }
             }
-            return prev.filter(i => i.id !== id)
+            const remaining = prev.filter(i => i.id !== id)
+
+            // If no more uploading images and send was pending, cancel it
+            const stillUploading = remaining.some(i => i.storageId === null && !i.error)
+            if (!stillUploading && pendingSendRef.current) {
+                pendingSendRef.current = false
+                setPendingSend(false)
+            }
+
+            return remaining
         })
     }
 
@@ -271,8 +309,11 @@ export default function HomeShell({ profile, view = 'home' }: Props) {
     const handleSubmit = async () => {
         if (!prompt.trim() || isLoading) return
 
+        // Use ref to get current images — avoids stale closure
+        const currentImages = uploadedImagesRef.current
+
         // If images are still uploading, queue the send
-        if (uploadedImages.some(img => img.storageId === null && !img.error)) {
+        if (currentImages.some(img => img.storageId === null && !img.error)) {
             pendingSendRef.current = true
             setPendingSend(true)
             return
@@ -300,7 +341,7 @@ export default function HomeShell({ profile, view = 'home' }: Props) {
                 }
             }
 
-            const imageStorageIds = uploadedImages
+            const imageStorageIds = currentImages
                 .filter(img => img.storageId !== null && !img.error)
                 .map(img => img.storageId as string)
 
@@ -318,6 +359,7 @@ export default function HomeShell({ profile, view = 'home' }: Props) {
             const { projectId, error, details } = await res.json()
             if (!res.ok || !projectId) throw new Error(details || error)
 
+            clearPersistedInput()
             router.push(
                 `/dashboard/${me.name}/canvas?project=${projectId}&prompt=${encodeURIComponent(finalPrompt)}${
                     imageStorageIds.length > 0
