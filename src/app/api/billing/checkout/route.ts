@@ -23,7 +23,7 @@ export const GET = async (req: NextRequest) => {
 
     const session = await polar.checkouts.create({
         products: [process.env.POLAR_PRO_PLAN!],
-        successUrl: `${process.env.NEXT_PUBLIC_APP_URL}/billing/success`,
+        successUrl: `${process.env.NEXT_PUBLIC_APP_URL}/billing/checkout-success`,
         metadata: {
             userId,
         }
