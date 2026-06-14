@@ -29,27 +29,32 @@ export async function PATCH(req: NextRequest) {
         }
 
         if (isPro) {
-            // Pro path — Inngest handles it (retries, monitoring, guaranteed)
-            const eventResult = await inngest.send({
-                name: 'project/autosave.requested',
-                data: { projectId, shapesData, viewportData, userId }
-            })
-            return new Response(
-                JSON.stringify({ success: true, via: 'inngest', eventId: eventResult }), 
-                { status: 200 }
-            )
-        } else {
-            // Free path — save directly, no Inngest
-            await fetchMutation(api.projects.updateProjectSketches, {
-                projectId: projectId as Id<"projects">,
-                sketchesData: shapesData,
-                viewportData
-            })
-            return new Response(
-                JSON.stringify({ success: true, via: 'direct' }), 
-                { status: 200 }
-            )
+            try {
+                // Pro path — Inngest handles it (retries, monitoring, guaranteed)
+                const eventResult = await inngest.send({
+                    name: 'project/autosave.requested',
+                    data: { projectId, shapesData, viewportData, userId }
+                })
+                return new Response(
+                    JSON.stringify({ success: true, via: 'inngest', eventId: eventResult }),
+                    { status: 200 }
+                )
+            } catch (inngestError) {
+                console.error('Inngest send failed, falling back to direct save:', inngestError)
+                // Fall through to direct save below
+            }
         }
+
+        // Free path / fallback — save directly, no Inngest
+        await fetchMutation(api.projects.updateProjectSketches, {
+            projectId: projectId as Id<"projects">,
+            sketchesData: shapesData,
+            viewportData
+        })
+        return new Response(
+            JSON.stringify({ success: true, via: 'direct' }),
+            { status: 200 }
+        )
 
     } catch (error) {
         console.error('Error saving project:', error)

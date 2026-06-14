@@ -3,18 +3,19 @@ import ProjectProvider from "@/components/projects/provider"
 import { ProjectQuery } from "@/convex/query.config"
 
 interface CanvasPageProps {
-    searchParams: Promise<{ project?: string }>
+    searchParams: Promise<{ project?: string | string[] }>
 }
 
 const Page = async ({ searchParams }: CanvasPageProps) => {
 
     const params = await searchParams
-    const projectId = params.project
+    const rawProjectId = params.project
+    const projectId = Array.isArray(rawProjectId) ? rawProjectId[0] : rawProjectId
 
-    if (!projectId) {
+    if (!projectId || typeof projectId !== 'string' || projectId === '[object Object]' || projectId.length !== 32) {
         return (
             <div className="w-full h-screen flex items-center justify-center">
-                <p className="text-muted-foreground">No project selected</p>
+                <p className="text-muted-foreground">No valid project selected</p>
             </div>
         )
     }

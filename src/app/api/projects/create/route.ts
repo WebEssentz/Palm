@@ -74,7 +74,7 @@ export async function POST(req: NextRequest) {
 
         // Generate project name from the original prompt (not the enriched one)
         const { text: projectName } = await generateText({
-            model: google('gemini-3.1-flash-lite'),
+            model: google('gemini-3.5-flash'),
             prompt: `Generate a short 2-4 word project name for this UI prompt. 
             Return ONLY the name, no quotes, no punctuation: "${prompt}"`,
             providerOptions: {
@@ -89,19 +89,21 @@ export async function POST(req: NextRequest) {
 
         const token = await convexAuthNextjsToken()
 
-        const projectId = await fetchMutation(
+        const result = await fetchMutation(
             api.projects.createProject,
             {
                 name: projectName.trim(),
-                prompt: enrichedPrompt,  // ← enriched prompt stored in DB
+                prompt: enrichedPrompt,
                 thumbnail: generateGradientThumbnail(),
                 referenceUrls,
             },
             { token }
         )
 
+        const projectId = result._id
+
         // Style guide generation uses enrichedPrompt via projectId lookup
-        fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/generate-style-guide`, {
+        fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/generate/style`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ projectId, promptText: enrichedPrompt }),

@@ -5,9 +5,11 @@ import { extractOrderLike, extractSubscriptionLike, grantKey, isEntitledStatus, 
 import { Id } from "../../convex/_generated/dataModel";
 
 export const autosaveProjectWorkflow = inngest.createFunction(
-    {id: 'autosave-project-workflow'},
-    {event: 'project/autosave.requested'},
-    async ({event}) => {
+    {
+        id: 'autosave-project-workflow',
+        triggers: { event: 'project/autosave.requested' },
+    },
+    async ({ event }) => {
         const { projectId, shapesData, viewportData } = event.data
         try {
             await fetchMutation(api.projects.updateProjectSketches, {
@@ -25,9 +27,11 @@ export const autosaveProjectWorkflow = inngest.createFunction(
 )
 
 export const handlePolarEvent = inngest.createFunction(
-    { id: 'polar-webhook-handler' },
-    { event: 'polar/webhook.received' },
-    async ({event, step}) => {
+    {
+        id: 'polar-webhook-handler',
+        triggers: { event: 'polar/webhook.received' },
+    },
+    async ({ event, step }) => {
         if (!isPolarWebhookEvent(event.data)) {
             return 
         }  
@@ -201,10 +205,12 @@ export const handlePolarEvent = inngest.createFunction(
                     {
                         name: 'billing/credits.granted',
                         id: `credits-granted:${polarSubscriptionId}:${currentPeriodEnd ?? 'first'}`,
-                        subscriptionId,
-                        amount: 'granted' in grant ? (grant.granted ?? 10) : 10,
-                        balance: 'balance' in grant ? grant.balance : undefined,
-                        periodEnd: currentPeriodEnd
+                        data: {
+                            subscriptionId,
+                            amount: 'granted' in grant ? (grant.granted ?? 10) : 10,
+                            balance: 'balance' in grant ? grant.balance : undefined,
+                            periodEnd: currentPeriodEnd,
+                        },
                     }
                 )
                 console.log('Sent credits granted event')
@@ -271,4 +277,3 @@ export const handlePolarEvent = inngest.createFunction(
         }
     }
 )
-

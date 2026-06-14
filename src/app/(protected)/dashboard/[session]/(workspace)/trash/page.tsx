@@ -17,8 +17,10 @@ const Page = async () => {
         )
     }
 
+    const projectsList = (projects as any)._valueJSON ?? []
+    
     return (
-        <ProjectsProvider initialProjects={projects}>
+        <ProjectsProvider initialProjects={projectsList}>
             <HomeShell profile={{ name: profile.name || '', image: profile.image }} view='trash' />
         </ProjectsProvider>
     )

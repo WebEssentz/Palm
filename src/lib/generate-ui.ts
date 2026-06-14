@@ -3,6 +3,7 @@ import { google } from '@ai-sdk/google'
 import { readFileSync } from 'fs'
 import { join } from 'path'
 import { StyleGuideQuery } from '@/convex/query.config'
+import { prompts } from '@/prompts'
 
 const uiSkill = readFileSync(
     join(process.cwd(), 'skills/ui-generation/SKILL.md'), 'utf-8'
@@ -29,7 +30,7 @@ export interface StyleTokens {
 
 export async function inferStyleTokensFromPrompt(prompt: string): Promise<StyleTokens> {
     const { text } = await generateText({
-        model: google('gemini-3.1-flash-lite'),
+        model: google('gemini-3.5-flash'),
         system: 'You extract design tokens from a description. Return ONLY valid JSON, no markdown, no explanation.',
         prompt: [
             'From this UI description, infer a complete design system as JSON:',
@@ -126,6 +127,9 @@ export interface GenerateUIOptions {
     styleTokens?: StyleTokens
 }
 
+// Model used for actual UI generation — heavier reasoning than the lite token-inference model
+const UI_GENERATION_MODEL = 'gemini-3.5-flash'
+
 export async function* generateUIStream(opts: GenerateUIOptions): AsyncGenerator<string> {
     const { prompt, projectId, currentHTML } = opts
 
@@ -178,14 +182,18 @@ export async function* generateUIStream(opts: GenerateUIOptions): AsyncGenerator
     parts.push('')
     parts.push('## RULES')
     parts.push('- Generate a complete, production-quality HTML page')
-    parts.push('- Use Tailwind CSS via CDN')
+    parts.push('- Use Tailwind CSS via CDN, with the tailwind.config theme mapping described in the system prompt')
     parts.push('- Use the provided design tokens exactly (colors, fonts, radius)')
     parts.push('- No placeholder images — use solid color blocks or SVG icons')
+    parts.push('- Fill the layout completely — no large empty regions. Add supporting cards/sections if needed to feel like a real product')
+    parts.push('- Any chart or graph must visually match a number stated in the surrounding text')
     parts.push('- Output ONLY the HTML, no explanation')
 
     const userPrompt = parts.join('\n')
 
     const systemParts: string[] = []
+    systemParts.push(prompts.generativeUi.system)
+    systemParts.push('')
     systemParts.push(uiSkill)
     systemParts.push('')
     systemParts.push('You are generating a UI from a text prompt only — no reference image.')
@@ -205,7 +213,7 @@ export async function* generateUIStream(opts: GenerateUIOptions): AsyncGenerator
     const systemPrompt = systemParts.join('\n')
 
     const result = streamText({
-        model: google('gemini-3.1-flash-lite'),
+        model: google(UI_GENERATION_MODEL),
         system: systemPrompt,
         messages: [
             {
@@ -217,7 +225,7 @@ export async function* generateUIStream(opts: GenerateUIOptions): AsyncGenerator
         providerOptions: {
             google: {
                 thinkingConfig: {
-                    thinkingLevel: 'high',
+                    thinkingLevel: 'medium',
                     includeThoughts: false,
                 },
             },
@@ -302,6 +310,8 @@ export async function* generateUIDiffStream(opts: GenerateUIOptions): AsyncGener
     const userPrompt = parts.join('\n')
 
     const systemParts: string[] = []
+    systemParts.push(prompts.generativeUi.system)
+    systemParts.push('')
     systemParts.push(uiSkill)
     systemParts.push('')
     systemParts.push('You are optimizing an existing design via surgical patches, NOT regenerating.')
@@ -316,7 +326,7 @@ export async function* generateUIDiffStream(opts: GenerateUIOptions): AsyncGener
     const systemPrompt = systemParts.join('\n')
 
     const result = streamText({
-        model: google('gemini-3.1-flash-lite'),
+        model: google(UI_GENERATION_MODEL),
         system: systemPrompt,
         messages: [
             {
@@ -328,7 +338,7 @@ export async function* generateUIDiffStream(opts: GenerateUIOptions): AsyncGener
         providerOptions: {
             google: {
                 thinkingConfig: {
-                    thinkingLevel: 'high',
+                    thinkingLevel: 'medium',
                     includeThoughts: false,
                 },
             },
@@ -355,7 +365,7 @@ export async function classifyEditIntent(prompt: string, currentHTML?: string): 
     if (!currentHTML) return 'full'
 
     const { text } = await generateText({
-        model: google('gemini-3.1-flash-lite'),
+        model: google('gemini-3.5-flash'),
         system: 'You are classifying UI design intents. Return ONLY "surgical" or "full".\n\nSurgical: small tweaks, color changes, button edits, spacing fixes, text updates\nFull: complete redesign, new layout, different aesthetic, major restructuring',
         prompt: `User request: "${prompt}"\n\nCurrent HTML: ${currentHTML.slice(0, 2000)}\n\nClassify this intent as "surgical" or "full".`,
     })

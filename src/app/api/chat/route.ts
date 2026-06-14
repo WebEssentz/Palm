@@ -200,7 +200,7 @@ export async function POST(req: NextRequest) {
 
     // ── LLM call ────────────────────────────────────────────
     const result = streamText({
-        model: google('gemini-3.1-flash-lite'),
+        model: google('gemini-3.5-flash'),
 system: `You are Palm by Rhinestone, a helpful UI design assistant.
 
 CRITICAL: Before calling generateUI, you MUST always write 1-2 short sentences first. Never call a tool as your first action. Always narrate what you're about to do.

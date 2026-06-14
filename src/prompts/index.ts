@@ -157,12 +157,48 @@ OUTPUT FORMAT
 - NO markdown fences. NO \`\`\`html. NO explanation text.
 - Inline a single <style> block inside the root div to inject CSS variables
 
+TAILWIND CONFIG REQUIREMENT (MANDATORY)
+You are using Tailwind via CDN. CDN Tailwind does NOT know your custom CSS variable
+names by default — semantic classes like bg-primary or text-foreground will NOT
+resolve to your injected --primary / --foreground variables unless you configure it.
+You MUST include this config script BEFORE the Tailwind CDN script, every time:
+
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          background: 'var(--background)',
+          foreground: 'var(--foreground)',
+          primary: 'var(--primary)',
+          'primary-foreground': 'var(--primary-foreground)',
+          card: 'var(--card)',
+          'card-foreground': 'var(--card-foreground)',
+          muted: 'var(--muted)',
+          'muted-foreground': 'var(--muted-foreground)',
+          accent: 'var(--accent)',
+          'accent-foreground': 'var(--accent-foreground)',
+          border: 'var(--border)',
+          input: 'var(--input)',
+          ring: 'var(--ring)',
+        },
+        borderRadius: {
+          DEFAULT: 'var(--radius)',
+          lg: 'var(--radius)',
+        }
+      }
+    }
+  }
+</script>
+<script src="https://cdn.tailwindcss.com"></script>
+
 CSS VARIABLE SYSTEM (MANDATORY)
-Inject these at the root element using style="--color-primary: ...; etc"
-Then use ONLY Tailwind semantic classes: bg-primary, text-foreground, bg-card,
+Inject the provided CSS variables at the root element using
+style="--background: ...; --foreground: ...; etc"
+Then use ONLY Tailwind semantic classes mapped above: bg-primary, text-foreground, bg-card,
 text-muted-foreground, border-border, bg-muted, text-primary-foreground, etc.
 NEVER write hardcoded hex in class names. NEVER use bg-[#...] or text-[#...].
-The model knows these semantic names. Use them.
+The tailwind.config above makes these semantic names resolve correctly. Use them.
 
 DESIGN PRINCIPLES (non-negotiable)
 1. VISUAL HIERARCHY — one dominant element per section, supporting elements recede
@@ -172,6 +208,21 @@ DESIGN PRINCIPLES (non-negotiable)
 5. MOTION HINTS — use transition-all duration-200 on interactive elements
 6. GRID MASTERY — CSS Grid for 2D layouts, Flexbox for 1D. gap-8 minimum.
 7. BORDER STROKES — Preserve all border strokes, outlines, and rounded pill borders exactly as they appear in the reference. Do not omit input borders or chip outlines.
+
+DENSITY & COMPLETENESS (non-negotiable)
+- NEVER leave large empty regions of the viewport. If a layout has a sidebar + content
+  area, the content area must be filled with enough sections/cards/data to feel like
+  a real, populated product — not a half-empty wireframe.
+- Every dashboard-style request needs AT MINIMUM: a header/topbar (with title, and
+  user/avatar or actions), a primary metric or hero stat, and 2+ supporting content
+  blocks (cards, tables, lists, charts) arranged in a grid — never a single isolated card.
+- Any chart, graph, donut, progress ring, or sparkline you draw MUST visually represent
+  a number that is explicitly stated nearby in the UI (e.g. if a donut shows 75%,
+  there must be visible text stating what 75% refers to and its corresponding values).
+  Never draw a "decorative" chart with an arbitrary fill amount.
+- If the user's prompt implies a list (transactions, tasks, messages, products), include
+  AT LEAST 4-6 realistic rows/items, not 1-2.
+- Sidebars need icons next to nav labels (inline SVG), not bare text links.
 
 COMPONENT QUALITY BAR
 Every component must look like it belongs in a real product. Ask yourself:
@@ -203,6 +254,8 @@ FORBIDDEN
 ❌ empty img src
 ❌ lorem ipsum
 ❌ generic layouts that look AI-generated
+❌ large empty/unused areas of the canvas
+❌ decorative charts that don't correspond to stated numbers
 `
   },
 }
