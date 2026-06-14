@@ -20,7 +20,7 @@ export const getProject = query({
 
 export const createProject = mutation({
     args: {
-        name: v.string(),
+        name: v.optional(v.string()),
         prompt: v.optional(v.string()),
         userId: v.optional(v.id('users')),
         sketchesData: v.optional(v.any()),
@@ -46,6 +46,7 @@ export const createProject = mutation({
         console.log('[CONVEX] Creating a project for the user:', userId)
         const projectNumber = await getNextProjectNumber(ctx, userId)
         const projectName = name || `Project ${projectNumber}`
+        const now = Date.now()
 
         const projectId = await ctx.db.insert('projects', {
             userId,
@@ -55,14 +56,22 @@ export const createProject = mutation({
             thumbnail,
             referenceUrls,
             projectNumber,
-            lastModified: Date.now(),
-            createdAt: Date.now(),
+            lastModified: now,
+            createdAt: now,
             isPublic: false,
         })
         
         console.log('[CONVEX] Project created with prompt:', !!prompt)
 
-        return projectId
+        return {
+            _id: projectId,
+            name: projectName,
+            projectNumber,
+            thumbnail,
+            lastModified: now,
+            createdAt: now,
+            isPublic: false,
+        }
     },
 })
 

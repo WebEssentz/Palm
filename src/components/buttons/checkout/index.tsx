@@ -2,7 +2,6 @@
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { Loader2, Sparkles } from 'lucide-react'
-import React from 'react'
 import { useSubscriptionPlan } from '@/hooks/use-billings'
 
 const SubscribeButton = () => {
@@ -18,6 +17,7 @@ const SubscribeButton = () => {
         "w-full rounded-full",
         // Solid dark bg in light mode, solid white in dark mode
         "bg-[#0a0a0a] text-[#F5F0E8]",
+        "cursor-pointer",
         "dark:bg-white dark:text-[#070707]",
         // Hover — slightly lighten/darken
         "hover:bg-[#252525] dark:hover:bg-[#e8e8e8]",

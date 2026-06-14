@@ -9,11 +9,12 @@ import { useQuery, useMutation } from 'convex/react'
 import { api } from '../../../convex/_generated/api'
 import { Menu, Pencil, User } from 'lucide-react'
 import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar'
-import { useAppSelector } from '@/redux/store'
+import { combinedSlug } from '@/lib/utils'
 
 const Navbar = () => {
     const params = useSearchParams()
-    const me = useAppSelector((state) => state.profile)
+    const me = useQuery(api.user.getCurrentUser)
+    const userSlug = combinedSlug(me?.name ?? '', me?._id)
     const projectId = params.get('project')
     const pathname = usePathname()
     const { theme, systemTheme } = useTheme()
@@ -113,7 +114,7 @@ const Navbar = () => {
             {/* Left: hamburger + project name */}
             <div className='flex items-center gap-3'>
                 <Link
-                    href={`/dashboard/${me.name}`}
+                    href={`/dashboard/${userSlug}`}
                     className='flex items-center justify-center px-3 py-2 rounded-full text-muted-foreground hover:text-foreground transition-colors flex-shrink-0'
                     style={menuBtnStyle}
                 >
@@ -179,7 +180,7 @@ const Navbar = () => {
             {/* Right: avatar */}
             <div className='flex items-center gap-3'>
                 <Avatar className='size-8'>
-                    <AvatarImage src={me.image || ''} />
+                    <AvatarImage src={me?.image || ''} />
                     <AvatarFallback>
                         <User className='size-4' />
                     </AvatarFallback>

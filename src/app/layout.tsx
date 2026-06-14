@@ -35,10 +35,9 @@ export default async function RootLayout({
   children: React.ReactNode;
 }>) {
 
-  const rawProfile = await ProfileQuery()
-  const profile = normalizeProfile(
-    rawProfile._valueJSON as unknown as ConvexUserRaw | null
-  )
+  // ProfileQuery throws on unauthenticated routes — guard it
+  // ✅ Don't fetch server-side at all
+const profile = null
 
   return (
     <ConvexAuthNextjsServerProvider>
@@ -51,7 +50,7 @@ export default async function RootLayout({
               enableSystem
               disableTransitionOnChange
             >
-              <ReduxProvider preloadedState={{ profile }}>
+              <ReduxProvider preloadedState={{ profile: { user: profile } }}>
                 <PalmToastProvider>
                   {children}
                   <Toaster />
@@ -62,5 +61,5 @@ export default async function RootLayout({
         </body>
       </html>
     </ConvexAuthNextjsServerProvider>
-  );
+  )
 }

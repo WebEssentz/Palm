@@ -1,6 +1,6 @@
+// components/projects/trash-list.tsx
 'use client'
 
-import { useAppSelector } from '@/redux/store'
 import { Plus, RotateCcw, Trash2, Search, MoreVertical, CheckSquare } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import { useTheme } from 'next-themes'
@@ -48,7 +48,7 @@ function calculateRemainingTime(deletedAtMs: number): { text: string; isExpired:
 }
 
 const TrashList = ({ onTrashEmpty }: { onTrashEmpty?: () => void }) => {
-    const user = useAppSelector((state) => state.profile)
+    const me = useQuery(api.user.getCurrentUser)
     const { theme, systemTheme } = useTheme()
     const { toast } = usePalmToast()
 
@@ -57,7 +57,7 @@ const TrashList = ({ onTrashEmpty }: { onTrashEmpty?: () => void }) => {
 
     const deletedProjects = useQuery(
         api.projects.getDeletedProjects,
-        user?.id ? { userId: user.id as Id<'users'> } : 'skip'
+        me?._id ? { userId: me._id as Id<'users'> } : 'skip'
     )
 
     const deleteAllMutation      = useMutation(api.projects.deleteAllDeletedProjects)

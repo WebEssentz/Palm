@@ -3,6 +3,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence, useScroll, useTransform, useSpring } from 'framer-motion'
 import { useTheme } from 'next-themes'
+import { useConvexAuth, useQuery } from 'convex/react'
+import { useAuthActions } from '@convex-dev/auth/react'
+import { api } from '../../../../../convex/_generated/api'
+import { useRouter } from 'next/navigation'
 import {
   Sparkles, Palette, Layers, ImagePlus, Move, Magnet, MessageSquare,
   ShieldCheck, Zap, RefreshCw, ArrowLeft,
@@ -333,7 +337,30 @@ function TrustStrip({ isLight, isMobile }: { isLight: boolean; isMobile: boolean
 export default function PricingPage() {
   const { theme, systemTheme } = useTheme()
   const [mounted, setMounted] = useState(false)
+  const router = useRouter()
+  const { isLoading, isAuthenticated } = useConvexAuth()
+  const { signOut } = useAuthActions()
+
+
+  const currentUser = useQuery(
+  api.user.getCurrentUser,
+  isAuthenticated ? {} : 'skip'
+)
+
   useEffect(() => setMounted(true), [])
+
+  useEffect(() => {
+    // Case 1: Convex resolved and there's no session at all
+    if (!isLoading && !isAuthenticated) {
+      router.replace('/')
+      return
+    }
+    // Case 2: JWT valid but user row is gone from the DB (deleted account)
+    // currentUser === null means the query ran and returned nothing
+    if (!isLoading && isAuthenticated && currentUser === null) {
+      signOut().then(() => router.replace('/'))
+    }
+  }, [isLoading, isAuthenticated, currentUser, router, signOut])
 
   // useIsMobile returns false until window is measured — safe to call
   // unconditionally (no hooks-after-early-return problem)
@@ -342,8 +369,8 @@ export default function PricingPage() {
   const rotX = useSpring(0, { stiffness: 260, damping: 24 })
   const rotY = useSpring(0, { stiffness: 260, damping: 24 })
 
-  // Keep the original Loading guard — just moved below the hooks
-  if (!mounted) return <Loading />
+  if (!mounted || isLoading) return <Loading />
+  if (!isAuthenticated || currentUser === null) return null
 
   const isLight = (theme === 'system' ? systemTheme : theme) === 'light'
   const bg   = isLight ? '#F5F0E8' : '#070707'

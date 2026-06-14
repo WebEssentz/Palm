@@ -1,3 +1,4 @@
+// components/autosave.tsx
 'use client'
 
 import React from 'react'
@@ -5,17 +6,21 @@ import { useSearchParams } from 'next/navigation'
 import { useTheme } from 'next-themes'
 import { useAppSelector } from '@/redux/store'
 import { useAutosaveProjectMutation } from '@/redux/api/project'
+import { useQuery } from 'convex/react'
+import { api } from '../../../../convex/_generated/api'
 import { Cloud, CloudUpload, CloudOff, Check } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 
 const AutoSave = () => {
     const searchParams = useSearchParams()
     const projectId = searchParams.get('project')
-    const user = useAppSelector((state) => state.profile)
+    const me = useQuery(api.user.getCurrentUser)
     const shapesState = useAppSelector((state) => state.shapes)
     const viewportState = useAppSelector((state) => state.viewport)
-    const subscription = useAppSelector((state) => state.profile?.subscription)
-    const isPro = subscription?.status === 'active'
+    const isPro = useQuery(
+        api.subscription.hasEntitlement,
+        me?._id ? { userId: me._id } : 'skip'
+    )
     const { theme, systemTheme } = useTheme()
     const isLight = (theme === 'system' ? systemTheme : theme) === 'light'
 
@@ -26,7 +31,7 @@ const AutoSave = () => {
     const lastSaveTimeRef = React.useRef<string>('')
     const [saveStatus, setSaveStatus] = React.useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
 
-    const isReady = Boolean(projectId && user?.id)
+    const isReady = Boolean(projectId && me?._id)
 
     React.useEffect(() => {
         if (!isReady) return
@@ -45,8 +50,8 @@ const AutoSave = () => {
                     projectId: projectId as string,
                     shapesData: shapesState,
                     viewportData: { scale: viewportState.scale, translate: viewportState.translate },
-                    userId: user?.id as string,
-                    isPro
+                    userId: me?._id as string,
+                    isPro: !!isPro
                 }).unwrap()
                 setSaveStatus('saved')
                 setTimeout(() => setSaveStatus('idle'), 2000)
@@ -56,7 +61,7 @@ const AutoSave = () => {
                 setTimeout(() => setSaveStatus('idle'), 3000)
             }
         }, 1000)
-    }, [isReady, shapesState, viewportState, autosaveProject, user?.id])
+    }, [isReady, shapesState, viewportState, autosaveProject, me?._id, isPro])
 
     React.useEffect(() => {
         return () => {

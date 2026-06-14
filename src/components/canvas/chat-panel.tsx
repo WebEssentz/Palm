@@ -13,7 +13,7 @@ interface Props {
     turns: ChatTurn[]
     expandedTurnId: string | null
     onExpandTurn: (id: string | null) => void
-    profile?: { name: string; image?: string | null }
+    profile?: { name?: string; image?: string | null } | null
     isOpen: boolean
     onToggle: () => void
     toolStatus?: { label: string; state: 'running' | 'done' } | null

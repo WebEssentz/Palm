@@ -13,7 +13,7 @@ import { useQuery } from 'convex/react'
 import { api } from '../../../convex/_generated/api'
 import { Id } from '../../../convex/_generated/dataModel'
 import { formatDistanceToNow } from 'date-fns'
-import { Home, LayoutGrid, ArrowUp, Trash2, MoreHorizontal, Globe, X, PanelLeft } from 'lucide-react'
+import { Home, LayoutGrid, ArrowUp, Trash2, MoreHorizontal, Globe, X, PanelLeft, Loader } from 'lucide-react'
 import { ThemeToggle } from '@/components/theme/toggle'
 import { AvatarDropdown } from '@/components/avatar-dropdown'
 import { GlassTooltip } from '@/components/ui/glass-tooltip'
@@ -26,7 +26,7 @@ import { ImagePreview, type ImageItem } from '@/components/home/image-preview'
 import ProjectsList from '@/components/projects/list'
 import { usePalmToast } from '@/hooks/use-palmtoast'
 import TrashList from '@/components/projects/trash-list'
-import { cn } from '@/lib/utils'
+import { cn, combinedSlug } from '@/lib/utils'
 
 function thumbnailToSrc(thumbnail: string | undefined): string | null {
     if (!thumbnail) return null
@@ -116,11 +116,13 @@ const getRandomPrompts = () => {
 
 export default function HomeShell({ profile, view = 'home' }: Props) {
     const { theme, systemTheme } = useTheme()
-    const me = useAppSelector((state) => state.profile)
+    const me = useQuery(api.user.getCurrentUser)    
+    console.log('me:', me)
     const sideOpen = useAppSelector((state) => state.ui.sidebarOpen)
     const dispatch = useAppDispatch()
     const projects = useProjects()
     const router = useRouter()
+    const userSlug = combinedSlug(me?.name ?? '', me?._id)
 
     const {
         prompt, setPrompt,
@@ -158,18 +160,22 @@ export default function HomeShell({ profile, view = 'home' }: Props) {
 
     const creditBalance = useQuery(
         api.subscription.getCreditsBalance,
-        me?.id ? { userId: me.id as Id<'users'> } : 'skip'
+        me?._id ? { userId: me._id as Id<'users'> } : 'skip'
     )
 
     const hasDeleted = useQuery(
         api.projects.hasDeletedProjects,
-        me?.id ? { userId: me.id as Id<'users'> } : 'skip'
+        me?._id ? { userId: me._id as Id<'users'> } : 'skip'
     )
 
     const trashedProjects = useQuery(
         api.projects.getDeletedProjects,
-        me?.id ? { userId: me.id as Id<'users'> } : 'skip'
+        me?._id ? { userId: me._id as Id<'users'> } : 'skip'
     ) ?? []
+
+    // Early return after all hooks are called
+    if (!me) return <Loader/>
+
 
     const handleUpload = async (file: File) => {
         if (!file.type.startsWith('image/')) return
@@ -350,7 +356,7 @@ export default function HomeShell({ profile, view = 'home' }: Props) {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     prompt: finalPrompt,  // ← merged prompt goes here
-                    userId: me.id,
+                    userId: me._id,
                     ...(urlTags.length > 0 && { referenceUrls: urlTags }),
                     ...(imageStorageIds.length > 0 && { imageStorageIds }),
                 }),
@@ -361,7 +367,7 @@ export default function HomeShell({ profile, view = 'home' }: Props) {
 
             clearPersistedInput()
             router.push(
-                `/dashboard/${me.name}/canvas?project=${projectId}&prompt=${encodeURIComponent(finalPrompt)}${
+                `/dashboard/${userSlug}/canvas?project=${projectId}&prompt=${encodeURIComponent(finalPrompt)}${
                     imageStorageIds.length > 0
                         ? `&images=${encodeURIComponent(JSON.stringify(imageStorageIds))}`
                         : ''
@@ -479,7 +485,7 @@ export default function HomeShell({ profile, view = 'home' }: Props) {
                         <div className='flex items-center justify-between px-3.5 py-4 gap-2.5'>
                             <div className='flex items-center gap-2.5'>
                                 <Link
-                                    href={`/dashboard/${me.name}`}
+                                    href={`/dashboard/${userSlug}`}
                                     className='w-6 h-6 rounded-lg bg-primary flex-shrink-0 flex items-center justify-center'
                                 >
                                     <div className='w-3.5 h-3.5 rounded-full bg-primary-foreground' />
@@ -513,7 +519,7 @@ export default function HomeShell({ profile, view = 'home' }: Props) {
                             ) : (
                                 <GlassTooltip content="Open sidebar" side="right">
                                     <Link
-                                        href={`/dashboard/${me.name}`}
+                                        href={`/dashboard/${userSlug}`}
                                         className='w-6 h-6 rounded-lg bg-primary flex-shrink-0 flex items-center justify-center'
                                         onMouseEnter={() => setLogoHovered(true)}
                                     >
@@ -532,7 +538,7 @@ export default function HomeShell({ profile, view = 'home' }: Props) {
                                 label='Home'
                                 open={sideOpen}
                                 active={view === 'home'}
-                                onClick={() => router.push(`/dashboard/${me.name}`)}
+                                onClick={() => router.push(`/dashboard/${userSlug}`)}
                             />
                         </GlassTooltip>
                         <GlassTooltip content="Projects" disabled={sideOpen}>
@@ -541,7 +547,7 @@ export default function HomeShell({ profile, view = 'home' }: Props) {
                                 label='Projects'
                                 open={sideOpen}
                                 active={view === 'projects'}
-                                onClick={() => router.push(`/dashboard/${me.name}/projects`)}
+                                onClick={() => router.push(`/dashboard/${userSlug}/projects`)}
                             />
                         </GlassTooltip>
                         {(hasDeleted || hasDeletedOptimistic) && (
@@ -551,7 +557,7 @@ export default function HomeShell({ profile, view = 'home' }: Props) {
                                     label='Trash'
                                     open={sideOpen}
                                     active={view === 'trash'}
-                                    onClick={() => router.push(`/dashboard/${me.name}/trash`)}
+                                    onClick={() => router.push(`/dashboard/${userSlug}/trash`)}
                                 />
                             </GlassTooltip>
                         )}
@@ -565,7 +571,7 @@ export default function HomeShell({ profile, view = 'home' }: Props) {
                                 {projects.slice(0, 8).map((p) => (
                                     <Link
                                         key={p._id}
-                                        href={`/dashboard/${me.name}/canvas?project=${p._id}`}
+                                        href={`/dashboard/${userSlug}/canvas?project=${p._id}`}
                                         className='flex items-center gap-2 px-2 py-1.5 rounded-md transition-colors group'
                                         style={{ backgroundColor: 'transparent', color: 'var(--muted-foreground)' }}
                                         onMouseEnter={(e) => {
@@ -637,7 +643,7 @@ export default function HomeShell({ profile, view = 'home' }: Props) {
                         {/* Palm logo + text — mobile/center */}
                         <div className='md:hidden flex items-center gap-2 flex-1 justify-center'>
                             <Link
-                                href={`/dashboard/${me.name}`}
+                                href={`/dashboard/${userSlug}`}
                                 className='w-6 h-6 rounded-lg bg-primary flex-shrink-0 flex items-center justify-center'
                             >
                                 <div className='w-3.5 h-3.5 rounded-full bg-primary-foreground' />
@@ -987,7 +993,7 @@ export default function HomeShell({ profile, view = 'home' }: Props) {
                 projects={projects}
                 trashedProjects={trashedProjects}
                 hasDeleted={!!(hasDeleted || hasDeletedOptimistic)}
-                userName={me.name}
+                userName={userSlug}
                 isLightMode={isLightMode}
                 thumbnailToSrc={thumbnailToSrc}
                 isColorDark={isColorDark}

@@ -9,6 +9,8 @@ import ShapeRenderer from './shapes'
 import { useSearchParams } from 'next/navigation'
 import { useDispatch } from 'react-redux'
 import { useAppSelector } from '@/redux/store'
+import { useQuery } from 'convex/react'
+import { api } from '../../../convex/_generated/api'
 import { addGeneratedUI, updateShape } from '@/redux/slice/shapes'
 import { RectanglePreview } from './shapes/rectangle/preview'
 import { FramePreview } from './shapes/frame/preview'
@@ -28,8 +30,7 @@ import { ChatInput } from './chat-input'
 const InfiniteCanvas = () => {
   // Initialize ALL hooks at the top level in a consistent order
   const searchParams = useSearchParams()
-  const dispatch = useDispatch()
-  const profile = useAppSelector((state) => state.profile)
+  const profile = useQuery(api.user.getCurrentUser)
 
   const {
     viewport,

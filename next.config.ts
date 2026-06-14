@@ -6,8 +6,12 @@ const nextConfig: NextConfig = {
       {
         protocol: "https",
         hostname: "**.convex.cloud",
-      }
-    ]
+      },
+      {
+        protocol: 'https',
+        hostname: 'lh3.googleusercontent.com',
+      },
+    ],
   },
   allowedDevOrigins: ['unthinkable-unatoned-patsy.ngrok-free.dev'],
 };

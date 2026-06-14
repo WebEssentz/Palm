@@ -13,29 +13,34 @@ export const ProfileQuery = async () => {
 }
 
 export const SubscriptionEntitlementQuery = async () => {
-    const token = await convexAuthNextjsToken()
-    
-    // Get profile
-    const rawProfile = await fetchQuery(
-        api.user.getCurrentUser,
-        {},
-        { token }
-    )
-    const profile = normalizeProfile(rawProfile as unknown as ConvexUserRaw | null)
+  const token = await convexAuthNextjsToken()
 
-    if (!profile?.id) return { entitlement: false, profileName: 'User' }
-
-    // Get entitlement as actual value, not preloaded
-    const entitlement = await fetchQuery(
-        api.subscription.hasEntitlement,
-        { userId: profile.id as Id<'users'> },
-        { token }
-    )
-
-    return { 
-        entitlement: !!entitlement,
-        profileName: profile?.name || 'User' 
+  let rawProfile = null
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      rawProfile = await fetchQuery(api.user.getCurrentUser, {}, { token })
+      break
+    } catch (err: any) {
+      // Socket dropped — wait briefly and retry
+      if (attempt < 2) await new Promise(r => setTimeout(r, 300 * (attempt + 1)))
+      else console.error('[SubscriptionEntitlementQuery] fetch failed after 3 attempts:', err)
     }
+  }
+
+  const profile = normalizeProfile(rawProfile as unknown as ConvexUserRaw | null)
+  if (!profile?.id) return { entitlement: false, profileName: null, profileId: null }
+
+  const entitlement = await fetchQuery(
+    api.subscription.hasEntitlement,
+    { userId: profile.id as Id<'users'> },
+    { token }
+  ).catch(() => false)
+
+  return {
+    entitlement: !!entitlement,
+    profileName: profile?.name || null,
+    profileId: profile?.id || null,
+  }
 }
 
 export const ProjectQuery = async (projectId: string) => {

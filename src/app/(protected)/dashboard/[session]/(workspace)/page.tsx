@@ -1,27 +1,22 @@
-import React from 'react'
-import { ProjectsQuery } from '@/convex/query.config'
+'use client'
+import { useQuery } from 'convex/react'
+import { api } from '../../../../../../convex/_generated/api'
+import { Id } from '../../../../../../convex/_generated/dataModel'
 import ProjectsProvider from '@/components/projects/list/provider'
 import HomeShell from '@/components/home/shell'
 
-const Page = async () => {
-    const { projects, profile } = await ProjectsQuery()
+export default function Page() {
+    const me = useQuery(api.user.getCurrentUser)
+    const projects = useQuery(
+        api.projects.getUserProjects,
+        me?._id ? { userId: me._id as Id<'users'> } : 'skip'
+    )
 
-    if (!profile || !projects) {
-        return (
-            <div className='flex min-h-screen items-center justify-center'>
-                <div className='text-center space-y-2'>
-                    <h1 className='text-xl font-medium text-foreground'>Authentication Required</h1>
-                    <p className='text-sm text-muted-foreground'>You must be logged in to access this page.</p>
-                </div>
-            </div>
-        )
-    }
+    if (!me || projects === undefined) return null
 
     return (
         <ProjectsProvider initialProjects={projects}>
-            <HomeShell profile={{ name: profile.name || '', image: profile.image }} />
+            <HomeShell profile={{ name: me.name || '', image: me.image }} />
         </ProjectsProvider>
     )
 }
-
-export default Page

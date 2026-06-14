@@ -1,15 +1,15 @@
 "use client"
 import { useProjectCreation } from '@/hooks/use-project'
 import { useProjects } from './provider'
-import { useAppSelector } from '@/redux/store'
 import { Plus, Search, MoreVertical, Pencil, Trash2 } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import Link from 'next/link'
 import { useTheme } from 'next-themes'
 import { useState } from 'react'
-import { useMutation } from 'convex/react'
+import { useMutation, useQuery } from 'convex/react'
 import { api } from '../../../../convex/_generated/api'
 import { usePalmToast } from '@/hooks/use-palmtoast'
+import { combinedSlug } from '@/lib/utils'
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -36,7 +36,8 @@ function isColorDark(color: string | undefined): boolean {
 const ProjectsList = ({ onProjectDelete }: { onProjectDelete?: () => void }) => {
     const { canCreate } = useProjectCreation()
     const projects = useProjects()
-    const user = useAppSelector((state) => state.profile)
+    const me = useQuery(api.user.getCurrentUser)
+    const userSlug = combinedSlug(me?.name ?? '', me?._id)
     const { theme, systemTheme } = useTheme()
     const { toast } = usePalmToast()
     const [searchQuery, setSearchQuery] = useState('')
@@ -216,7 +217,7 @@ const ProjectsList = ({ onProjectDelete }: { onProjectDelete?: () => void }) => 
                                 className='group cursor-pointer relative'
                             >
                                 <Link
-                                    href={`/dashboard/${user?.name}/canvas?project=${project._id}`}
+                                    href={`/dashboard/${userSlug}/canvas?project=${project._id}`}
                                     className='block'
                                 >
                                     <div className='space-y-3'>

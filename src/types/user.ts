@@ -20,7 +20,7 @@ export type Profile = {
 }
 
 export const normalizeProfile = (
-  raw: ConvexUserRaw | null
+raw: ConvexUserRaw | null
 ): Profile | null => {
   if (!raw) return null;
 

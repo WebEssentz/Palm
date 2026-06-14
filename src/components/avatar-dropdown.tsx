@@ -4,9 +4,11 @@ import { useEffect, useRef, useState } from 'react'
 import { useAuthActions } from '@convex-dev/auth/react'
 import { useRouter } from 'next/navigation'
 import { useAppSelector } from '@/redux/store'
+import { useQuery } from 'convex/react'
+import { api } from '../../convex/_generated/api'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { User } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { cn, combinedSlug } from '@/lib/utils'
 
 interface StoredAccount {
     email: string
@@ -33,7 +35,8 @@ function saveAccount(account: StoredAccount) {
 }
 
 export function AvatarDropdown({ creditBalance }: { creditBalance?: number }) {
-    const me = useAppSelector(s => s.profile)
+    const me = useQuery(api.user.getCurrentUser)
+    const userSlug = combinedSlug(me?.name ?? '', me?._id)
     const { signOut, signIn } = useAuthActions()
     const router = useRouter()
 
@@ -44,14 +47,13 @@ export function AvatarDropdown({ creditBalance }: { creditBalance?: number }) {
     const [switchError, setSwitchError] = useState('')
     const [switchLoading, setSwitchLoading] = useState(false)
     const dropdownRef = useRef<HTMLDivElement>(null)
-
     useEffect(() => {
         if (me?.email && me?.name) {
             saveAccount({
                 email: me.email,
                 name: me.name,
                 image: me.image || undefined,
-                provider: (me.provider as StoredAccount['provider']) || 'password',
+                provider: 'google', // remove provider from user type, default to google
             })
             setAccounts(getStoredAccounts())
         }
@@ -129,16 +131,16 @@ export function AvatarDropdown({ creditBalance }: { creditBalance?: number }) {
             <svg style={{ position: 'absolute', width: 0, height: 0, overflow: 'hidden' }} aria-hidden='true'>
                 <defs>
                     <filter id='palm-glass-dark' x='-12%' y='-12%' width='124%' height='124%' colorInterpolationFilters='sRGB'>
-                        <feTurbulence type='fractalNoise' baseFrequency='0.72 0.38' numOctaves='3' seed='8' result='noise'/>
-                        <feGaussianBlur in='noise' stdDeviation='1.4' result='blurNoise'/>
-                        <feDisplacementMap in='SourceGraphic' in2='blurNoise' scale='18' xChannelSelector='R' yChannelSelector='G' result='displaced'/>
-                        <feComposite in='displaced' in2='SourceGraphic' operator='atop'/>
+                        <feTurbulence type='fractalNoise' baseFrequency='0.72 0.38' numOctaves='3' seed='8' result='noise' />
+                        <feGaussianBlur in='noise' stdDeviation='1.4' result='blurNoise' />
+                        <feDisplacementMap in='SourceGraphic' in2='blurNoise' scale='18' xChannelSelector='R' yChannelSelector='G' result='displaced' />
+                        <feComposite in='displaced' in2='SourceGraphic' operator='atop' />
                     </filter>
                     <filter id='palm-glass-light' x='-12%' y='-12%' width='124%' height='124%' colorInterpolationFilters='sRGB'>
-                        <feTurbulence type='fractalNoise' baseFrequency='0.65 0.42' numOctaves='3' seed='12' result='noise'/>
-                        <feGaussianBlur in='noise' stdDeviation='1.6' result='blurNoise'/>
-                        <feDisplacementMap in='SourceGraphic' in2='blurNoise' scale='12' xChannelSelector='R' yChannelSelector='G' result='displaced'/>
-                        <feComposite in='displaced' in2='SourceGraphic' operator='atop'/>
+                        <feTurbulence type='fractalNoise' baseFrequency='0.65 0.42' numOctaves='3' seed='12' result='noise' />
+                        <feGaussianBlur in='noise' stdDeviation='1.6' result='blurNoise' />
+                        <feDisplacementMap in='SourceGraphic' in2='blurNoise' scale='12' xChannelSelector='R' yChannelSelector='G' result='displaced' />
+                        <feComposite in='displaced' in2='SourceGraphic' operator='atop' />
                     </filter>
                 </defs>
             </svg>
@@ -170,7 +172,7 @@ export function AvatarDropdown({ creditBalance }: { creditBalance?: number }) {
                         )}
                     >
                         <svg width='10' height='10' viewBox='0 0 12 12' fill='none'>
-                            <path d='M1 1l10 10M11 1L1 11' stroke='currentColor' strokeWidth='1.8' strokeLinecap='round'/>
+                            <path d='M1 1l10 10M11 1L1 11' stroke='currentColor' strokeWidth='1.8' strokeLinecap='round' />
                         </svg>
                     </button>
 
@@ -224,7 +226,7 @@ export function AvatarDropdown({ creditBalance }: { creditBalance?: number }) {
                                     <BubbleRow onClick={handleAddAccount}>
                                         <div className='w-7 h-7 rounded-lg border border-dashed border-border/50 flex items-center justify-center flex-shrink-0'>
                                             <svg width='10' height='10' viewBox='0 0 12 12' fill='none'>
-                                                <path d='M6 1v10M1 6h10' stroke='currentColor' strokeWidth='1.5' strokeLinecap='round'/>
+                                                <path d='M6 1v10M1 6h10' stroke='currentColor' strokeWidth='1.5' strokeLinecap='round' />
                                             </svg>
                                         </div>
                                         <span className='text-xs text-muted-foreground'>Add account</span>
@@ -280,16 +282,16 @@ export function AvatarDropdown({ creditBalance }: { creditBalance?: number }) {
 
                         <Bubble>
                             <div className='p-1.5 flex flex-col gap-0.5'>
-                                <ActionRow icon={<UserIcon />} onClick={() => router.push(`/dashboard/${me?.name}/settings`)}>
+                                <ActionRow icon={<UserIcon />} onClick={() => router.push(`/dashboard/${userSlug}/settings`)}>
                                     Profile
                                 </ActionRow>
-                                <ActionRow icon={<LeafIcon />} onClick={() => router.push(`/dashboard/${me?.name}/credits`)}>
+                                <ActionRow icon={<LeafIcon />} onClick={() => router.push(`/dashboard/${userSlug}/credits`)}>
                                     Credits
                                     <span className='ml-auto text-[10px] font-bold text-muted-foreground bg-muted/60 border border-border/40 px-2 py-0.5 rounded-full'>
                                         {creditBalance ?? 0}
                                     </span>
                                 </ActionRow>
-                                <ActionRow icon={<CardIcon />} onClick={() => router.push(`/dashboard/${me?.name}/billing`)}>
+                                <ActionRow icon={<CardIcon />} onClick={() => router.push(`/dashboard/${userSlug}/billing`)}>
                                     Billing
                                     <span className='ml-auto text-[9px] font-bold text-muted-foreground bg-muted/60 border border-border/40 px-2 py-0.5 rounded-full uppercase tracking-wide'>
                                         Pro
@@ -404,26 +406,26 @@ function ActionRow({ children, icon, onClick }: {
 
 const UserIcon = () => (
     <svg width='14' height='14' viewBox='0 0 16 16' fill='none'>
-        <circle cx='8' cy='5.5' r='2.5' stroke='currentColor' strokeWidth='1.3'/>
-        <path d='M2.5 13.5c0-3.04 2.46-5.5 5.5-5.5s5.5 2.46 5.5 5.5' stroke='currentColor' strokeWidth='1.3' strokeLinecap='round'/>
+        <circle cx='8' cy='5.5' r='2.5' stroke='currentColor' strokeWidth='1.3' />
+        <path d='M2.5 13.5c0-3.04 2.46-5.5 5.5-5.5s5.5 2.46 5.5 5.5' stroke='currentColor' strokeWidth='1.3' strokeLinecap='round' />
     </svg>
 )
 const LeafIcon = () => (
     <svg width='14' height='14' viewBox='0 0 16 16' fill='none'>
-        <path d='M8 14V8' stroke='currentColor' strokeWidth='1.4' strokeLinecap='round'/>
-        <path d='M8 8C8 8 4 7 3 4C5.5 3.5 8 5 8 8Z' fill='currentColor' opacity='0.8'/>
-        <path d='M8 8C8 8 12 7 13 4C10.5 3.5 8 5 8 8Z' fill='currentColor' opacity='0.8'/>
+        <path d='M8 14V8' stroke='currentColor' strokeWidth='1.4' strokeLinecap='round' />
+        <path d='M8 8C8 8 4 7 3 4C5.5 3.5 8 5 8 8Z' fill='currentColor' opacity='0.8' />
+        <path d='M8 8C8 8 12 7 13 4C10.5 3.5 8 5 8 8Z' fill='currentColor' opacity='0.8' />
     </svg>
 )
 const CardIcon = () => (
     <svg width='14' height='14' viewBox='0 0 16 16' fill='none'>
-        <rect x='1.5' y='4' width='13' height='9' rx='2' stroke='currentColor' strokeWidth='1.3'/>
-        <path d='M1.5 7.5h13' stroke='currentColor' strokeWidth='1.3'/>
+        <rect x='1.5' y='4' width='13' height='9' rx='2' stroke='currentColor' strokeWidth='1.3' />
+        <path d='M1.5 7.5h13' stroke='currentColor' strokeWidth='1.3' />
     </svg>
 )
 const SignOutIcon = () => (
     <svg width='14' height='14' viewBox='0 0 16 16' fill='none'>
-        <path d='M6 3H3.5A1.5 1.5 0 002 4.5v7A1.5 1.5 0 003.5 13H6' stroke='currentColor' strokeWidth='1.3' strokeLinecap='round'/>
-        <path d='M10.5 11l3-3-3-3M13.5 8H6' stroke='currentColor' strokeWidth='1.3' strokeLinecap='round' strokeLinejoin='round'/>
+        <path d='M6 3H3.5A1.5 1.5 0 002 4.5v7A1.5 1.5 0 003.5 13H6' stroke='currentColor' strokeWidth='1.3' strokeLinecap='round' />
+        <path d='M10.5 11l3-3-3-3M13.5 8H6' stroke='currentColor' strokeWidth='1.3' strokeLinecap='round' strokeLinejoin='round' />
     </svg>
 )

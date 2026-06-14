@@ -15,6 +15,7 @@ export function ThemeToggle() {
     const { theme, setTheme } = useTheme()
     const [open, setOpen] = useState(false)
     const ref = useRef<HTMLDivElement>(null)
+    const [mounted, setMounted] = useState(false)
 
     useEffect(() => {
         const handler = (e: MouseEvent) => {
@@ -24,7 +25,14 @@ export function ThemeToggle() {
         return () => document.removeEventListener('mousedown', handler)
     }, [])
 
-    const Icon = options.find(o => o.value === theme)?.icon ?? Sun
+    useEffect(() => setMounted(true), [])
+
+    const Icon = options.find(o => o.value === theme)?.icon ?? Monitor
+
+    // Render a stable placeholder until client has resolved the theme
+    if (!mounted) return (
+        <div className='w-8 h-8 rounded-full' />
+    )
 
     return (
         <div ref={ref} className='relative'>

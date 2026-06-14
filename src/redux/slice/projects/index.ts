@@ -1,6 +1,7 @@
+// redux/slice/projects.ts
 import { createSlice, PayloadAction } from "@reduxjs/toolkit";
 
-interface ProjectSummary {
+export interface ProjectSummary {
     _id: string
     name: string
     projectNumber: number

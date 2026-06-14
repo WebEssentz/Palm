@@ -27,26 +27,33 @@ function load(): PersistedState {
 function save(state: PersistedState) {
     try {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
-    } catch {}
+    } catch { }
 }
 
 export function usePersistentInput() {
-    const saved = typeof window !== 'undefined' ? load() : { prompt: '', urlTags: [], imageUrls: [] }
-
-    const [prompt, setPromptState] = useState(saved.prompt)
-    const [urlTags, setUrlTagsState] = useState(saved.urlTags)
-
-    // Reconstruct ImageItems from saved URLs — storageId already known, previewUrl from /api/storage
-    const [uploadedImages, setUploadedImagesState] = useState(
-        saved.imageUrls.map(img => ({
-            id: img.id,
-            previewUrl: `/api/storage/${img.storageId}`,
-            storageId: img.storageId,
-            error: false,
-        })) as ImageItem[]
-    )
-
+    // Always start with empty defaults — hydrate from localStorage in useEffect
+    const [prompt, setPromptState] = useState('')
+    const [urlTags, setUrlTagsState] = useState<string[]>([])
+    const [uploadedImages, setUploadedImagesState] = useState<ImageItem[]>([])
+    const hydrated = useRef(false)
     const debounceRef = useRef<NodeJS.Timeout | null>(null)
+
+    // Hydrate from localStorage once on mount (client only)
+    useEffect(() => {
+        if (hydrated.current) return
+        hydrated.current = true
+        const saved = load()
+        if (saved.prompt) setPromptState(saved.prompt)
+        if (saved.urlTags.length) setUrlTagsState(saved.urlTags)
+        if (saved.imageUrls.length) {
+            setUploadedImagesState(saved.imageUrls.map(img => ({
+                id: img.id,
+                previewUrl: `/api/storage/${img.storageId}`,
+                storageId: img.storageId,
+                error: false,
+            })))
+        }
+    }, [])
 
     const persist = useCallback((
         nextPrompt: string,
@@ -58,7 +65,6 @@ export function usePersistentInput() {
             save({
                 prompt: nextPrompt,
                 urlTags: nextUrlTags,
-                // Only save images that finished uploading
                 imageUrls: nextImages
                     .filter(img => img.storageId && !img.error)
                     .map(img => ({
@@ -95,13 +101,12 @@ export function usePersistentInput() {
     }, [prompt, urlTags, persist])
 
     const clearPersistedInput = useCallback(() => {
-        try { localStorage.removeItem(STORAGE_KEY) } catch {}
+        try { localStorage.removeItem(STORAGE_KEY) } catch { }
         setPromptState('')
         setUrlTagsState([])
         setUploadedImagesState([])
     }, [])
 
-    // Cleanup debounce on unmount
     useEffect(() => {
         return () => {
             if (debounceRef.current) clearTimeout(debounceRef.current)

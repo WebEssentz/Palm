@@ -1,8 +1,5 @@
 "use client"
-import { usePreloadedQuery } from 'convex/react'
-import { api } from '../../../../convex/_generated/api'
-import type { Preloaded } from 'convex/react'
-import React, { createContext, useContext, type ReactNode } from 'react'
+import React, { createContext, useContext, useState, type ReactNode } from 'react'
 
 type Project = {
     _id: string
@@ -15,17 +12,20 @@ type Project = {
 }
 
 const ProjectsContext = createContext<Project[]>([])
-export const useProjects = () => useContext(ProjectsContext)
+export const useProjects = () => {
+    const projects = useContext(ProjectsContext)
+    // Safety guard: ensure projects is always an array
+    return Array.isArray(projects) ? projects : []
+}
 
 type Props = {
     children: ReactNode
-    initialProjects: Preloaded<typeof api.projects.getUserProjects>
+    initialProjects: Project[]
 }
 
 const ProjectsProvider = ({ children, initialProjects }: Props) => {
-    const projects = usePreloadedQuery(initialProjects)
     return (
-        <ProjectsContext.Provider value={projects as Project[]}>
+        <ProjectsContext.Provider value={initialProjects}>
             {children}
         </ProjectsContext.Provider>
     )

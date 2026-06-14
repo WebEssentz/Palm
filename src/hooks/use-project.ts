@@ -1,12 +1,18 @@
 'use client'
 
 import { useAppDispatch, useAppSelector } from "@/redux/store"
-import { addProject, createProjectFailure, createProjectStart, createProjectSuccess } from "@/redux/slice/projects"
+import {
+  addProject,
+  createProjectFailure,
+  createProjectStart,
+  createProjectSuccess,
+  type ProjectSummary,
+} from "@/redux/slice/projects"
 import { toast } from 'sonner'
 import { fetchMutation } from "convex/nextjs";
+import { useQuery } from "convex/react";
 import { Id } from "../../convex/_generated/dataModel";
 import { api } from "../../convex/_generated/api";
-import type { Project } from "@/redux/slice/projects"
 
 const generateGradientThumbnail = (): string => {
   const gradients = [
@@ -37,19 +43,19 @@ const generateGradientThumbnail = (): string => {
 interface UseProjectCreationReturn {
   createProject: (name?: string) => Promise<void>
   isCreating: boolean
-  projects: Project[]
+  projects: ProjectSummary[]
   projectsTotal: number
   canCreate: boolean
 }
 
 export const useProjectCreation = (): UseProjectCreationReturn => {
   const dispatch = useAppDispatch()
-  const user = useAppSelector((state) => state.profile)
+  const me = useQuery(api.user.getCurrentUser)
   const projectsState = useAppSelector((state) => state.projects)
   const shapesState = useAppSelector((state) => state.shapes)
 
   const createProject = async (name?: string): Promise<void> => {
-    if (!user?.id) {
+    if (!me?._id) {
       toast.error('Please sign in to create projects')
       return
     }
@@ -72,7 +78,7 @@ export const useProjectCreation = (): UseProjectCreationReturn => {
 
       // 4. Create project with storageId
       const result = await fetchMutation(api.projects.createProject, {
-        userId: user.id as Id<'users'>,
+        userId: me._id as Id<'users'>,
         name: name || undefined,
         sketchesData: {
           shapes: shapesState.shapes,
@@ -83,6 +89,15 @@ export const useProjectCreation = (): UseProjectCreationReturn => {
         thumbnail: storageId,
       })
 
+      dispatch(addProject({
+        _id: result._id,
+        name: result.name,
+        projectNumber: result.projectNumber,
+        thumbnail: result.thumbnail,
+        lastModified: result.lastModified,
+        createdAt: result.createdAt,
+        isPublic: result.isPublic,
+      }))
       dispatch(createProjectSuccess())
     } catch (error) {
       dispatch(createProjectFailure('Failed to create project'))
@@ -95,6 +110,6 @@ export const useProjectCreation = (): UseProjectCreationReturn => {
     isCreating: projectsState.isCreating,
     projects: projectsState.projects,
     projectsTotal: projectsState.total,
-    canCreate: !!user?.id,
+    canCreate: !!me?._id
   }
 }
