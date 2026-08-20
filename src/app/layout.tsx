@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Geist_Mono, Bricolage_Grotesque, DM_Sans } from "next/font/google";
+import { Syne, Inter } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/theme/provider";
 import { Toaster } from "@/components/ui/sonner";
@@ -10,14 +10,14 @@ import ReduxProvider from "@/redux/provider"
 import { ConvexUserRaw, normalizeProfile } from "@/types/user";
 import { ProfileQuery } from "@/convex/query.config";
 
-const bricolage = Bricolage_Grotesque({
+const syne = Syne({
   subsets: ["latin"],
   weight: ["400", "500", "600", "700", "800"],
   variable: "--font-display",
   display: "swap",
 });
 
-const dmSans = DM_Sans({
+const inter = Inter({
   subsets: ["latin"],
   weight: ["400", "500", "600"],
   variable: "--font-sans",
@@ -41,8 +41,8 @@ const profile = null
 
   return (
     <ConvexAuthNextjsServerProvider>
-      <html lang="en" className={`bg-background ${bricolage.variable} ${dmSans.variable}`} suppressHydrationWarning>
-        <body className={`${dmSans.className} antialiased`} suppressHydrationWarning>
+      <html lang="en" className={`bg-background ${syne.variable} ${inter.variable}`} suppressHydrationWarning>
+        <body className={`${inter.className} antialiased`} suppressHydrationWarning>
           <ConvexClientProvider>
             <ThemeProvider
               attribute="class"

@@ -6,987 +6,850 @@ import { motion, AnimatePresence } from 'framer-motion'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useAppSelector, useAppDispatch } from '@/redux/store'
-import { toggleSidebar } from '@/redux/slice/ui'
+import { toggleSidebar, setSidebarOpen } from '@/redux/slice/ui'
 import { useProjects } from '@/components/projects/list/provider'
 import { usePersistentInput } from '@/hooks/use-persistent-input'
 import { useQuery } from 'convex/react'
 import { api } from '../../../convex/_generated/api'
 import { Id } from '../../../convex/_generated/dataModel'
 import { formatDistanceToNow } from 'date-fns'
-import { Home, LayoutGrid, ArrowUp, Trash2, MoreHorizontal, Globe, X, PanelLeft, Loader } from 'lucide-react'
+import { Home, LayoutGrid, Trash2, ArrowUp, Globe, X, PanelLeft, Loader, LayoutDashboard, Smartphone, ShoppingBag, Shuffle } from 'lucide-react'
 import { ThemeToggle } from '@/components/theme/toggle'
 import { AvatarDropdown } from '@/components/avatar-dropdown'
 import { GlassTooltip } from '@/components/ui/glass-tooltip'
 import { MobileDrawer } from '@/components/ui/mobile-drawer'
-import ParticleBackground from '@/components/home/particle-background'
-import { CyclingWord } from '@/components/home/cycling-word'
+import DotParticleBackground from '@/components/home/dot-particle-background'
 import { MicButton } from '@/components/home/mic-button'
 import { AttachmentMenu } from '@/components/home/attachment-menu'
 import { ImagePreview, type ImageItem } from '@/components/home/image-preview'
 import ProjectsList from '@/components/projects/list'
-import { usePalmToast } from '@/hooks/use-palmtoast'
 import TrashList from '@/components/projects/trash-list'
-import { cn, combinedSlug } from '@/lib/utils'
+import { usePalmToast } from '@/hooks/use-palmtoast'
+import { combinedSlug } from '@/lib/utils'
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 function thumbnailToSrc(thumbnail: string | undefined): string | null {
     if (!thumbnail) return null
     if (thumbnail.startsWith('linear-gradient')) {
-        const colors = thumbnail.match(/#[a-fA-F0-9]{6}/g) || ['#888888', '#444444']
+        const colors = thumbnail.match(/#[a-fA-F0-9]{6}/g) || ['#888', '#444']
         const [c1, c2] = colors.length >= 2 ? [colors[0], colors[1]] : [colors[0] || '#888', '#444']
-        const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20">
-            <defs>
-                <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%">
-                    <stop offset="0%" stop-color="${c1}"/>
-                    <stop offset="100%" stop-color="${c2}"/>
-                </linearGradient>
-            </defs>
-            <rect width="20" height="20" rx="4" fill="url(#g)"/>
-        </svg>`
+        const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20"><defs><linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="${c1}"/><stop offset="100%" stop-color="${c2}"/></linearGradient></defs><rect width="20" height="20" rx="4" fill="url(#g)"/></svg>`
         return `data:image/svg+xml,${encodeURIComponent(svg)}`
     }
     return null
 }
 
 function isColorDark(color: string | undefined): boolean {
-    // Extract first hex color from the string (works for solid colors and gradients)
     const hex = (color?.match(/#[a-fA-F0-9]{6}/) || [])[0]
-    if (!hex) return true // assume dark if unparseable
-
+    if (!hex) return true
     const r = parseInt(hex.slice(1, 3), 16)
     const g = parseInt(hex.slice(3, 5), 16)
     const b = parseInt(hex.slice(5, 7), 16)
-
-    // Perceived luminance (standard formula)
-    const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255
-    return luminance < 0.35
+    return (0.299 * r + 0.587 * g + 0.114 * b) / 255 < 0.35
 }
 
+function getGreeting(name: string) {
+    const h = new Date().getHours()
+    const time = h < 12 ? 'morning' : h < 17 ? 'afternoon' : 'evening'
+    const first = name.split(' ')[0]
+    return `Good ${time}, ${first}.`
+}
+
+// ─── Prompts ──────────────────────────────────────────────────────────────────
+const ALL_PROMPTS = [
+    { short: 'Landing page for a coffee roastery', long: "Build a modern landing page for an artisan coffee roastery called 'Bean Canvas'. Include a hero section, featured blends with tasting notes, about section, testimonials, and newsletter signup. Use warm earth tones." },
+    { short: 'Fitness tracker dashboard', long: 'Create a comprehensive fitness tracking dashboard with step count, calories, heart rate trends, workout history, weekly goals, and achievements. Energetic color scheme.' },
+    { short: 'E-commerce product listing', long: 'Design an e-commerce product listing page with filtering, grid view, sidebar filters, sorting options, quick-view cards, and a cart indicator.' },
+    { short: 'Task management app', long: 'Build a task management interface with a sidebar, Kanban columns (To Do, In Progress, Done), task cards with assignee and due date, and a detail panel.' },
+    { short: 'SaaS analytics dashboard', long: 'Create a professional analytics dashboard with KPI cards, line charts, heatmaps, sortable data tables. Clean minimal design.' },
+    { short: 'Hotel booking interface', long: 'Design a luxury hotel booking platform with hero search, property cards, photo galleries, room options, and checkout. Elegant typography.' },
+    { short: 'Music streaming app', long: 'Build a music streaming interface with sidebar playlists, album artwork, waveform viz, playback controls, and search. Dark theme.' },
+    { short: 'Social media feed', long: 'Create a social feed with story avatars, post cards, engagement metrics, nested comments, and trending sidebar.' },
+    { short: 'Weather application', long: 'Build a weather app with large temp display, hourly and 7-day forecast, metrics (humidity, UV, wind), radar map, location search.' },
+    { short: 'Project management board', long: 'Design a Kanban board with Backlog → Done columns, draggable cards with avatars and priority, and team/filter sidebar.' },
+]
+const getRandomPrompts = () => [...ALL_PROMPTS].sort(() => Math.random() - 0.5).slice(0, 3)
+
+// ─── HomeShell ────────────────────────────────────────────────────────────────
 interface Props {
     profile: { name: string; image?: string | null }
     view?: 'home' | 'projects' | 'trash'
 }
 
-const ALL_PROMPTS = [
-    {
-        short: "Landing page for a coffee roastery",
-        long: "Build a modern landing page for an artisan coffee roastery called 'Bean Canvas'. Include a hero section with a large high-quality coffee image, sections for featured blends with tasting notes, an about section with the roaster's story, customer testimonials, and a newsletter signup form. Use warm earth tones like burnt sienna, cream, and dark brown."
-    },
-    {
-        short: "Fitness tracker dashboard",
-        long: "Create a comprehensive fitness tracking dashboard that displays daily step count, calories burned, heart rate trends, workout history with charts, weekly activity goals with progress bars, upcoming workout reminders, and a section for achievements/badges. Use a modern, energetic color scheme with vibrant accent colors."
-    },
-    {
-        short: "E-commerce product listing",
-        long: "Design an e-commerce product listing page with advanced filtering (by price, rating, category), grid view of products with images, prices, and star ratings, a sidebar filter panel, sorting options (newest, price: low to high, most popular), product quick-view cards on hover, and a shopping cart indicator in the header."
-    },
-    {
-        short: "Task management app",
-        long: "Build a task management application interface with a left sidebar showing project lists, main area displaying tasks in columns (To Do, In Progress, Done) with drag-and-drop capability, task cards showing title, assignee avatar, due date, and priority badge, add task buttons in each column, and a right sidebar showing task details and comments."
-    },
-    {
-        short: "SaaS analytics dashboard",
-        long: "Create a professional analytics dashboard for a SaaS platform showing key metrics like active users, revenue, conversion rates, and churn. Include line charts for trends, heatmaps for user activity by day/time, a data table with sortable columns, and summary cards with KPIs at the top. Use a clean, minimal design with data visualization best practices."
-    },
-    {
-        short: "Hotel booking interface",
-        long: "Design a luxury hotel booking platform with a hero search bar for dates and location, property cards with images, reviews, and pricing, detailed property pages with photo galleries, room options, and amenities, and a checkout flow. Use elegant typography, soft colors, and high-quality imagery to convey luxury."
-    },
-    {
-        short: "Music streaming app",
-        long: "Build a music streaming app interface with a sidebar navigation for playlists, main area showing currently playing track with album artwork, waveform visualization, playback controls, and a queue panel on the right. Include search functionality, artist pages with discography, and a dark theme with accent color highlights."
-    },
-    {
-        short: "Social media feed",
-        long: "Create a social media feed interface with story avatars at the top, post cards displaying user avatars, timestamps, content, images, and engagement metrics (likes, comments, shares), comment sections with nested replies, and a sidebar showing trending topics and suggested users to follow."
-    },
-    {
-        short: "Project management board",
-        long: "Design a Kanban-style project management board with multiple columns (Backlog, To Do, In Progress, Review, Done). Each task should be a draggable card showing title, assignee avatars, due date, priority level, and attachments. Include a sidebar with project settings, team members, and filters for viewing specific task types or team members."
-    },
-    {
-        short: "Weather application",
-        long: "Build a beautiful weather app showing current conditions with large temperature display, weather icon, and description. Include hourly forecast cards, daily forecast for the next 7 days, detailed metrics (humidity, wind speed, UV index, visibility), a radar map, and location search. Use weather-appropriate color gradients and smooth animations."
-    },
-]
-
-const getRandomPrompts = () => {
-    const shuffled = [...ALL_PROMPTS].sort(() => Math.random() - 0.5)
-    return shuffled.slice(0, 3)
-}
-
 export default function HomeShell({ profile, view = 'home' }: Props) {
     const { theme, systemTheme } = useTheme()
-    const me = useQuery(api.user.getCurrentUser)    
-    console.log('me:', me)
-    const sideOpen = useAppSelector((state) => state.ui.sidebarOpen)
+    const me = useQuery(api.user.getCurrentUser)
+    const sideOpen = useAppSelector(s => s.ui.sidebarOpen)
     const dispatch = useAppDispatch()
     const projects = useProjects()
     const router = useRouter()
     const userSlug = combinedSlug(me?.name ?? '', me?._id)
+    const { toast } = usePalmToast()
 
-    const {
-        prompt, setPrompt,
-        urlTags, setUrlTags,
-        uploadedImages, setUploadedImages,
-        clearPersistedInput,
-    } = usePersistentInput()
+    const { prompt, setPrompt, urlTags, setUrlTags, uploadedImages, setUploadedImages, clearPersistedInput } = usePersistentInput()
 
     const [isFocused, setIsFocused] = useState(false)
     const [enhancing, setEnhancing] = useState(false)
     const [isLoading, setIsLoading] = useState(false)
     const [pendingSend, setPendingSend] = useState(false)
     const [isRecordingActive, setIsRecordingActive] = useState(false)
-    const [suggestedPrompts] = useState(() => getRandomPrompts())
+    const [micState, setMicState] = useState<'idle' | 'recording' | 'processing'>('idle')
     const [hasDeletedOptimistic, setHasDeletedOptimistic] = useState(false)
     const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState(false)
     const [isDragging, setIsDragging] = useState(false)
     const [urlMode, setUrlMode] = useState(false)
     const [urlInputValue, setUrlInputValue] = useState('')
-    const [logoHovered, setLogoHovered] = useState(false)
+    const CATEGORIES = [
+        { icon: <LayoutDashboard style={{ width: 13, height: 13 }} />, label: 'Dashboard', prompt: 'Create a professional SaaS analytics dashboard with KPI cards, line charts, user activity heatmap, and sortable data tables. Clean minimal design with a sidebar nav.' },
+        { icon: <Globe style={{ width: 13, height: 13 }} />, label: 'Landing page', prompt: 'Build a bold, modern landing page for a tech startup. Hero section with headline and CTA, features grid, testimonials, and a pricing section.' },
+        { icon: <Smartphone style={{ width: 13, height: 13 }} />, label: 'Mobile app', prompt: 'Design a clean mobile app UI with onboarding screens, a home feed, bottom nav bar, and a profile page. iOS-style, minimal.' },
+        { icon: <ShoppingBag style={{ width: 13, height: 13 }} />, label: 'E-commerce', prompt: 'Design an e-commerce product page with image gallery, size selector, reviews, related products, and add-to-cart. Premium fashion aesthetic.' },
+        { icon: <Shuffle style={{ width: 13, height: 13 }} />, label: 'Surprise me', prompt: ALL_PROMPTS[Math.floor(Math.random() * ALL_PROMPTS.length)].long },
+    ]
+
+    const [selectedProject, setSelectedProject] = useState<{ _id: string; name: string } | null>(null)
+
     const textareaRef = useRef<HTMLTextAreaElement>(null)
     const dragCounter = useRef(0)
     const pendingSendRef = useRef(false)
-    const uploadAbortControllersRef = useRef<Map<string, AbortController>>(new Map())
+    const uploadAbortControllers = useRef<Map<string, AbortController>>(new Map())
     const uploadedImagesRef = useRef<ImageItem[]>([])
-    const { toast } = usePalmToast()
 
-    // Check if any images are still uploading
-    const isUploading = uploadedImages.some(img => img.storageId === null && !img.error)
-
-    // Keep ref in sync with state to avoid stale closures
+    React.useEffect(() => { uploadedImagesRef.current = uploadedImages }, [uploadedImages])
     React.useEffect(() => {
-        uploadedImagesRef.current = uploadedImages
-    }, [uploadedImages])
+        if (view !== 'home') dispatch(setSidebarOpen(true))
+    }, [view, dispatch])
 
-    const creditBalance = useQuery(
-        api.subscription.getCreditsBalance,
-        me?._id ? { userId: me._id as Id<'users'> } : 'skip'
-    )
+    const creditBalance = useQuery(api.subscription.getCreditsBalance, me?._id ? { userId: me._id as Id<'users'> } : 'skip')
+    const hasDeleted = useQuery(api.projects.hasDeletedProjects, me?._id ? { userId: me._id as Id<'users'> } : 'skip')
+    const trashedProjects = useQuery(api.projects.getDeletedProjects, me?._id ? { userId: me._id as Id<'users'> } : 'skip') ?? []
 
-    const hasDeleted = useQuery(
-        api.projects.hasDeletedProjects,
-        me?._id ? { userId: me._id as Id<'users'> } : 'skip'
-    )
+    if (!me) return <Loader />
 
-    const trashedProjects = useQuery(
-        api.projects.getDeletedProjects,
-        me?._id ? { userId: me._id as Id<'users'> } : 'skip'
-    ) ?? []
+    const isLight = (theme === 'system' ? systemTheme : theme) === 'light'
+    const text = isLight ? '#0a0a0a' : '#ffffff'
+    const muted = isLight ? 'rgba(0,0,0,0.38)' : 'rgba(255,255,255,0.38)'
+    const border = isLight ? 'rgba(0,0,0,0.09)' : 'rgba(255,255,255,0.09)'
+    const cardBg = isLight ? '#ffffff' : '#141414'
 
-    // Early return after all hooks are called
-    if (!me) return <Loader/>
-
-
+    // ── Upload ────────────────────────────────────────────────────────────────
     const handleUpload = async (file: File) => {
         if (!file.type.startsWith('image/')) return
         const previewUrl = URL.createObjectURL(file)
         const id = Math.random().toString(36).slice(2, 9)
-        const abortController = new AbortController()
-        uploadAbortControllersRef.current.set(id, abortController)
-
+        const ctrl = new AbortController()
+        uploadAbortControllers.current.set(id, ctrl)
         setUploadedImages(prev => [...prev, { id, previewUrl, storageId: null }])
-
         try {
-            const form = new FormData()
-            form.append('file', file)
-            const res = await fetch('/api/upload', {
-                method: 'POST',
-                body: form,
-                signal: abortController.signal,
-            })
+            const form = new FormData(); form.append('file', file)
+            const res = await fetch('/api/upload', { method: 'POST', body: form, signal: ctrl.signal })
             if (!res.ok) throw new Error('Upload failed')
             const { storageId } = await res.json()
-            uploadAbortControllersRef.current.delete(id)
-
+            uploadAbortControllers.current.delete(id)
             setUploadedImages(prev => {
                 const updated = prev.map(img => img.id === id ? { ...img, storageId } : img)
-                const stillUploading = updated.some(img => img.storageId === null && !img.error)
-                if (!stillUploading && pendingSendRef.current) {
-                    pendingSendRef.current = false
-                    setPendingSend(false)
-                    setTimeout(() => handleSubmit(), 0)
+                if (!updated.some(i => i.storageId === null && !i.error) && pendingSendRef.current) {
+                    pendingSendRef.current = false; setPendingSend(false); setTimeout(() => handleSubmit(), 0)
                 }
                 return updated
             })
-        } catch (err) {
-            if ((err as any)?.name === 'AbortError') return // silently cancelled
-            console.error('Image upload failed:', err)
+        } catch (err: any) {
+            if (err?.name === 'AbortError') return
             setUploadedImages(prev => prev.map(img => img.id === id ? { ...img, error: true } : img))
-            pendingSendRef.current = false
-            setPendingSend(false)
-        } finally {
-            uploadAbortControllersRef.current.delete(id)
-        }
+            pendingSendRef.current = false; setPendingSend(false)
+        } finally { uploadAbortControllers.current.delete(id) }
     }
 
     const handleRemoveImage = (id: string) => {
-        // Abort in-flight upload if still running
-        const controller = uploadAbortControllersRef.current.get(id)
-        if (controller) {
-            controller.abort()
-            uploadAbortControllersRef.current.delete(id)
-        }
-
+        uploadAbortControllers.current.get(id)?.abort()
+        uploadAbortControllers.current.delete(id)
         setUploadedImages(prev => {
             const img = prev.find(i => i.id === id)
             if (img) {
                 URL.revokeObjectURL(img.previewUrl)
-                if (img.storageId) {
-                    fetch('/api/files/delete', {
-                        method: 'DELETE',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ storageId: img.storageId }),
-                    }).catch(console.error)
-                }
+                if (img.storageId) fetch('/api/files/delete', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ storageId: img.storageId }) }).catch(console.error)
             }
             const remaining = prev.filter(i => i.id !== id)
-
-            // If no more uploading images and send was pending, cancel it
-            const stillUploading = remaining.some(i => i.storageId === null && !i.error)
-            if (!stillUploading && pendingSendRef.current) {
-                pendingSendRef.current = false
-                setPendingSend(false)
-            }
-
+            if (!remaining.some(i => i.storageId === null && !i.error) && pendingSendRef.current) { pendingSendRef.current = false; setPendingSend(false) }
             return remaining
         })
     }
 
-    const handleDragEnter = (e: React.DragEvent) => {
-        e.preventDefault()
-        dragCounter.current++
-        if (e.dataTransfer.types.includes('Files')) setIsDragging(true)
-    }
-    const handleDragLeave = (e: React.DragEvent) => {
-        e.preventDefault()
-        dragCounter.current--
-        if (dragCounter.current === 0) setIsDragging(false)
-    }
-    const handleDragOver = (e: React.DragEvent) => {
-        e.preventDefault()
-    }
+    // ── Drag ──────────────────────────────────────────────────────────────────
+    const handleDragEnter = (e: React.DragEvent) => { e.preventDefault(); dragCounter.current++; if (e.dataTransfer.types.includes('Files')) setIsDragging(true) }
+    const handleDragLeave = (e: React.DragEvent) => { e.preventDefault(); dragCounter.current--; if (dragCounter.current === 0) setIsDragging(false) }
+    const handleDragOver = (e: React.DragEvent) => e.preventDefault()
     const handleDrop = (e: React.DragEvent) => {
-        e.preventDefault()
-        dragCounter.current = 0
-        setIsDragging(false)
-        Array.from(e.dataTransfer.files)
-            .filter(f => f.type.startsWith('image/'))
-            .forEach(handleUpload)
+        e.preventDefault(); dragCounter.current = 0; setIsDragging(false)
+        Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/')).forEach(handleUpload)
     }
-
     const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
-        const imageItems = Array.from(e.clipboardData.items)
-            .filter(item => item.type.startsWith('image/'))
-        if (imageItems.length > 0) {
-            e.preventDefault()
-            imageItems.forEach(item => {
-                const file = item.getAsFile()
-                if (file) handleUpload(file)
-            })
-        }
+        const imgs = Array.from(e.clipboardData.items).filter(i => i.type.startsWith('image/'))
+        if (imgs.length) { e.preventDefault(); imgs.forEach(i => { const f = i.getAsFile(); if (f) handleUpload(f) }) }
     }
 
+    // ── Enhance ───────────────────────────────────────────────────────────────
     const handleEnhance = async () => {
         if (!prompt.trim() || enhancing) return
-        setEnhancing(true)
-        toast('Enhancing your prompt...', { type: 'info', duration: 999999 })
+        setEnhancing(true); toast('Enhancing…', { type: 'info', duration: 999999 })
         try {
-            const res = await fetch('/api/enhance', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ prompt: prompt.trim() }),
-            })
+            const res = await fetch('/api/enhance', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt: prompt.trim() }) })
             const { enhanced, error } = await res.json()
-            if (enhanced) {
-                setPrompt(enhanced)
-                toast('Prompt enhanced! ✨', { type: 'success', duration: 2500 })
-            } else {
-                toast('Failed to enhance prompt', { type: 'error', duration: 3500 })
-                console.error('Enhance failed:', error)
-            }
-        } catch (err) {
-            toast('Enhancement error', { type: 'error', duration: 3500 })
-            console.error('Enhance error:', err)
-        } finally {
-            setEnhancing(false)
-        }
+            if (enhanced) { setPrompt(enhanced); toast('Enhanced ✨', { type: 'success', duration: 2500 }) }
+            else { toast('Failed to enhance', { type: 'error', duration: 3500 }); console.error(error) }
+        } catch (err) { toast('Error', { type: 'error', duration: 3500 }); console.error(err) }
+        finally { setEnhancing(false) }
     }
 
+    // ── Submit ────────────────────────────────────────────────────────────────
     const handleSubmit = async () => {
         if (!prompt.trim() || isLoading) return
-
-        // Use ref to get current images — avoids stale closure
         const currentImages = uploadedImagesRef.current
-
-        // If images are still uploading, queue the send
-        if (currentImages.some(img => img.storageId === null && !img.error)) {
-            pendingSendRef.current = true
-            setPendingSend(true)
-            return
-        }
-
+        if (currentImages.some(img => img.storageId === null && !img.error)) { pendingSendRef.current = true; setPendingSend(true); return }
         setIsLoading(true)
-
         try {
             let finalPrompt = prompt.trim()
-
-            // If URL tags exist, analyze them first and merge with prompt
             if (urlTags.length > 0) {
-                toast('Analyzing reference sites…', { type: 'info', duration: 999999 })
-                const analyzeRes = await fetch('/api/url-analyze', {
+                toast('Analyzing references…', { type: 'info', duration: 999999 })
+                const r = await fetch('/api/url-analyze', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ urls: urlTags, prompt: finalPrompt }) })
+                const { enhanced } = await r.json()
+                if (enhanced) { finalPrompt = enhanced; toast('References analyzed ✨', { type: 'success', duration: 2000 }) }
+            }
+            const imageStorageIds = currentImages.filter(img => img.storageId && !img.error).map(img => img.storageId as string)
+            if (selectedProject) {
+                clearPersistedInput()
+                router.push(
+                    `/dashboard/${userSlug}/canvas?project=${selectedProject._id}&prompt=${encodeURIComponent(finalPrompt)}${imageStorageIds.length ? `&images=${encodeURIComponent(JSON.stringify(imageStorageIds))}` : ''
+                    }`
+                )
+            } else {
+                const res = await fetch('/api/projects/create', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ urls: urlTags, prompt: finalPrompt }),
+                    body: JSON.stringify({
+                        prompt: finalPrompt, userId: me._id,
+                        ...(urlTags.length && { referenceUrls: urlTags }),
+                        ...(imageStorageIds.length && { imageStorageIds }),
+                    }),
                 })
-                const { enhanced, error } = await analyzeRes.json()
-                if (enhanced) {
-                    finalPrompt = enhanced
-                    toast('References analyzed ✨', { type: 'success', duration: 2000 })
-                } else {
-                    console.warn('URL analyze failed, using original prompt:', error)
-                }
+                const { projectId, error, details } = await res.json()
+                if (!res.ok || !projectId) throw new Error(details || error)
+                clearPersistedInput()
+                router.push(
+                    `/dashboard/${userSlug}/canvas?project=${projectId}&prompt=${encodeURIComponent(finalPrompt)}${imageStorageIds.length ? `&images=${encodeURIComponent(JSON.stringify(imageStorageIds))}` : ''
+                    }`
+                )
             }
-
-            const imageStorageIds = currentImages
-                .filter(img => img.storageId !== null && !img.error)
-                .map(img => img.storageId as string)
-
-            const res = await fetch('/api/projects/create', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    prompt: finalPrompt,  // ← merged prompt goes here
-                    userId: me._id,
-                    ...(urlTags.length > 0 && { referenceUrls: urlTags }),
-                    ...(imageStorageIds.length > 0 && { imageStorageIds }),
-                }),
-            })
-
-            const { projectId, error, details } = await res.json()
-            if (!res.ok || !projectId) throw new Error(details || error)
-
-            clearPersistedInput()
-            router.push(
-                `/dashboard/${userSlug}/canvas?project=${projectId}&prompt=${encodeURIComponent(finalPrompt)}${
-                    imageStorageIds.length > 0
-                        ? `&images=${encodeURIComponent(JSON.stringify(imageStorageIds))}`
-                        : ''
-                }`
-            )
-        } catch (err) {
-            console.error('Submit failed:', err)
-            setIsLoading(false)
-        }
+        } catch (err) { console.error(err); setIsLoading(false) }
     }
 
-    const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault()
-            handleSubmit()
-        }
-    }
+    const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSubmit() } }
 
-    const effectiveTheme = theme === 'system' ? systemTheme : theme
-    const isLightMode = effectiveTheme === 'light'
-
-    // Shared liquid glass style — used on sidebar toggle, credits, prompt pills
-    const liquidGlassStyle = (light: boolean): React.CSSProperties => light ? {
-        background: 'rgba(250,246,238,0.88)',
-        backdropFilter: 'url(#palm-glass-light) blur(20px)',
-        WebkitBackdropFilter: 'blur(20px)',
-        border: '1px solid rgba(120,96,60,0.10)',
-        boxShadow: [
-            '0 0 0 0.5px rgba(100,76,40,0.08)',
-            '0 2px 4px rgba(80,60,30,0.06)',
-            '0 8px 20px rgba(80,60,30,0.09)',
-            'inset 0 1px 0 rgba(255,255,255,0.90)',
-            'inset 0 -1px 0 rgba(100,76,40,0.04)',
-        ].join(', '),
-    } : {
-        background: 'rgba(255,255,255,0.07)',
-        backdropFilter: 'url(#palm-glass-light) blur(20px)',
-        WebkitBackdropFilter: 'blur(20px)',
-        border: '1px solid rgba(255,255,255,0.12)',
-        boxShadow: [
-            '0 0 0 0.5px rgba(255,255,255,0.04)',
-            '0 2px 4px rgba(0,0,0,0.12)',
-            '0 8px 20px rgba(0,0,0,0.24)',
-            '0 16px 40px rgba(0,0,0,0.18)',
-            'inset 0 1px 0 rgba(255,255,255,0.08)',
-            'inset 0 -1px 0 rgba(0,0,0,0.2)',
-        ].join(', '),
-    }
-
-    // Textarea inner glass — same treatment both modes
-    const textareaStyle: React.CSSProperties = isLightMode ? {
-        minHeight: '120px',
-        borderRadius: '10px',
-        padding: '10px 12px',
-        background: 'rgba(255,251,244,0.72)',
-        backdropFilter: 'blur(8px)',
-        WebkitBackdropFilter: 'blur(8px)',
-        boxShadow: [
-            'inset 0 1px 3px rgba(80,60,30,0.08)',
-            'inset 0 0 0 1px rgba(120,96,60,0.09)',
-            '0 1px 0 rgba(255,255,255,0.80)',
-        ].join(', '),
-    } : {
-        minHeight: '120px',
-        borderRadius: '10px',
-        padding: '10px 12px',
-        background: '#1e1e1e',
-        backdropFilter: 'blur(8px)',
-        WebkitBackdropFilter: 'blur(8px)',
-        boxShadow: [
-            'inset 0 0 0 1px rgba(255,255,255,0.06)',
-            'inset 0 1px 0 rgba(255,255,255,0.04)',
-        ].join(', '),
-    }
-
+    // ── Render ────────────────────────────────────────────────────────────────
     return (
         <>
-            <div className='relative flex min-h-screen overflow-hidden bg-background'>
-                {/* Liquid glass SVG filters */}
-                <svg style={{ position: 'absolute', width: 0, height: 0, overflow: 'hidden' }} aria-hidden='true'>
-                    <defs>
-                        <filter id='palm-glass-credit-light' x='-12%' y='-12%' width='124%' height='124%' colorInterpolationFilters='sRGB'>
-                            <feTurbulence type='fractalNoise' baseFrequency='0.65 0.42' numOctaves='3' seed='12' result='noise'>
-                                <animate attributeName='baseFrequency' values='0.65 0.42; 0.68 0.44; 0.65 0.42' dur='8s' repeatCount='indefinite' />
-                            </feTurbulence>
-                            <feGaussianBlur in='noise' stdDeviation='1.6' result='blurNoise' />
-                            <feDisplacementMap in='SourceGraphic' in2='blurNoise' scale='12' xChannelSelector='R' yChannelSelector='G' result='displaced' />
-                            <feColorMatrix in='displaced' type='saturate' values='1.35' result='saturated' />
-                            <feComposite in='saturated' in2='SourceGraphic' operator='atop' />
-                        </filter>
-                        <filter id='palm-glass-light' x='-12%' y='-12%' width='124%' height='124%' colorInterpolationFilters='sRGB'>
-                            <feTurbulence type='fractalNoise' baseFrequency='0.65 0.42' numOctaves='3' seed='12' result='noise'>
-                                <animate attributeName='baseFrequency' values='0.65 0.42; 0.68 0.44; 0.65 0.42' dur='8s' repeatCount='indefinite' />
-                            </feTurbulence>
-                            <feGaussianBlur in='noise' stdDeviation='1.6' result='blurNoise' />
-                            <feDisplacementMap in='SourceGraphic' in2='blurNoise' scale='12' xChannelSelector='R' yChannelSelector='G' result='displaced' />
-                            <feColorMatrix in='displaced' type='saturate' values='1.35' result='saturated' />
-                            <feComposite in='saturated' in2='SourceGraphic' operator='atop' />
-                        </filter>
-                    </defs>
-                </svg>
+            <div style={{ display: 'flex', minHeight: '100dvh', background: isLight ? '#fafafa' : '#0a0a0a', position: 'relative', overflow: 'hidden' }}>
+                <DotParticleBackground isLight={isLight} />
 
-                <ParticleBackground />
-
-                {/* ── Sidebar ── */}
-                <aside
-                    className={cn(
-                        'relative z-20 flex flex-col h-screen border-r border-border/40 bg-background/60 backdrop-blur-xl transition-all duration-200 ease-in-out flex-shrink-0 hidden md:flex',
-                        sideOpen ? 'w-52' : 'w-14'
-                    )}
-                >
-                    {/* Logo row */}
-                    {sideOpen ? (
-                        /* Expanded: logo + "Palm" text + close button inline */
-                        <div className='flex items-center justify-between px-3.5 py-4 gap-2.5'>
-                            <div className='flex items-center gap-2.5'>
-                                <Link
-                                    href={`/dashboard/${userSlug}`}
-                                    className='w-6 h-6 rounded-lg bg-primary flex-shrink-0 flex items-center justify-center'
-                                >
-                                    <div className='w-3.5 h-3.5 rounded-full bg-primary-foreground' />
+                {/* ── Sidebar — only shown on projects/trash views ── */}
+                <AnimatePresence>
+                    {sideOpen && (
+                        <motion.aside
+                            initial={{ width: 0, opacity: 0 }}
+                            animate={{ width: 240, opacity: 1 }}
+                            exit={{ width: 0, opacity: 0 }}
+                            transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+                            style={{
+                                flexShrink: 0, height: '100vh', position: 'fixed', top: 0, left: 0,
+                                borderRight: `1px solid ${border}`,
+                                background: isLight ? '#f0f0f0' : 'rgba(10,10,10,0.9)',
+                                backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)',
+                                display: 'flex', flexDirection: 'column', zIndex: 20, overflow: 'hidden',
+                            }}
+                        >
+                            {/* ── Logo + collapse ── */}
+                            <div style={{
+                                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                padding: '18px 18px 0', flexShrink: 0,
+                            }}>
+                                <Link href={`/dashboard/${userSlug}`} style={{ display: 'flex', alignItems: 'center', gap: 8, textDecoration: 'none' }}>
+                                    <div style={{ width: 20, height: 20, borderRadius: 5, background: text, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                                        <div style={{ width: 7, height: 7, borderRadius: '50%', background: isLight ? '#fff' : '#0a0a0a' }} />
+                                    </div>
+                                    <span style={{ fontSize: 13, fontWeight: 600, color: text, letterSpacing: '-0.015em' }}>Palm</span>
                                 </Link>
-                                <span className='font-semibold text-sm text-foreground tracking-tight'>Palm</span>
-                            </div>
-                            <GlassTooltip content="Close sidebar" side="right">
                                 <button
                                     onClick={() => dispatch(toggleSidebar())}
-                                    className='w-6 h-6 flex items-center justify-center text-muted-foreground hover:text-foreground hover:cursor-ew-resize transition-colors flex-shrink-0'
-                                    aria-label="Collapse sidebar"
+                                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: muted, padding: 4, display: 'flex', borderRadius: 6, transition: 'color 0.12s' }}
+                                    onMouseEnter={e => e.currentTarget.style.color = text}
+                                    onMouseLeave={e => e.currentTarget.style.color = muted}
                                 >
-                                    <PanelLeft className='w-4 h-4' />
+                                    <PanelLeft style={{ width: 14, height: 14 }} />
                                 </button>
-                            </GlassTooltip>
-                        </div>
-                    ) : (
-                        /* Collapsed: Palm logo normally; on hover swap to plain PanelLeft with tooltip */
-                        <div className='flex items-center justify-center px-3.5 py-4'>
-                            {logoHovered ? (
-                                <GlassTooltip content="Open sidebar" side="right">
-                                    <button
-                                        className='w-6 h-6 flex items-center justify-center text-muted-foreground hover:text-foreground hover:cursor-ew-resize transition-colors flex-shrink-0'
-                                        onMouseLeave={() => setLogoHovered(false)}
-                                        onClick={() => dispatch(toggleSidebar())}
-                                        aria-label="Expand sidebar"
-                                    >
-                                        <PanelLeft className='w-4 h-4' />
-                                    </button>
-                                </GlassTooltip>
-                            ) : (
-                                <GlassTooltip content="Open sidebar" side="right">
-                                    <Link
-                                        href={`/dashboard/${userSlug}`}
-                                        className='w-6 h-6 rounded-lg bg-primary flex-shrink-0 flex items-center justify-center'
-                                        onMouseEnter={() => setLogoHovered(true)}
-                                    >
-                                        <div className='w-3.5 h-3.5 rounded-full bg-primary-foreground' />
-                                    </Link>
-                                </GlassTooltip>
-                            )}
-                        </div>
-                    )}
-
-                    {/* Nav */}
-                    <nav className='flex flex-col gap-0.5 px-2 mt-1'>
-                        <GlassTooltip content="Home" disabled={sideOpen}>
-                            <SideItem
-                                icon={<Home className='w-4 h-4' />}
-                                label='Home'
-                                open={sideOpen}
-                                active={view === 'home'}
-                                onClick={() => router.push(`/dashboard/${userSlug}`)}
-                            />
-                        </GlassTooltip>
-                        <GlassTooltip content="Projects" disabled={sideOpen}>
-                            <SideItem
-                                icon={<LayoutGrid className='w-4 h-4' />}
-                                label='Projects'
-                                open={sideOpen}
-                                active={view === 'projects'}
-                                onClick={() => router.push(`/dashboard/${userSlug}/projects`)}
-                            />
-                        </GlassTooltip>
-                        {(hasDeleted || hasDeletedOptimistic) && (
-                            <GlassTooltip content="Trash" disabled={sideOpen}>
-                                <SideItem
-                                    icon={<Trash2 className='w-4 h-4' />}
-                                    label='Trash'
-                                    open={sideOpen}
-                                    active={view === 'trash'}
-                                    onClick={() => router.push(`/dashboard/${userSlug}/trash`)}
-                                />
-                            </GlassTooltip>
-                        )}
-                    </nav>
-
-                    {/* Recent projects */}
-                    {sideOpen && projects.length > 0 && (
-                        <div className='mt-4 px-3'>
-                            <p className='text-[10px] uppercase tracking-widest text-muted-foreground/50 mb-2 px-1'>Recent</p>
-                            <div className='space-y-0.5'>
-                                {projects.slice(0, 8).map((p) => (
-                                    <Link
-                                        key={p._id}
-                                        href={`/dashboard/${userSlug}/canvas?project=${p._id}`}
-                                        className='flex items-center gap-2 px-2 py-1.5 rounded-md transition-colors group'
-                                        style={{ backgroundColor: 'transparent', color: 'var(--muted-foreground)' }}
-                                        onMouseEnter={(e) => {
-                                            e.currentTarget.style.backgroundColor = isLightMode ? '#EFE7DD' : '#141414'
-                                            e.currentTarget.style.color = 'var(--foreground)'
-                                        }}
-                                        onMouseLeave={(e) => {
-                                            e.currentTarget.style.backgroundColor = 'transparent'
-                                            e.currentTarget.style.color = 'var(--muted-foreground)'
-                                        }}
-                                    >
-                                        {(() => {
-                                            const src = thumbnailToSrc(p.thumbnail)
-
-                                            return src
-                                                ? <img src={src} className='w-5 h-5 rounded flex-shrink-0' alt='' />
-                                                : <div
-                                                    className='w-5 h-5 rounded flex-shrink-0'
-                                                    style={{
-                                                        background: p.thumbnail || '#888888'
-                                                    }}
-                                                />
-                                        })()}
-                                        <div className='min-w-0'>
-                                            <p className='text-xs text-muted-foreground truncate group-hover:text-foreground transition-colors'>
-                                                {p.name}
-                                            </p>
-                                            <p className='text-[10px] text-muted-foreground/50'>
-                                                {formatDistanceToNow(new Date(p.lastModified), { addSuffix: true })}
-                                            </p>
-                                        </div>
-                                    </Link>
-                                ))}
                             </div>
-                        </div>
-                    )}
 
-                    {/* Collapsed projects area — clickable to expand */}
-                    {!sideOpen && projects.length > 0 && (
-                        <div
-                            onClick={() => dispatch(toggleSidebar())}
-                            className='flex-1 cursor-ew-resize transition-colors'
-                            style={{
-                                margin: '0.5rem 0.5rem 0 0.5rem',
-                            }}
-                        />
+                            {/* ── Nav ── */}
+                            <div style={{ padding: '28px 10px 0', flexShrink: 0 }}>
+                                {[
+                                    { icon: <Home style={{ width: 13, height: 13 }} />, label: 'Home', v: 'home' },
+                                    { icon: <LayoutGrid style={{ width: 13, height: 13 }} />, label: 'Projects', v: 'projects' },
+                                    ...((hasDeleted || hasDeletedOptimistic) ? [{ icon: <Trash2 style={{ width: 13, height: 13 }} />, label: 'Trash', v: 'trash' }] : []),
+                                ].map(({ icon, label, v }) => {
+                                    const active = view === v
+                                    return (
+                                        <button
+                                            key={v}
+                                            onClick={() => router.push(v === 'home' ? `/dashboard/${userSlug}` : `/dashboard/${userSlug}/${v}`)}
+                                            style={{
+                                                display: 'flex', alignItems: 'center', gap: 9, width: '100%',
+                                                padding: '8px 10px', borderRadius: 8, border: 'none',
+                                                background: active ? (isLight ? 'rgba(0,0,0,0.055)' : 'rgba(255,255,255,0.07)') : 'transparent',
+                                                color: active ? text : muted,
+                                                fontSize: 13, fontWeight: active ? 500 : 400,
+                                                cursor: 'pointer', textAlign: 'left',
+                                                letterSpacing: '-0.012em',
+                                                transition: 'background 0.12s, color 0.12s',
+                                                marginBottom: 1,
+                                            }}
+                                            onMouseEnter={e => {
+                                                if (!active) {
+                                                    e.currentTarget.style.background = isLight ? 'rgba(0,0,0,0.035)' : 'rgba(255,255,255,0.04)'
+                                                    e.currentTarget.style.color = text
+                                                }
+                                            }}
+                                            onMouseLeave={e => {
+                                                if (!active) {
+                                                    e.currentTarget.style.background = 'transparent'
+                                                    e.currentTarget.style.color = muted
+                                                }
+                                            }}
+                                        >
+                                            {icon}{label}
+                                        </button>
+                                    )
+                                })}
+                            </div>
+
+                            {/* ── Divider + Recent label ── */}
+                            {projects.length > 0 && (
+                                <div style={{ padding: '28px 18px 10px', flexShrink: 0 }}>
+                                    <div style={{ height: 1, background: border, marginBottom: 16 }} />
+                                    <p style={{
+                                        fontSize: 10, letterSpacing: '0.12em', textTransform: 'uppercase',
+                                        color: muted, margin: 0,
+                                    }}>
+                                        Recent
+                                    </p>
+                                </div>
+                            )}
+
+                            {/* ── Project list ── */}
+                            <div style={{ flex: 1, overflowY: 'auto', padding: '0 10px 20px', scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch' }}>
+                                {projects.map(p => {
+                                    const src = thumbnailToSrc(p.thumbnail)
+                                    return (
+                                        <Link
+                                            key={p._id}
+                                            href={`/dashboard/${userSlug}/canvas?project=${p._id}`}
+                                            style={{
+                                                display: 'flex', alignItems: 'center', gap: 10,
+                                                padding: '7px 10px', borderRadius: 8,
+                                                textDecoration: 'none',
+                                                transition: 'background 0.12s',
+                                                marginBottom: 1,
+                                            }}
+                                            onMouseEnter={e => e.currentTarget.style.background = isLight ? 'rgba(0,0,0,0.04)' : 'rgba(255,255,255,0.04)'}
+                                            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                                        >
+                                            {/* Thumbnail */}
+                                            <div style={{
+                                                width: 30, height: 30, borderRadius: 7, overflow: 'hidden',
+                                                flexShrink: 0, border: `1px solid ${border}`,
+                                            }}>
+                                                {src
+                                                    ? <img src={src} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="" />
+                                                    : <div style={{ width: '100%', height: '100%', background: p.thumbnail || '#888' }} />
+                                                }
+                                            </div>
+
+                                            {/* Text */}
+                                            <div style={{ minWidth: 0 }}>
+                                                <p style={{
+                                                    fontSize: 12, fontWeight: 400, margin: 0, color: text,
+                                                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                                                    letterSpacing: '-0.01em', lineHeight: 1.35,
+                                                }}>
+                                                    {p.name}
+                                                </p>
+                                                <p style={{
+                                                    fontSize: 10, margin: '2px 0 0', color: muted,
+                                                    opacity: 0.55, letterSpacing: '0em',
+                                                }}>
+                                                    {formatDistanceToNow(new Date(p.lastModified), { addSuffix: true })}
+                                                </p>
+                                            </div>
+                                        </Link>
+                                    )
+                                })}
+                            </div>
+                        </motion.aside>
                     )}
-                </aside>
+                </AnimatePresence>
 
                 {/* ── Main ── */}
-                <div className='relative z-10 flex flex-col flex-1 min-w-0'>
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, position: 'relative', zIndex: 10, marginLeft: sideOpen ? 240 : 0, transition: 'margin-left 0.22s ease' }}>
 
                     {/* Topbar */}
-                    <header className='flex items-center justify-between md:justify-end gap-3 px-2 md:px-6 py-3 md:py-4 flex-shrink-0'>
-                        {/* Mobile hamburger — left side, 44×44px touch target */}
-                        <button
-                            onClick={() => setIsMobileDrawerOpen(true)}
-                            className='md:hidden w-8 h-8 rounded-lg flex items-center justify-center text-foreground hover:text-foreground transition-colors flex-shrink-0'
-                            style={liquidGlassStyle(isLightMode)}
-                            aria-label="Toggle sidebar navigation"
-                        >
-                            <div
-                                className='pointer-events-none absolute inset-x-0 top-0 h-[1px] rounded-lg'
-                                style={{ background: 'linear-gradient(90deg, transparent 5%, rgba(255,255,255,0.95) 50%, transparent 95%)' }}
-                            />
-                            <MoreHorizontal className='w-5 h-5' />
-                        </button>
+                    <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 20px', flexShrink: 0 }}>
+                        {/* Left */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                            {/* Mobile menu */}
+                            <button className="md:hidden" onClick={() => setIsMobileDrawerOpen(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: muted, padding: 4 }}>
+                                <PanelLeft style={{ width: 16, height: 16 }} />
+                            </button>
 
-                        {/* Palm logo + text — mobile/center */}
-                        <div className='md:hidden flex items-center gap-2 flex-1 justify-center'>
-                            <Link
-                                href={`/dashboard/${userSlug}`}
-                                className='w-6 h-6 rounded-lg bg-primary flex-shrink-0 flex items-center justify-center'
-                            >
-                                <div className='w-3.5 h-3.5 rounded-full bg-primary-foreground' />
-                            </Link>
-                            <span className='font-semibold text-sm text-foreground tracking-tight'>Palm</span>
+                            {/* Sidebar toggle */}
+                            {!sideOpen && (
+                                <GlassTooltip content="Open sidebar" side="right">
+                                    <button
+                                        onClick={() => dispatch(toggleSidebar())}
+                                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: muted, padding: 4, alignItems: 'center' }}
+                                        className="hidden md:flex"
+                                    >
+                                        <PanelLeft style={{ width: 15, height: 15 }} />
+                                    </button>
+                                </GlassTooltip>
+                            )}
+
+                            {/* Logo — only on home when sidebar is closed */}
+                            {!sideOpen && (
+                                <Link href={`/dashboard/${userSlug}`} style={{ display: 'flex', alignItems: 'center', gap: 7, textDecoration: 'none' }}>
+                                    <div style={{ width: 20, height: 20, borderRadius: 5, background: text, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                        <div style={{ width: 7, height: 7, borderRadius: '50%', background: isLight ? '#fff' : '#0a0a0a' }} />
+                                    </div>
+                                    <span style={{ fontSize: 13, fontWeight: 600, color: text, letterSpacing: '-0.01em' }}>Palm</span>
+                                </Link>
+                            )}
                         </div>
 
-                        {/* Credits + Avatar — right side */}
-                        <div className='flex items-center gap-3'>
-                            {/* Credits — liquid glass — hidden on mobile */}
-                            <GlassTooltip content="Your credit balance" side="bottom">
-                                <div
-                                    className='hidden md:flex items-center gap-1.5 rounded-full px-3 py-1.5 relative'
-                                    style={liquidGlassStyle(isLightMode)}
-                                >
-                                    <div
-                                        className='pointer-events-none absolute inset-x-0 top-0 h-[1px]'
-                                        style={{ background: 'linear-gradient(90deg, transparent 5%, rgba(255,255,255,0.95) 50%, transparent 95%)' }}
-                                    />
-                                    <PalmLeafIcon />
-                                    <span className='text-xs font-medium tabular-nums text-foreground/70'>
-                                        {creditBalance ?? 0}
-                                    </span>
+                        {/* Right */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                            {creditBalance !== undefined && (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '4px 10px', borderRadius: 9999, border: `1px solid ${border}`, background: isLight ? 'rgba(0,0,0,0.03)' : 'rgba(255,255,255,0.04)' }}>
+                                    <PalmLeafIcon color={muted} />
+                                    <span style={{ fontSize: 12, color: muted, fontVariantNumeric: 'tabular-nums' }}>{creditBalance}</span>
                                 </div>
-                            </GlassTooltip>
+                            )}
                             <AvatarDropdown creditBalance={creditBalance ?? 0} />
                         </div>
                     </header>
 
-                    {/* Center content */}
-                    <main className={cn(
-                        'flex-1 flex flex-col items-center px-6 pb-16',
-                        view === 'home' ? 'justify-center' : 'justify-start pt-10'
-                    )}>
+                    {/* Content */}
+                    <main style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: view === 'home' ? 'center' : 'flex-start', padding: view === 'home' ? '0 24px 80px' : '32px 24px 80px' }}>
+
                         {view === 'projects' ? (
-                            <div className='w-full max-w-7xl pt-10'>
+                            <div style={{ width: '100%', maxWidth: 1200 }}>
                                 <ProjectsList onProjectDelete={() => setHasDeletedOptimistic(true)} />
                             </div>
                         ) : view === 'trash' ? (
                             <TrashList onTrashEmpty={() => setHasDeletedOptimistic(false)} />
                         ) : (
-                            <>
-                                <h1 className='font-display text-3xl sm:text-3xl md:text-5xl font-bold tracking-tight text-foreground mb-10 text-center leading-tight'>
-                                    What will you <CyclingWord />
+                            <motion.div
+                                initial={{ opacity: 0, y: 16 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
+                                style={{ width: '100%', maxWidth: 700, display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}
+                            >
+                                {/* Greeting */}
+                                <p style={{ fontSize: 13, color: muted, margin: '0 0 4px', letterSpacing: '-0.01em' }}>
+                                    Hi, {me.name?.split(' ')[0] ?? 'there'}.
+                                </p>
+                                <h1 style={{ fontSize: 28, fontWeight: 600, color: text, margin: '0 0 20px', letterSpacing: '-0.03em', lineHeight: 1.15 }}>
+                                    What will you build today?
                                 </h1>
 
-                                {/* Input card */}
-                                <motion.div
-                                    layout
-                                    transition={{ type: 'spring', damping: 24, stiffness: 260 }}
-                                    onDragEnter={handleDragEnter}
-                                    onDragLeave={handleDragLeave}
-                                    onDragOver={handleDragOver}
-                                    onDrop={handleDrop}
-                                    className={cn(
-                                        'w-full max-w-2xl relative rounded-2xl transition-colors duration-200',
-                                        prompt.trim()
-                                            ? 'bg-[rgba(250,246,238,0.88)] dark:bg-[rgba(255,255,255,0.07)]'
-                                            : 'bg-[rgba(250,246,238,0.88)] dark:bg-transparent'
-                                    )}
-                                    style={{
-                                        backdropFilter: 'url(#palm-glass-light) blur(32px)',
-                                        WebkitBackdropFilter: 'blur(32px)',
-                                        boxShadow: (!prompt.trim() && !isLightMode)
-                                            ? 'none'
-                                            : (isDragging || isFocused
-                                                ? [
-                                                    '0 0 0 2px rgba(160,120,60,0.40)',
-                                                    '0 0 0 1px rgba(120,96,60,0.20)',
-                                                    '0 8px 32px rgba(80,60,30,0.25)',
-                                                    '0 4px 16px rgba(80,60,30,0.18)',
-                                                    '0 1px 3px rgba(80,60,30,0.12)',
-                                                    'inset 0 1px 0 rgba(255,255,255,0.90)',
-                                                    'inset 0 -1px 0 rgba(100,76,40,0.04)',
-                                                ].join(', ')
-                                                : [
-                                                    '0 0 0 1px rgba(120,96,60,0.12)',
-                                                    '0 4px 24px rgba(80,60,30,0.14)',
-                                                    '0 1px 3px rgba(80,60,30,0.10)',
-                                                    '0 0 0 0.5px rgba(100,76,40,0.08)',
-                                                    '0 2px 4px rgba(80,60,30,0.06)',
-                                                    '0 8px 20px rgba(80,60,30,0.09)',
-                                                    '0 24px 48px rgba(80,60,30,0.07)',
-                                                    'inset 0 1px 0 rgba(255,255,255,0.90)',
-                                                    'inset 0 -1px 0 rgba(100,76,40,0.04)',
-                                                ].join(', ')),
-                                    }}
-                                >
-                                    {/* Specular rim */}
-                                    <div
-                                        className='pointer-events-none absolute inset-x-0 top-0 h-[1px]'
-                                        style={{ background: 'linear-gradient(90deg, transparent 5%, rgba(255,255,255,0.95) 50%, transparent 95%)' }}
-                                    />
-                                    <div className='p-4'>
-                                        <ImagePreview
-                                            images={uploadedImages}
-                                            onRemove={handleRemoveImage}
-                                        />
+                                {/* Jump back in — recent projects row */}
+                                {projects.length > 0 && (
+                                    <div style={{ width: '100%', marginBottom: 14 }}>
+                                        <p style={{
+                                            fontSize: 11, color: muted, letterSpacing: '0.08em',
+                                            textTransform: 'uppercase', margin: '0 0 8px',
+                                        }}>
+                                            Jump back in
+                                        </p>
 
-                                        {/* URL tags strip — shown above textarea when in urlMode and tags exist */}
-                                        <AnimatePresence>
-                                            {urlTags.length > 0 && (
-                                                <motion.div
-                                                    initial={{ opacity: 0, height: 0 }}
-                                                    animate={{ opacity: 1, height: 'auto' }}
-                                                    exit={{ opacity: 0, height: 0 }}
-                                                    transition={{ type: 'spring', damping: 24, stiffness: 300 }}
-                                                    className='overflow-hidden mb-3'
-                                                >
-                                                    <div className='flex flex-wrap gap-2'>
-                                                        {urlTags.map((tag, i) => (
-                                                            <motion.div
-                                                                key={tag + i}
-                                                                initial={{ opacity: 0, scale: 0.88 }}
-                                                                animate={{ opacity: 1, scale: 1 }}
-                                                                exit={{ opacity: 0, scale: 0.88 }}
-                                                                transition={{ type: 'spring', damping: 22, stiffness: 300 }}
-                                                                className='flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium'
-                                                                style={isLightMode ? {
-                                                                    background: 'rgba(250,246,238,0.92)',
-                                                                    backdropFilter: 'blur(20px)',
-                                                                    WebkitBackdropFilter: 'blur(20px)',
-                                                                    border: '1px solid rgba(120,96,60,0.14)',
-                                                                    boxShadow: [
-                                                                        '0 0 0 0.5px rgba(100,76,40,0.08)',
-                                                                        '0 2px 8px rgba(80,60,30,0.12)',
-                                                                        'inset 0 1px 0 rgba(255,255,255,0.95)',
-                                                                        'inset 0 -1px 0 rgba(100,76,40,0.04)',
-                                                                    ].join(', '),
-                                                                    color: 'rgba(0,0,0,0.65)',
-                                                                } : {
-                                                                    background: 'rgba(255,255,255,0.08)',
-                                                                    backdropFilter: 'blur(20px)',
-                                                                    WebkitBackdropFilter: 'blur(20px)',
-                                                                    border: '1px solid rgba(255,255,255,0.12)',
-                                                                    boxShadow: [
-                                                                        '0 0 0 0.5px rgba(255,255,255,0.04)',
-                                                                        '0 2px 8px rgba(0,0,0,0.25)',
-                                                                        'inset 0 1px 0 rgba(255,255,255,0.10)',
-                                                                        'inset 0 -1px 0 rgba(0,0,0,0.15)',
-                                                                    ].join(', '),
-                                                                    color: 'rgba(255,255,255,0.75)',
-                                                                }}
-                                                            >
-                                                                <Globe className='w-3 h-3 opacity-60 flex-shrink-0' />
-                                                                <span className='max-w-[160px] truncate'>{tag.replace(/^https?:\/\//, '')}</span>
-                                                                <button
-                                                                    onClick={() => setUrlTags(prev => prev.filter((_, idx) => idx !== i))}
-                                                                    className='opacity-50 hover:opacity-100 transition-opacity flex-shrink-0 ml-0.5'
-                                                                >
-                                                                    <X className='w-3 h-3' />
-                                                                </button>
-                                                            </motion.div>
-                                                        ))}
-                                                    </div>
-                                                </motion.div>
-                                            )}
-                                        </AnimatePresence>
-
-                                        {/* Textarea — always visible */}
-                                        <textarea
-                                            ref={textareaRef}
-                                            value={prompt}
-                                            onChange={(e) => {
-                                                setPrompt(e.target.value)
-                                                const el = e.target
-                                                el.style.height = 'auto'
-                                                el.style.height = el.scrollHeight + 'px'
-                                            }}
-                                            onFocus={() => setIsFocused(true)}
-                                            onBlur={() => setIsFocused(false)}
-                                            onKeyDown={handleKeyDown}
-                                            onPaste={handlePaste}
-                                            placeholder={isDragging
-                                                ? 'Drop images here — they\'ll be used as design references…'
-                                                : 'Describe a UI to generate…'}
-                                            className='w-full resize-none text-sm text-foreground placeholder:text-muted-foreground/65 outline-none leading-relaxed max-h-60 transition-all duration-300'
-                                            style={{
-                                                ...textareaStyle,
-                                                minHeight: isDragging ? '148px' : '120px',
-                                            }}
-                                        />
-
-                                        {/* Toolbar */}
-                                        <div className='flex items-center gap-2' style={{ marginTop: '12px' }}>
-                                            <AttachmentMenu
-                                                onUpload={handleUpload}
-                                                onUrl={() => setUrlMode(true)}
-                                                onEnhance={handleEnhance}
-                                                enhancing={enhancing}
-                                                hasInput={prompt.trim().length > 0}
-                                            />
-
-                                            <AnimatePresence mode="wait">
-                                                {urlMode ? (
-                                                    <motion.div
-                                                        key="url-input"
-                                                        initial={{ opacity: 0, scale: 0.95 }}
-                                                        animate={{ opacity: 1, scale: 1 }}
-                                                        exit={{ opacity: 0, scale: 0.95 }}
-                                                        transition={{ duration: 0.15 }}
-                                                        className='flex items-center gap-2 flex-1 rounded-full px-3 py-1.5'
-                                                        style={isLightMode ? {
-                                                            background: 'rgba(255,251,244,0.72)',
-                                                            border: '1px solid rgba(120,96,60,0.12)',
-                                                            boxShadow: 'inset 0 1px 3px rgba(80,60,30,0.08)',
-                                                        } : {
-                                                            background: 'rgba(255,255,255,0.06)',
-                                                            border: '1px solid rgba(255,255,255,0.10)',
-                                                            boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.04)',
-                                                        }}
-                                                    >
-                                                        <Globe className='w-3.5 h-3.5 text-muted-foreground flex-shrink-0' />
-                                                        <input
-                                                            autoFocus
-                                                            value={urlInputValue}
-                                                            onChange={e => setUrlInputValue(e.target.value)}
-                                                            onKeyDown={e => {
-                                                                if (e.key === ' ' && urlInputValue.trim()) {
-                                                                    e.preventDefault()
-                                                                    const raw = urlInputValue.trim().toLowerCase() // lowercase everything
-                                                                    const stripped = raw.replace(/^https?:\/\//, '').replace(/\/.*$/, '') // remove protocol and path
-                                                                    const tld = stripped.split('.').pop() // get the last part after dot
-
-                                                                    const validTLDs = new Set([
-                                                                        'com', 'org', 'net', 'io', 'co', 'ai', 'dev', 'app', 'web', 'gov', 'edu', 'mil',
-                                                                        'int', 'info', 'biz', 'name', 'pro', 'museum', 'coop', 'aero', 'jobs', 'travel',
-                                                                        'uk', 'us', 'ca', 'au', 'de', 'fr', 'jp', 'cn', 'br', 'in', 'ru', 'es', 'it', 'nl',
-                                                                        'se', 'no', 'dk', 'fi', 'pl', 'pt', 'ch', 'at', 'be', 'cz', 'hu', 'ro', 'gr', 'tr',
-                                                                        'mx', 'ar', 'cl', 'co', 'pe', 've', 'za', 'ng', 'ke', 'gh', 'eg', 'ma', 'tz', 'ug',
-                                                                        'nz', 'sg', 'hk', 'tw', 'kr', 'ph', 'id', 'my', 'th', 'vn', 'pk', 'bd', 'lk', 'np',
-                                                                        'xyz', 'me', 'tv', 'fm', 'am', 'is', 'ie', 'il', 'ae', 'sa', 'qa', 'kw', 'om', 'bh',
-                                                                        'gg', 'vc', 'to', 'ly', 'sh', 'ac', 'gg', 'cc', 'im', 'je', 'aw', 'ag', 'bb', 'bs',
-                                                                        'page', 'site', 'online', 'tech', 'store', 'shop', 'blog', 'news', 'media',
-                                                                        'studio', 'design', 'digital', 'agency', 'cloud', 'space', 'world', 'today',
-                                                                        'live', 'fun', 'games', 'app', 'link', 'click', 'email', 'social', 'network',
-                                                                    ])
-
-                                                                    if (!tld || !validTLDs.has(tld)) return // invalid TLD, don't add
-
-                                                                    const normalized = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`
-                                                                    setUrlTags(prev => [...prev, normalized])
-                                                                    setUrlInputValue('')
-                                                                }
-                                                                if (e.key === 'Enter') {
-                                                                    const pending = urlInputValue.trim().toLowerCase()
-                                                                    if (pending) {
-                                                                        const normalized = /^https?:\/\//i.test(pending) ? pending : `https://${pending}`
-                                                                        setUrlTags(prev => [...prev, normalized])
-                                                                        setUrlInputValue('')
-                                                                    }
-                                                                }
-                                                                if (e.key === 'Escape') {
-                                                                    setUrlMode(false)
-                                                                    setUrlInputValue('')
-                                                                    setUrlTags([])
-                                                                }
-                                                            }}
-                                                            placeholder={urlTags.length > 0 ? 'Add another URL…' : 'Paste URLs, press Space to add…'}
-                                                            className='flex-1 text-sm outline-none bg-transparent text-foreground placeholder:text-muted-foreground/50 min-w-0'
-                                                        />
+                                        {/* Scroll container */}
+                                        <div style={{ position: 'relative' }}>
+                                            <div style={{
+                                                display: 'flex', gap: 6, overflowX: 'auto',
+                                                scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch',
+                                                paddingBottom: 2,
+                                            }}>
+                                                {projects.slice(0, 3).map(p => {
+                                                    const src = thumbnailToSrc(p.thumbnail)
+                                                    const isSelected = selectedProject?._id === p._id
+                                                    return (
                                                         <button
-                                                            onClick={() => { setUrlMode(false); setUrlInputValue('') }}
-                                                            className='text-muted-foreground hover:text-foreground transition-colors flex-shrink-0'
+                                                            key={p._id}
+                                                            onClick={() => setSelectedProject(isSelected ? null : { _id: p._id, name: p.name })}
+                                                            style={{
+                                                                display: 'flex', alignItems: 'center', gap: 7, flexShrink: 0,
+                                                                padding: '5px 10px 5px 7px', borderRadius: 20,
+                                                                border: `1px solid ${isSelected
+                                                                    ? (isLight ? 'rgba(0,0,0,0.28)' : 'rgba(255,255,255,0.28)')
+                                                                    : border}`,
+                                                                background: isSelected
+                                                                    ? (isLight ? 'rgba(0,0,0,0.07)' : 'rgba(255,255,255,0.09)')
+                                                                    : (isLight ? 'rgba(0,0,0,0.03)' : 'rgba(255,255,255,0.04)'),
+                                                                color: isSelected ? text : muted,
+                                                                fontSize: 12, fontWeight: isSelected ? 500 : 400,
+                                                                cursor: 'pointer', letterSpacing: '-0.01em',
+                                                                whiteSpace: 'nowrap',
+                                                                transition: 'all 0.15s ease',
+                                                            }}
                                                         >
-                                                            <X className='w-3.5 h-3.5' />
+                                                            {src
+                                                                ? <img src={src} style={{ width: 16, height: 16, borderRadius: 4, flexShrink: 0 }} alt="" />
+                                                                : <div style={{ width: 16, height: 16, borderRadius: 4, flexShrink: 0, background: p.thumbnail || '#888' }} />
+                                                            }
+                                                            {p.name}
+                                                            {isSelected && (
+                                                                <X
+                                                                    style={{ width: 11, height: 11, marginLeft: 2, opacity: 0.5 }}
+                                                                    onClick={e => { e.stopPropagation(); setSelectedProject(null) }}
+                                                                />
+                                                            )}
                                                         </button>
-                                                    </motion.div>
-                                                ) : (
+                                                    )
+                                                })}
+                                            </div>
+
+                                            {/* Fade-out right edge */}
+                                            <div style={{
+                                                position: 'absolute', right: 0, top: 0, bottom: 0, width: 32, pointerEvents: 'none',
+                                                background: `linear-gradient(to right, transparent, ${isLight ? '#fafafa' : '#0a0a0a'})`,
+                                            }} />
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* ── Input Card ── */}
+                                <div className={`palm-input-wrapper${isLight ? ' is-light' : ''}`} style={{ width: '100%' }}>
+                                    <motion.div
+                                        layout
+                                        transition={{ layout: { duration: 0.28, ease: [0.16, 1, 0.3, 1] } }}
+                                        onDragEnter={handleDragEnter}
+                                        onDragLeave={handleDragLeave}
+                                        onDragOver={handleDragOver}
+                                        onDrop={handleDrop}
+                                        style={{
+                                            width: '100%', borderRadius: 16,
+                                            background: isLight ? '#ffffff' : '#161616',
+                                            border: `1px solid transparent`,
+                                            boxShadow: isFocused
+                                                ? (isLight ? '0 2px 16px rgba(0,0,0,0.08)' : '0 2px 16px rgba(0,0,0,0.5)')
+                                                : (isLight ? '0 1px 3px rgba(0,0,0,0.07), 0 4px 12px rgba(0,0,0,0.04)' : '0 1px 3px rgba(0,0,0,0.5), 0 4px 12px rgba(0,0,0,0.4)'),
+                                            transition: 'border-color 0.15s, box-shadow 0.15s',
+                                        }}
+                                    >
+                                        <div style={{ padding: '14px 14px 10px' }}>
+
+                                            {/* Selected project tag */}
+                                            <AnimatePresence>
+                                                {selectedProject && (
                                                     <motion.div
-                                                        key="mic-send"
-                                                        initial={{ opacity: 0 }}
-                                                        animate={{ opacity: 1 }}
-                                                        exit={{ opacity: 0 }}
-                                                        transition={{ duration: 0.12 }}
-                                                        className='flex items-center gap-2 flex-1 justify-end'
+                                                        layout
+                                                        initial={{ opacity: 0, height: 0, marginBottom: 0 }}
+                                                        animate={{ opacity: 1, height: 'auto', marginBottom: 10 }}
+                                                        exit={{ opacity: 0, height: 0, marginBottom: 0 }}
+                                                        transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
+                                                        style={{ overflow: 'hidden' }}
                                                     >
-                                                        {!isRecordingActive && (
-                                                            <>
-                                                                <GlassTooltip content="Record audio" side="top">
-                                                                    <MicButton
-                                                                        onTranscript={(text) => setPrompt(p => p ? p + ' ' + text : text)}
-                                                                        onRecordingChange={setIsRecordingActive}
-                                                                        disabled={isLoading}
-                                                                    />
-                                                                </GlassTooltip>
-                                                                <GlassTooltip content="Send" side="top">
-                                                                    <button
-                                                                        onClick={handleSubmit}
-                                                                        disabled={!prompt.trim() || isLoading}
-                                                                        className={cn(
-                                                                            'w-8 h-8 rounded-full flex items-center justify-center transition-all flex-shrink-0',
-                                                                            prompt.trim() && !isLoading && !pendingSend
-                                                                                ? 'bg-black dark:bg-white'
-                                                                                : 'bg-transparent opacity-30'
-                                                                        )}
-                                                                    >
-                                                                        {(isLoading || pendingSend)
-                                                                            ? <div className='w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin' />
-                                                                            : <ArrowUp className={cn('w-4 h-4', prompt.trim() ? 'text-white dark:text-black' : 'text-muted-foreground')} />
-                                                                        }
-                                                                    </button>
-                                                                </GlassTooltip>
-                                                            </>
-                                                        )}
+                                                        <div style={{
+                                                            display: 'inline-flex', alignItems: 'center', gap: 6,
+                                                            padding: '3px 8px 3px 10px', borderRadius: 6,
+                                                            background: isLight ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.08)',
+                                                            border: `1px solid ${border}`, fontSize: 12, color: muted,
+                                                        }}>
+                                                            <span style={{ fontSize: 10 }}>↩</span>
+                                                            <span style={{ fontWeight: 500, color: text }}>{selectedProject.name}</span>
+                                                            <button
+                                                                onClick={() => setSelectedProject(null)}
+                                                                style={{ background: 'none', border: 'none', cursor: 'pointer', color: muted, padding: 0, lineHeight: 0, marginLeft: 2 }}
+                                                            >
+                                                                <X style={{ width: 11, height: 11 }} />
+                                                            </button>
+                                                        </div>
                                                     </motion.div>
                                                 )}
                                             </AnimatePresence>
-                                        </div>
-                                    </div>
-                                </motion.div>
 
-                                {/* Suggested prompts — liquid glass, both modes */}
-                                <div className='w-full max-w-2xl mt-4 flex flex-wrap gap-3 justify-center'>
-                                    {suggestedPrompts.map((p, idx) => (
-                                        <button
-                                            key={idx}
-                                            onClick={() => setPrompt(p.long)}
-                                            className='px-3 py-1.5 rounded-full text-xs transition-colors text-muted-foreground hover:text-foreground cursor-pointer relative'
-                                            style={liquidGlassStyle(isLightMode)}
-                                        >
-                                            <div
-                                                className='pointer-events-none absolute inset-x-0 top-0 h-[1px] rounded-full'
-                                                style={{ background: 'linear-gradient(90deg, transparent 5%, rgba(255,255,255,0.95) 50%, transparent 95%)' }}
+                                            {/* Image previews */}
+                                            <ImagePreview images={uploadedImages} onRemove={handleRemoveImage} isLight={isLight} />
+
+                                            {/* URL tags */}
+                                            <AnimatePresence>
+                                                {urlTags.length > 0 && (
+                                                    <motion.div
+                                                        layout
+                                                        initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}
+                                                        transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
+                                                        style={{ marginBottom: 10, display: 'flex', flexWrap: 'wrap', gap: 5, overflow: 'hidden' }}
+                                                    >
+                                                        {urlTags.map((tag, i) => (
+                                                            <div key={tag + i} style={{
+                                                                display: 'inline-flex', alignItems: 'center', gap: 5,
+                                                                padding: '3px 8px', borderRadius: 6,
+                                                                border: `1px solid ${border}`,
+                                                                background: isLight ? 'rgba(0,0,0,0.04)' : 'rgba(255,255,255,0.05)',
+                                                                fontSize: 12, color: muted,
+                                                            }}>
+                                                                <Globe style={{ width: 11, height: 11 }} />
+                                                                <span style={{ maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                                    {tag.replace(/^https?:\/\//, '')}
+                                                                </span>
+                                                                <button onClick={() => setUrlTags(prev => prev.filter((_, idx) => idx !== i))}
+                                                                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', padding: 0, lineHeight: 0 }}>
+                                                                    <X style={{ width: 10, height: 10 }} />
+                                                                </button>
+                                                            </div>
+                                                        ))}
+                                                    </motion.div>
+                                                )}
+                                            </AnimatePresence>
+
+                                            {/* Textarea */}
+                                            <textarea
+                                                ref={textareaRef}
+                                                value={prompt}
+                                                onChange={e => {
+                                                    setPrompt(e.target.value)
+                                                    e.target.style.height = 'auto'
+                                                    e.target.style.height = Math.min(e.target.scrollHeight, 300) + 'px'
+                                                }}
+                                                onFocus={() => setIsFocused(true)}
+                                                onBlur={() => setIsFocused(false)}
+                                                onKeyDown={handleKeyDown}
+                                                onPaste={handlePaste}
+                                                placeholder={
+                                                    micState === 'recording' ? 'Listening…'
+                                                        : micState === 'processing' ? 'Transcribing…'
+                                                            : isDragging ? 'Drop images here…'
+                                                                : selectedProject ? `Message ${selectedProject.name}…`
+                                                                    : 'Describe a UI to generate…'
+                                                }
+                                                rows={1}
+                                                style={{
+                                                    width: '100%', resize: 'none', outline: 'none', border: 'none',
+                                                    background: 'transparent', fontSize: 15, lineHeight: 1.65,
+                                                    color: text, minHeight: 28, maxHeight: 300,
+                                                    fontFamily: 'inherit', letterSpacing: '-0.012em',
+                                                    boxSizing: 'border-box', display: 'block',
+                                                    overflowY: 'auto',
+                                                }}
                                             />
-                                            {p.short}
-                                        </button>
-                                    ))}
+
+                                            {/* Toolbar */}
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 10 }}>
+
+                                                {/* Attachment */}
+                                                <AttachmentMenu
+                                                    onUpload={handleUpload}
+                                                    onUrl={() => setUrlMode(true)}
+                                                    onEnhance={handleEnhance}
+                                                    enhancing={enhancing}
+                                                    hasInput={!!prompt.trim()}
+                                                    isLight={isLight}
+                                                />
+
+                                                {/* URL input mode */}
+                                                <AnimatePresence mode="wait">
+                                                    {urlMode ? (
+                                                        <motion.div
+                                                            key="url"
+                                                            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                                                            style={{
+                                                                flex: 1, display: 'flex', alignItems: 'center', gap: 6,
+                                                                padding: '5px 10px', borderRadius: 8,
+                                                                border: `1px solid ${border}`,
+                                                                background: isLight ? 'rgba(0,0,0,0.03)' : 'rgba(255,255,255,0.04)',
+                                                            }}
+                                                        >
+                                                            <Globe style={{ width: 13, height: 13, color: muted, flexShrink: 0 }} />
+                                                            <input
+                                                                autoFocus value={urlInputValue} onChange={e => setUrlInputValue(e.target.value)}
+                                                                onKeyDown={e => {
+                                                                    const add = (val: string) => {
+                                                                        const n = /^https?:\/\//i.test(val) ? val : `https://${val}`
+                                                                        setUrlTags(p => [...p, n]); setUrlInputValue('')
+                                                                    }
+                                                                    if (e.key === 'Enter' && urlInputValue.trim()) add(urlInputValue.trim())
+                                                                    if (e.key === 'Escape') { setUrlMode(false); setUrlInputValue('') }
+                                                                }}
+                                                                placeholder="Paste a URL and press Enter…"
+                                                                style={{ flex: 1, background: 'none', border: 'none', outline: 'none', fontSize: 13, color: text, minWidth: 0 }}
+                                                            />
+                                                            <button onClick={() => { setUrlMode(false); setUrlInputValue('') }}
+                                                                style={{ background: 'none', border: 'none', cursor: 'pointer', color: muted, padding: 0, lineHeight: 0 }}>
+                                                                <X style={{ width: 13, height: 13 }} />
+                                                            </button>
+                                                        </motion.div>
+                                                    ) : (
+                                                        <motion.div
+                                                            key="actions"
+                                                            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                                                            style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 6 }}
+                                                        >
+                                                            {/* Spacer */}
+                                                            <div style={{ flex: 1 }} />
+
+                                                            {/* Mic */}
+
+                                                            <MicButton
+                                                                onTranscript={t => {
+                                                                    console.log('[STT] received:', t)
+                                                                    setPrompt(p => p ? p + ' ' + t : t)
+                                                                }}
+                                                                onRecordingChange={setIsRecordingActive}
+                                                                onStateChange={setMicState}
+                                                                disabled={isLoading}
+                                                            />
+
+
+                                                            {/* Send — always visible */}
+                                                            <button
+                                                                onClick={handleSubmit}
+                                                                disabled={!prompt.trim() || isLoading}
+                                                                style={{
+                                                                    width: 34, height: 34, borderRadius: '50%', border: 'none',
+                                                                    background: prompt.trim() ? text : (isLight ? 'rgba(0,0,0,0.10)' : 'rgba(255,255,255,0.10)'),
+                                                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                                    cursor: prompt.trim() ? 'pointer' : 'default',
+                                                                    transition: 'background 0.15s', flexShrink: 0,
+                                                                }}
+                                                            >
+                                                                {(isLoading || pendingSend)
+                                                                    ? <div style={{ width: 13, height: 13, border: `2px solid ${isLight ? (prompt.trim() ? '#fff' : 'rgba(0,0,0,0.3)') : (prompt.trim() ? '#000' : 'rgba(255,255,255,0.3)')}`, borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.6s linear infinite' }} />
+                                                                    : <ArrowUp style={{ width: 15, height: 15, color: prompt.trim() ? (isLight ? '#fff' : '#000') : (isLight ? 'rgba(0,0,0,0.3)' : 'rgba(255,255,255,0.3)') }} />
+                                                                }
+                                                            </button>
+                                                        </motion.div>
+                                                    )}
+                                                </AnimatePresence>
+                                            </div>
+                                        </div>
+                                    </motion.div>
                                 </div>
-                            </>
+
+                                {/* Category chips */}
+                                <div style={{
+                                    position: 'relative', width: '100%', marginTop: 14,
+                                }}>
+                                    <div style={{
+                                        display: 'flex', gap: 6, overflowX: 'auto',
+                                        scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch',
+                                        paddingBottom: 2,
+                                    }}>
+                                        {CATEGORIES.map((c, i) => (
+                                            <button
+                                                key={i}
+                                                onClick={() => setPrompt(c.prompt)}
+                                                style={{
+                                                    display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0,
+                                                    padding: '6px 12px', borderRadius: 8,
+                                                    border: `1px solid ${border}`,
+                                                    background: isLight ? 'rgba(0,0,0,0.03)' : 'rgba(255,255,255,0.04)',
+                                                    color: isLight ? 'rgba(0,0,0,0.55)' : 'rgba(255,255,255,0.55)',
+                                                    fontSize: 13, cursor: 'pointer', letterSpacing: '-0.01em',
+                                                    whiteSpace: 'nowrap',
+                                                    transition: 'background 0.12s, color 0.12s, border-color 0.12s',
+                                                }}
+                                                onMouseEnter={e => {
+                                                    e.currentTarget.style.background = isLight ? 'rgba(0,0,0,0.07)' : 'rgba(255,255,255,0.08)'
+                                                    e.currentTarget.style.color = text
+                                                    e.currentTarget.style.borderColor = isLight ? 'rgba(0,0,0,0.18)' : 'rgba(255,255,255,0.18)'
+                                                }}
+                                                onMouseLeave={e => {
+                                                    e.currentTarget.style.background = isLight ? 'rgba(0,0,0,0.03)' : 'rgba(255,255,255,0.04)'
+                                                    e.currentTarget.style.color = isLight ? 'rgba(0,0,0,0.55)' : 'rgba(255,255,255,0.55)'
+                                                    e.currentTarget.style.borderColor = border
+                                                }}
+                                            >
+                                                <span style={{ opacity: 0.55, display: 'flex', alignItems: 'center' }}>{c.icon}</span>
+                                                {c.label}
+                                            </button>
+                                        ))}
+                                    </div>
+
+                                    {/* Fade-out right edge */}
+                                    <div style={{
+                                        position: 'absolute', right: 0, top: 0, bottom: 0, width: 32, pointerEvents: 'none',
+                                        background: `linear-gradient(to right, transparent, ${isLight ? '#fafafa' : '#0a0a0a'})`,
+                                    }} />
+                                </div>
+                            </motion.div>
                         )}
                     </main>
                 </div>
             </div>
 
-            {/* Theme toggle — fixed bottom right */}
-            <div className='fixed bottom-4 right-4 z-50'>
-                <GlassTooltip content="Toggle theme" side="left">
-                    <ThemeToggle />
-                </GlassTooltip>
+            {/* Spin & pulse keyframes + scrollbar hiding + circuit border animation */}
+            <style>{`
+                @property --angle {
+                    syntax: '<angle>';
+                    initial-value: 0deg;
+                    inherits: false;
+                }
+                .palm-input-wrapper {
+                    position: relative;
+                    border-radius: 17px;
+                    padding: 1px;
+                }
+                .palm-input-wrapper::before {
+                    content: '';
+                    position: absolute;
+                    inset: 0;
+                    border-radius: 17px;
+                    background: conic-gradient(
+                        from var(--angle),
+                        transparent 0%,
+                        transparent 65%,
+                        rgba(255,255,255,0.04) 75%,
+                        rgba(255,255,255,0.4) 88%,
+                        rgba(255,255,255,0.95) 97%,
+                        transparent 100%
+                    );
+                    animation: circuit 4s linear infinite;
+                    z-index: 0;
+                }
+
+                .palm-input-wrapper.is-light::before {
+                    background: conic-gradient(
+                        from var(--angle),
+                        transparent 0%,
+                        transparent 65%,
+                        rgba(0,0,0,0.03) 75%,
+                        rgba(0,0,0,0.25) 88%,
+                        rgba(0,0,0,0.7) 97%,
+                        transparent 100%
+                    );
+                }
+                .palm-input-wrapper > * { position: relative; z-index: 1; }
+                @keyframes circuit { to { --angle: 360deg; } }
+                @keyframes spin { to { transform: rotate(360deg) } }
+                @keyframes pulse-dot {
+                    0%, 100% { opacity: 1; transform: scale(1); }
+                    50% { opacity: 0.4; transform: scale(0.75); }
+                }
+                div::-webkit-scrollbar { display: none; }
+            `}</style>
+
+            {/* Theme toggle */}
+            <div style={{ position: 'fixed', bottom: 20, right: 20, zIndex: 50 }}>
+                <ThemeToggle />
             </div>
 
-            {/* Mobile drawer — sidebar navigation on mobile */}
+            {/* Mobile drawer */}
             <MobileDrawer
                 isOpen={isMobileDrawerOpen}
                 onClose={() => setIsMobileDrawerOpen(false)}
@@ -994,7 +857,7 @@ export default function HomeShell({ profile, view = 'home' }: Props) {
                 trashedProjects={trashedProjects}
                 hasDeleted={!!(hasDeleted || hasDeletedOptimistic)}
                 userName={userSlug}
-                isLightMode={isLightMode}
+                isLightMode={isLight}
                 thumbnailToSrc={thumbnailToSrc}
                 isColorDark={isColorDark}
             />
@@ -1002,62 +865,15 @@ export default function HomeShell({ profile, view = 'home' }: Props) {
     )
 }
 
-function SideItem({
-    icon, label, open, active, onClick,
-}: {
-    icon: React.ReactNode
-    label: string
-    open: boolean
-    active?: boolean
-    onClick?: () => void
-}) {
-    const { theme, systemTheme } = useTheme()
-    const effectiveTheme = theme === 'system' ? systemTheme : theme
-    const isLightMode = effectiveTheme === 'light'
-
+function PalmLeafIcon({ color }: { color: string }) {
     return (
-        <button
-            onClick={onClick}
-            className={cn(
-                'flex items-center gap-2.5 w-full px-2.5 py-2 rounded-lg text-sm transition-colors hover:cursor-pointer',
-                open ? 'justify-start' : 'justify-center',
-                'text-muted-foreground'
-            )}
-            style={active ? {
-                backgroundColor: isLightMode ? '#EFE7DD' : '#141414',
-                color: 'var(--foreground)',
-            } : {
-                backgroundColor: 'transparent',
-                color: 'var(--muted-foreground)',
-            }}
-            onMouseEnter={(e) => {
-                if (!active) {
-                    e.currentTarget.style.backgroundColor = isLightMode ? '#EFE7DD' : '#141414'
-                    e.currentTarget.style.color = 'var(--foreground)'
-                }
-            }}
-            onMouseLeave={(e) => {
-                if (!active) {
-                    e.currentTarget.style.backgroundColor = 'transparent'
-                    e.currentTarget.style.color = 'var(--muted-foreground)'
-                }
-            }}
-        >
-            {icon}
-            {open && <span className='font-medium text-xs'>{label}</span>}
-        </button>
-    )
-}
-
-function PalmLeafIcon() {
-    return (
-        <svg width='14' height='14' viewBox='0 0 16 16' fill='none' xmlns='http://www.w3.org/2000/svg'>
-            <path d='M8 14V8' stroke='currentColor' strokeWidth='1.5' strokeLinecap='round' />
-            <path d='M8 8C8 8 4 7 3 4C5.5 3.5 8 5 8 8Z' fill='currentColor' opacity='0.8' />
-            <path d='M8 8C8 8 12 7 13 4C10.5 3.5 8 5 8 8Z' fill='currentColor' opacity='0.8' />
-            <path d='M8 8C8 8 7 4 9 2C10.5 3.5 10 6 8 8Z' fill='currentColor' opacity='0.9' />
-            <path d='M8 9C8 9 5 9.5 4 7.5C6 6.5 8 8 8 9Z' fill='currentColor' opacity='0.6' />
-            <path d='M8 9C8 9 11 9.5 12 7.5C10 6.5 8 8 8 9Z' fill='currentColor' opacity='0.6' />
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+            <path d="M8 14V8" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+            <path d="M8 8C8 8 4 7 3 4C5.5 3.5 8 5 8 8Z" fill={color} opacity="0.8" />
+            <path d="M8 8C8 8 12 7 13 4C10.5 3.5 8 5 8 8Z" fill={color} opacity="0.8" />
+            <path d="M8 8C8 8 7 4 9 2C10.5 3.5 10 6 8 8Z" fill={color} opacity="0.9" />
+            <path d="M8 9C8 9 5 9.5 4 7.5C6 6.5 8 8 8 9Z" fill={color} opacity="0.6" />
+            <path d="M8 9C8 9 11 9.5 12 7.5C10 6.5 8 8 8 9Z" fill={color} opacity="0.6" />
         </svg>
     )
 }

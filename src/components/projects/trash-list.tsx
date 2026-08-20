@@ -7,7 +7,7 @@ import { useTheme } from 'next-themes'
 import { useMutation, useQuery } from 'convex/react'
 import { api } from '../../../convex/_generated/api'
 import { Id } from '../../../convex/_generated/dataModel'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { cn } from '@/lib/utils'
 import { usePalmToast } from '@/hooks/use-palmtoast'
@@ -60,32 +60,35 @@ const TrashList = ({ onTrashEmpty }: { onTrashEmpty?: () => void }) => {
         me?._id ? { userId: me._id as Id<'users'> } : 'skip'
     )
 
-    const deleteAllMutation      = useMutation(api.projects.deleteAllDeletedProjects)
-    const restoreProjectMutation = useMutation(api.projects.restoreProject)
+    const deleteAllMutation         = useMutation(api.projects.deleteAllDeletedProjects)
+    const restoreProjectMutation    = useMutation(api.projects.restoreProject)
     const permanentlyDeleteMutation = useMutation(api.projects.permanentlyDeleteProject)
-    const softDeleteMutation     = useMutation(api.projects.deleteProject)
+    const softDeleteMutation        = useMutation(api.projects.deleteProject)
 
-    // Core state
+    // ── Core state ────────────────────────────────────────────
     const [visibleProjects, setVisibleProjects] = useState<any[]>([])
     const [timings, setTimings] = useState<Record<string, { text: string; isExpired: boolean }>>({})
     const [fadingOut, setFadingOut] = useState<Set<string>>(new Set())
     const [optimisticallyRemovedIds, setOptimisticallyRemovedIds] = useState<Set<string>>(new Set())
     const [searchQuery, setSearchQuery] = useState('')
 
-    // Dialog state
+    // ── Dialog state ──────────────────────────────────────────
     const [isDeleteAllOpen, setIsDeleteAllOpen] = useState(false)
     const [isDeleting, setIsDeleting] = useState(false)
     const [deleteId, setDeleteId] = useState<string | null>(null)
     const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
 
-    // Select mode state
+    // ── Select mode state ─────────────────────────────────────
     const [selectMode, setSelectMode] = useState(false)
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
     const [deleteSelectedOpen, setDeleteSelectedOpen] = useState(false)
     const [isDeletingSelected, setIsDeletingSelected] = useState(false)
 
-    // ── Effects ──────────────────────────────────────────────
+    // ── Long press refs ───────────────────────────────────────
+    const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+    const longPressTriggered = useRef(false)
 
+    // ── Effects ───────────────────────────────────────────────
     useEffect(() => {
         if (deletedProjects) {
             setVisibleProjects(deletedProjects)
@@ -114,7 +117,6 @@ const TrashList = ({ onTrashEmpty }: { onTrashEmpty?: () => void }) => {
                             setVisibleProjects((p) => p.filter((pr: any) => pr._id !== project._id))
                             setFadingOut((prev) => { const n = new Set(prev); n.delete(project._id); return n })
                             setTimings((prev) => { const n = { ...prev }; delete n[project._id]; return n })
-                            // Also remove from selection if expired
                             setSelectedIds((prev) => { const n = new Set(prev); n.delete(project._id); return n })
                         }, 500)
                         return false
@@ -142,8 +144,24 @@ const TrashList = ({ onTrashEmpty }: { onTrashEmpty?: () => void }) => {
         }
     }, [visibleProjects.length, optimisticallyRemovedIds.size, onTrashEmpty])
 
-    // ── Handlers ─────────────────────────────────────────────
+    // ── Long press handlers ───────────────────────────────────
+    const startLongPress = (projectId: string) => {
+        longPressTriggered.current = false
+        longPressTimer.current = setTimeout(() => {
+            longPressTriggered.current = true
+            navigator.vibrate?.(50)
+            handleEnterSelectMode(projectId)
+        }, 500)
+    }
 
+    const cancelLongPress = () => {
+        if (longPressTimer.current) {
+            clearTimeout(longPressTimer.current)
+            longPressTimer.current = null
+        }
+    }
+
+    // ── Delete handlers ───────────────────────────────────────
     const handleDeleteAll = async () => {
         setIsDeleting(true)
         try {
@@ -168,26 +186,34 @@ const TrashList = ({ onTrashEmpty }: { onTrashEmpty?: () => void }) => {
     const handleDeleteConfirm = async () => {
         if (!deleteId) return
         const idToDelete = deleteId
-        setOptimisticallyRemovedIds(prev => new Set([...prev, idToDelete]))
+        setOptimisticallyRemovedIds((prev) => new Set([...prev, idToDelete]))
         setDeleteDialogOpen(false)
         setDeleteId(null)
 
         try {
             await permanentlyDeleteMutation({ projectId: idToDelete as any })
         } catch (err) {
-            setOptimisticallyRemovedIds(prev => { const n = new Set(prev); n.delete(idToDelete); return n })
+            setOptimisticallyRemovedIds((prev) => {
+                const n = new Set(prev)
+                n.delete(idToDelete)
+                return n
+            })
             console.error('Permanent delete failed:', err)
         }
     }
 
+    // ── Restore handlers ──────────────────────────────────────
     const handleUndoRestore = async (projectId: string) => {
-        const project = deletedProjects?.find(p => p._id === projectId)
+        const project = deletedProjects?.find((p) => p._id === projectId)
         if (!project) return
         try {
             await softDeleteMutation({ projectId: projectId as any })
-            setVisibleProjects(prev => [...prev, project])
+            setVisibleProjects((prev) => [...prev, project])
             if (project.deleted_at) {
-                setTimings(prev => ({ ...prev, [projectId]: calculateRemainingTime(project.deleted_at!) }))
+                setTimings((prev) => ({
+                    ...prev,
+                    [projectId]: calculateRemainingTime(project.deleted_at!),
+                }))
             }
         } catch (err) {
             console.error('Undo restore failed:', err)
@@ -195,42 +221,45 @@ const TrashList = ({ onTrashEmpty }: { onTrashEmpty?: () => void }) => {
     }
 
     const handleRestore = async (projectId: string) => {
-        const project = visibleProjects.find(p => p._id === projectId)
+        const project = visibleProjects.find((p) => p._id === projectId)
         const projectName = project?.name || 'Project'
 
-        setFadingOut(prev => new Set([...prev, projectId]))
+        setFadingOut((prev) => new Set([...prev, projectId]))
         setTimeout(() => {
-            setVisibleProjects(prev => prev.filter(p => p._id !== projectId))
-            setFadingOut(prev => { const n = new Set(prev); n.delete(projectId); return n })
-            setTimings(prev => { const n = { ...prev }; delete n[projectId]; return n })
+            setVisibleProjects((prev) => prev.filter((p) => p._id !== projectId))
+            setFadingOut((prev) => { const n = new Set(prev); n.delete(projectId); return n })
+            setTimings((prev) => { const n = { ...prev }; delete n[projectId]; return n })
         }, 500)
 
         toast(`${projectName} restored`, {
             type: 'success',
-            action: { label: 'Undo', onClick: () => handleUndoRestore(projectId) }
+            action: { label: 'Undo', onClick: () => handleUndoRestore(projectId) },
         })
 
         try {
             await restoreProjectMutation({ projectId: projectId as any })
         } catch (err) {
-            const revertProject = deletedProjects?.find(p => p._id === projectId)
+            const revertProject = deletedProjects?.find((p) => p._id === projectId)
             if (revertProject?.deleted_at) {
-                setVisibleProjects(prev => [...prev, revertProject])
-                setTimings(prev => ({ ...prev, [projectId]: calculateRemainingTime(revertProject.deleted_at!) }))
+                setVisibleProjects((prev) => [...prev, revertProject])
+                setTimings((prev) => ({
+                    ...prev,
+                    [projectId]: calculateRemainingTime(revertProject.deleted_at!),
+                }))
             }
-            setFadingOut(prev => { const n = new Set(prev); n.delete(projectId); return n })
+            setFadingOut((prev) => { const n = new Set(prev); n.delete(projectId); return n })
             console.error('Restore failed:', err)
         }
     }
 
-    // Select mode handlers
+    // ── Select mode handlers ──────────────────────────────────
     const handleEnterSelectMode = (projectId: string) => {
         setSelectMode(true)
         setSelectedIds(new Set([projectId]))
     }
 
     const toggleSelection = (projectId: string) => {
-        setSelectedIds(prev => {
+        setSelectedIds((prev) => {
             const next = new Set(prev)
             if (next.has(projectId)) next.delete(projectId)
             else next.add(projectId)
@@ -251,20 +280,20 @@ const TrashList = ({ onTrashEmpty }: { onTrashEmpty?: () => void }) => {
 
     const handleDeleteSelected = async () => {
         const idsToDelete = Array.from(selectedIds)
-        setOptimisticallyRemovedIds(prev => new Set([...prev, ...idsToDelete]))
+        setOptimisticallyRemovedIds((prev) => new Set([...prev, ...idsToDelete]))
         setDeleteSelectedOpen(false)
         setSelectMode(false)
         setSelectedIds(new Set())
         setIsDeletingSelected(true)
 
         try {
-            await Promise.all(idsToDelete.map(id =>
-                permanentlyDeleteMutation({ projectId: id as any })
-            ))
+            await Promise.all(
+                idsToDelete.map((id) => permanentlyDeleteMutation({ projectId: id as any }))
+            )
         } catch (err) {
-            setOptimisticallyRemovedIds(prev => {
+            setOptimisticallyRemovedIds((prev) => {
                 const next = new Set(prev)
-                idsToDelete.forEach(id => next.delete(id))
+                idsToDelete.forEach((id) => next.delete(id))
                 return next
             })
             console.error('Delete selected failed:', err)
@@ -274,7 +303,6 @@ const TrashList = ({ onTrashEmpty }: { onTrashEmpty?: () => void }) => {
     }
 
     // ── Computed ──────────────────────────────────────────────
-
     const filteredProjects = visibleProjects
         .filter((project: any) => !optimisticallyRemovedIds.has(project._id))
         .filter((project: any) =>
@@ -285,22 +313,7 @@ const TrashList = ({ onTrashEmpty }: { onTrashEmpty?: () => void }) => {
         (project: any) => !optimisticallyRemovedIds.has(project._id)
     )
 
-    // ── Glass style for buttons ──────────────────────────────
-
-    const glassButtonStyle: React.CSSProperties = {
-        backdropFilter: 'url(#palm-glass-light) blur(20px)',
-        WebkitBackdropFilter: 'blur(20px)',
-        boxShadow: [
-            '0 0 0 0.5px rgba(100,76,40,0.08)',
-            '0 2px 4px rgba(80,60,30,0.06)',
-            '0 8px 20px rgba(80,60,30,0.09)',
-            'inset 0 1px 0 rgba(255,255,255,0.90)',
-            'inset 0 -1px 0 rgba(100,76,40,0.04)',
-        ].join(', '),
-    }
-
     // ── Early returns ─────────────────────────────────────────
-
     if (deletedProjects === undefined || deletedProjects === null) {
         return (
             <div className='w-full max-w-7xl'>
@@ -331,7 +344,6 @@ const TrashList = ({ onTrashEmpty }: { onTrashEmpty?: () => void }) => {
     }
 
     // ── Render ────────────────────────────────────────────────
-
     return (
         <div className='w-full max-w-7xl mb-5'>
             <div className='space-y-8'>
@@ -347,8 +359,11 @@ const TrashList = ({ onTrashEmpty }: { onTrashEmpty?: () => void }) => {
                     <div className='flex items-center gap-3 w-full max-w-md'>
                         {/* Search */}
                         <div
-                            className='relative flex-1 h-10 rounded-full overflow-hidden bg-[rgba(250,246,238,0.88)] dark:bg-[rgba(255,255,255,0.07)] border border-[rgba(120,96,60,0.10)] dark:border-[rgba(255,255,255,0.12)]'
-                            style={glassButtonStyle}
+                            className='relative flex-1 h-10 rounded-full overflow-hidden'
+                            style={{
+                                background: isLightMode ? 'rgba(0,0,0,0.04)' : 'rgba(255,255,255,0.06)',
+                                border: `1px solid ${isLightMode ? 'rgba(0,0,0,0.09)' : 'rgba(255,255,255,0.09)'}`,
+                            }}
                         >
                             <Search className='pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground' />
                             <input
@@ -371,7 +386,6 @@ const TrashList = ({ onTrashEmpty }: { onTrashEmpty?: () => void }) => {
                                         ? 'cursor-pointer text-red-500 border-red-500/20 bg-red-500/5 hover:bg-red-500/12'
                                         : 'cursor-not-allowed opacity-40 text-muted-foreground border-[rgba(120,96,60,0.10)] dark:border-[rgba(255,255,255,0.12)] bg-[rgba(250,246,238,0.88)] dark:bg-[rgba(255,255,255,0.07)]'
                                 )}
-                                style={selectedIds.size === 0 ? glassButtonStyle : {}}
                             >
                                 <Trash2 className='w-4 h-4' />
                                 {selectedIds.size > 0 ? `Delete (${selectedIds.size})` : 'Select items'}
@@ -381,8 +395,12 @@ const TrashList = ({ onTrashEmpty }: { onTrashEmpty?: () => void }) => {
                                 <button
                                     onClick={() => setIsDeleteAllOpen(true)}
                                     disabled={isDeleting}
-                                    className='px-4 py-2 rounded-lg text-xs font-medium transition-all cursor-pointer disabled:opacity-50 flex items-center gap-2 bg-[rgba(250,246,238,0.88)] dark:bg-[rgba(255,255,255,0.07)] border border-[rgba(120,96,60,0.10)] dark:border-[rgba(255,255,255,0.12)] text-foreground hover:text-foreground whitespace-nowrap'
-                                    style={glassButtonStyle}
+                                    className='px-4 py-2 rounded-lg text-xs font-medium transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap'
+                                    style={{
+                                        background: isLightMode ? 'rgba(0,0,0,0.04)' : 'rgba(255,255,255,0.06)',
+                                        border: `1px solid ${isLightMode ? 'rgba(0,0,0,0.09)' : 'rgba(255,255,255,0.09)'}`,
+                                        color: isLightMode ? 'rgba(0,0,0,0.7)' : 'rgba(255,255,255,0.7)',
+                                    }}
                                 >
                                     <Trash2 className='w-4 h-4' />
                                     Empty Trash
@@ -412,6 +430,12 @@ const TrashList = ({ onTrashEmpty }: { onTrashEmpty?: () => void }) => {
                                     key={project._id}
                                     animate={{ rotate: selectMode && isSelected ? 2 : 0 }}
                                     transition={{ type: 'spring', stiffness: 400, damping: 25 }}
+                                    // Touch: long press → select mode
+                                    onTouchStart={() => !selectMode && startLongPress(project._id)}
+                                    onTouchEnd={cancelLongPress}
+                                    onTouchMove={cancelLongPress}
+                                    onContextMenu={(e) => e.preventDefault()}
+                                    // Click: toggle in select mode
                                     onClick={selectMode ? () => toggleSelection(project._id) : undefined}
                                     className={cn(
                                         'relative transition-opacity duration-300',
@@ -435,7 +459,7 @@ const TrashList = ({ onTrashEmpty }: { onTrashEmpty?: () => void }) => {
                                                         ? (!isLightMode && isColorDark(project.thumbnail)
                                                             ? '#ffffff'
                                                             : project.thumbnail)
-                                                        : 'linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%)'
+                                                        : 'linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%)',
                                                 }}
                                             >
                                                 {!project.thumbnail && <Plus className='w-8 h-8 text-gray-400' />}
@@ -592,7 +616,7 @@ const TrashList = ({ onTrashEmpty }: { onTrashEmpty?: () => void }) => {
             <DeleteConfirmationDialog
                 open={deleteDialogOpen}
                 onOpenChange={setDeleteDialogOpen}
-                projectName={visibleProjects.find(p => p._id === deleteId)?.name || 'Project'}
+                projectName={visibleProjects.find((p) => p._id === deleteId)?.name || 'Project'}
                 onConfirm={handleDeleteConfirm}
                 isLoading={false}
                 customTitle='Permanently Delete?'

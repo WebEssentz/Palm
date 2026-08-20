@@ -1,128 +1,94 @@
 'use client'
 
 import { motion, AnimatePresence } from 'framer-motion'
-import { X } from 'lucide-react'
-import { useTheme } from 'next-themes'
+import { X, ImageIcon } from 'lucide-react'
 
 export interface ImageItem {
-    id: string
-    previewUrl: string
-    storageId: string | null
-    error?: boolean
+  id: string
+  previewUrl: string
+  storageId: string | null
+  error?: boolean
 }
 
 interface Props {
-    images: ImageItem[]
-    onRemove: (id: string) => void
+  images: ImageItem[]
+  onRemove: (id: string) => void
+  isLight: boolean
 }
 
-export function ImagePreview({ images, onRemove }: Props) {
-    const { theme, systemTheme } = useTheme()
-    const isLight = (theme === 'system' ? systemTheme : theme) === 'light'
+export function ImagePreview({ images, onRemove, isLight }: Props) {
+  if (!images || images.length === 0) return null
 
-    if (!images || images.length === 0) return null
-
-    const xStyle: React.CSSProperties = isLight ? {
-        background: 'rgba(250,246,238,0.92)',
-        backdropFilter: 'blur(16px)',
-        WebkitBackdropFilter: 'blur(16px)',
-        border: '1px solid rgba(120,96,60,0.14)',
-        boxShadow: [
-            'inset 0 1px 0 rgba(255,255,255,0.95)',
-            '0 2px 6px rgba(80,60,30,0.14)',
-        ].join(', '),
-        color: 'rgba(0,0,0,0.55)',
-    } : {
-        background: 'rgba(22,22,22,0.88)',
-        backdropFilter: 'blur(16px)',
-        WebkitBackdropFilter: 'blur(16px)',
-        border: '1px solid rgba(255,255,255,0.10)',
-        boxShadow: [
-            'inset 0 1px 0 rgba(255,255,255,0.08)',
-            '0 2px 6px rgba(0,0,0,0.35)',
-        ].join(', '),
-        color: 'rgba(255,255,255,0.65)',
-    }
-
-    return (
-        <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
-            exit={{ opacity: 0, height: 0 }}
-            transition={{ type: 'spring', damping: 24, stiffness: 300 }}
-            className='overflow-hidden mb-3'
-        >
-            <div
-                className='image-preview-scroll flex items-start gap-2 pb-2 overflow-x-auto'
-                style={{
-                    scrollbarWidth: 'thin',
-                    scrollbarColor: isLight
-                        ? 'rgba(120,96,60,0.20) transparent'
-                        : 'rgba(255,255,255,0.10) transparent',
-                }}
+  return (
+    <AnimatePresence mode="popLayout">
+      <motion.div
+        initial={{ opacity: 0, height: 0 }}
+        animate={{ opacity: 1, height: 'auto' }}
+        exit={{ opacity: 0, height: 0 }}
+        style={{ overflow: 'visible', marginBottom: 12 }}
+      >
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', paddingTop: 6, paddingRight: 6 }}>
+          {images.map(img => (
+            <motion.div
+              layout
+              key={img.id}
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.85 }}
+              transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+              style={{ position: 'relative', flexShrink: 0 }}
             >
-                <style>{`
-            .image-preview-scroll::-webkit-scrollbar {
-                height: 3px;
-            }
-            .image-preview-scroll::-webkit-scrollbar-track {
-                background: transparent;
-            }
-            .image-preview-scroll::-webkit-scrollbar-thumb {
-                border-radius: 9999px;
-                background: ${isLight ? 'rgba(120,96,60,0.20)' : 'rgba(255,255,255,0.10)'};
-            }
-            .image-preview-scroll::-webkit-scrollbar-thumb:hover {
-                background: ${isLight ? 'rgba(120,96,60,0.35)' : 'rgba(255,255,255,0.20)'};
-            }
-        `}</style>
-                <AnimatePresence mode='popLayout'>
-                    {images.map(img => (
-                        <motion.div
-                            key={img.id}
-                            initial={{ opacity: 0, scale: 0.88 }}
-                            animate={{ opacity: 1, scale: 1 }}
-                            exit={{ opacity: 0, scale: 0.88 }}
-                            transition={{ type: 'spring', damping: 22, stiffness: 300 }}
-                            className='relative flex-shrink-0 group'
-                        >
-                            <img
-                                src={img.previewUrl}
-                                alt=''
-                                className='h-20 w-auto rounded-lg object-cover'
-                                style={{
-                                    maxWidth: '130px',
-                                    opacity: img.storageId === null ? 0.65 : 1,
-                                    transition: 'opacity 0.3s ease',
-                                    boxShadow: isLight
-                                        ? '0 2px 8px rgba(80,60,30,0.14), inset 0 0 0 1px rgba(120,96,60,0.12)'
-                                        : '0 2px 8px rgba(0,0,0,0.45), inset 0 0 0 1px rgba(255,255,255,0.08)',
-                                }}
-                            />
+              {/* Image tile */}
+              <div style={{
+                width: 64, height: 64, borderRadius: 10, overflow: 'hidden',
+                border: `1px solid ${isLight ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.08)'}`,
+                background: isLight ? 'rgba(0,0,0,0.04)' : 'rgba(255,255,255,0.04)',
+                position: 'relative',
+              }}>
+                <img
+                  src={img.previewUrl}
+                  alt=""
+                  style={{
+                    width: '100%', height: '100%', objectFit: 'cover',
+                    opacity: img.storageId === null && !img.error ? 0.5 : 1,
+                    transition: 'opacity 0.2s',
+                  }}
+                />
 
-                            {img.error && (
-                                <div className='absolute inset-0 bg-red-500/20 flex items-center justify-center rounded-lg'>
-                                    <span className='text-[10px] text-red-400 font-medium'>Failed</span>
-                                </div>
-                            )}
+                {/* Uploading spinner */}
+                {img.storageId === null && !img.error && (
+                  <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <div style={{ width: 16, height: 16, border: `2px solid ${isLight ? 'rgba(0,0,0,0.3)' : 'rgba(255,255,255,0.3)'}`, borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.6s linear infinite' }} />
+                  </div>
+                )}
 
-                            {img.storageId === null && !img.error && (
-                                <div className='absolute inset-0 flex items-center justify-center rounded-lg'>
-                                    <div className='w-4 h-4 border-2 border-white/50 border-t-transparent rounded-full animate-spin' />
-                                </div>
-                            )}
+                {/* Error state */}
+                {img.error && (
+                  <div style={{ position: 'absolute', inset: 0, background: 'rgba(239,68,68,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <span style={{ fontSize: 9, color: '#ef4444', fontWeight: 600 }}>FAILED</span>
+                  </div>
+                )}
+              </div>
 
-                            <button
-                                onClick={() => onRemove(img.id)}
-                                className='absolute top-1 -right-1.5 w-5 h-5 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-10'
-                                style={xStyle}
-                            >
-                                <X className='w-2.5 h-2.5' />
-                            </button>
-                        </motion.div>
-                    ))}
-                </AnimatePresence>
-            </div>
-        </motion.div>
-    )
+              {/* Remove button */}
+              <button
+                onClick={() => onRemove(img.id)}
+                style={{
+                  position: 'absolute', top: -6, right: -6,
+                  width: 20, height: 20, borderRadius: '50%',
+                  background: isLight ? '#0a0a0a' : '#ffffff',
+                  border: 'none', cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  boxShadow: '0 1px 4px rgba(0,0,0,0.25)',
+                  zIndex: 2,
+                }}
+              >
+                <X style={{ width: 10, height: 10, color: isLight ? '#fff' : '#000' }} />
+              </button>
+            </motion.div>
+          ))}
+        </div>
+      </motion.div>
+    </AnimatePresence>
+  )
 }

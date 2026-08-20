@@ -60,15 +60,11 @@ export default function ParticleBackground({ isLight }: { isLight: boolean }) {
               : 0.55 * ((dist - RADIUS * 0.3) / (RADIUS * 0.7))
           }
 
-          ctx.globalAlpha      = alpha
-          ctx.fillStyle        = dotColor
-          ctx.font             = '10px monospace'
-          ctx.textAlign        = 'center'
-          ctx.textBaseline     = 'middle'
-          ctx.fillText(
-            (Math.floor(col * 31 + row * 17) % 2 === 0) ? '1' : '0',
-            wx, wy
-          )
+          ctx.globalAlpha = alpha
+          ctx.fillStyle   = dotColor
+          ctx.beginPath()
+          ctx.arc(wx, wy, 1.4, 0, Math.PI * 2)
+          ctx.fill()
         }
       }
 

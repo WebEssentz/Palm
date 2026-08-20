@@ -4,207 +4,146 @@ import { useState, useRef, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { ImageIcon, Globe, Sparkles, Plus } from 'lucide-react'
-import { useTheme } from 'next-themes'
-import { cn } from '@/lib/utils'
 
 interface Props {
-    onUpload: (file: File) => void
-    onUrl: () => void
-    onEnhance: () => void
-    enhancing?: boolean
-    hasInput?: boolean
+  onUpload: (file: File) => void
+  onUrl: () => void
+  onEnhance: () => void
+  enhancing?: boolean
+  hasInput?: boolean
+  isLight: boolean
 }
 
-export function AttachmentMenu({ onUpload, onUrl, onEnhance, enhancing, hasInput }: Props) {
-    const [open, setOpen] = useState(false)
-    const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null)
-    const { theme, systemTheme } = useTheme()
-    const fileRef = useRef<HTMLInputElement>(null)
-    const triggerRef = useRef<HTMLButtonElement>(null)
-    const menuRef = useRef<HTMLDivElement>(null)
-    const portalMenuRef = useRef<HTMLDivElement>(null)
+export function AttachmentMenu({ onUpload, onUrl, onEnhance, enhancing, hasInput, isLight }: Props) {
+  const [open, setOpen]       = useState(false)
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null)
+  const fileRef       = useRef<HTMLInputElement>(null)
+  const triggerRef    = useRef<HTMLButtonElement>(null)
+  const menuRef       = useRef<HTMLDivElement>(null)
+  const portalRef     = useRef<HTMLDivElement>(null)
 
-    const effectiveTheme = theme === 'system' ? systemTheme : theme
-    const isLight = effectiveTheme === 'light'
-
-    useEffect(() => {
-        const handler = (e: MouseEvent) => {
-            if (
-                menuRef.current && !menuRef.current.contains(e.target as Node) &&
-                portalMenuRef.current && !portalMenuRef.current.contains(e.target as Node)
-            ) {
-                setOpen(false)
-            }
-        }
-        document.addEventListener('mousedown', handler)
-        return () => document.removeEventListener('mousedown', handler)
-    }, [])
-
-    const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0]
-        if (file) { onUpload(file); setOpen(false) }
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (menuRef.current?.contains(e.target as Node)) return
+      if (portalRef.current?.contains(e.target as Node)) return
+      setOpen(false)
     }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
 
-    const handleToggle = () => {
-        if (!open && triggerRef.current) {
-            const rect = triggerRef.current.getBoundingClientRect()
-            setMenuPos({
-                top: rect.top,
-                left: rect.left,
-            })
-        }
-        setOpen(o => !o)
+  const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) { onUpload(file); setOpen(false) }
+  }
+
+  const toggle = () => {
+    if (!open && triggerRef.current) {
+      const rect = triggerRef.current.getBoundingClientRect()
+      setMenuPos({ top: rect.top, left: rect.left })
     }
+    setOpen(o => !o)
+  }
 
-    const glassStyle = isLight ? {
-        background: 'rgba(250,246,238,0.92)',
-        backdropFilter: 'blur(32px) saturate(1.8)',
-        WebkitBackdropFilter: 'blur(32px) saturate(1.8)',
-        border: '1px solid rgba(120,96,60,0.14)',
-        boxShadow: [
-            '0 0 0 0.5px rgba(100,76,40,0.08)',
-            '0 4px 24px rgba(80,60,30,0.14)',
-            '0 8px 32px rgba(80,60,30,0.10)',
-            'inset 0 1px 0 rgba(255,255,255,0.95)',
-            'inset 0 -1px 0 rgba(100,76,40,0.04)',
-        ].join(', '),
-    } : {
-        background: 'rgba(18,18,18,0.85)',
-        backdropFilter: 'blur(32px) saturate(1.8)',
-        WebkitBackdropFilter: 'blur(32px) saturate(1.8)',
-        border: '1px solid rgba(255,255,255,0.08)',
-        boxShadow: [
-            '0 0 0 0.5px rgba(255,255,255,0.04)',
-            '0 4px 24px rgba(0,0,0,0.4)',
-            '0 8px 32px rgba(0,0,0,0.3)',
-            'inset 0 1px 0 rgba(255,255,255,0.08)',
-            'inset 0 -1px 0 rgba(0,0,0,0.2)',
-        ].join(', '),
-    }
+  const border  = isLight ? 'rgba(0,0,0,0.08)'  : 'rgba(255,255,255,0.08)'
+  const itemTxt = isLight ? 'rgba(0,0,0,0.7)'   : 'rgba(255,255,255,0.7)'
 
-    return (
-        <div className='relative' ref={menuRef}>
-            <input
-                ref={fileRef}
-                type='file'
-                accept='image/*'
-                className='hidden'
-                onChange={handleFile}
-            />
+  return (
+    <div ref={menuRef} style={{ position: 'relative' }}>
+      <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleFile} />
 
-            {/* Trigger */}
-            <button
-                ref={triggerRef}
-                onClick={handleToggle}
-                className='w-8 h-8 rounded-full flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors cursor-pointer'
-                style={isLight ? {
-                    background: 'rgba(250,246,238,0.88)',
-                    backdropFilter: 'url(#palm-glass-light) blur(20px)',
-                    WebkitBackdropFilter: 'blur(20px)',
-                    border: '1px solid rgba(120,96,60,0.10)',
-                    boxShadow: [
-                        '0 0 0 0.5px rgba(100,76,40,0.08)',
-                        '0 2px 4px rgba(80,60,30,0.06)',
-                        '0 8px 20px rgba(80,60,30,0.09)',
-                        'inset 0 1px 0 rgba(255,255,255,0.90)',
-                        'inset 0 -1px 0 rgba(100,76,40,0.04)',
-                    ].join(', '),
-                } : {
-                    background: 'rgba(255,255,255,0.07)',
-                    backdropFilter: 'url(#palm-glass-light) blur(20px)',
-                    WebkitBackdropFilter: 'blur(20px)',
-                    border: '1px solid rgba(255,255,255,0.12)',
-                    boxShadow: [
-                        '0 0 0 0.5px rgba(255,255,255,0.04)',
-                        '0 2px 4px rgba(0,0,0,0.12)',
-                        '0 8px 20px rgba(0,0,0,0.24)',
-                        'inset 0 1px 0 rgba(255,255,255,0.08)',
-                        'inset 0 -1px 0 rgba(0,0,0,0.2)',
-                    ].join(', '),
-                }}
+      <button
+        ref={triggerRef}
+        onClick={toggle}
+        style={{
+          width: 30, height: 30, borderRadius: '50%', border: 'none',
+          background: 'transparent',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          cursor: 'pointer', color: isLight ? 'rgba(0,0,0,0.5)' : 'rgba(255,255,255,0.5)',
+          transition: 'background 0.12s',
+        }}
+        onMouseEnter={e => e.currentTarget.style.background = isLight ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.06)'}
+        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+      >
+        <Plus style={{ width: 14, height: 14 }} />
+      </button>
+
+      {typeof window !== 'undefined' && open && menuPos && createPortal(
+        <AnimatePresence>
+          {open && (
+            <motion.div
+              ref={portalRef}
+              initial={{ opacity: 0, y: 4, scale: 0.97 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 4, scale: 0.97 }}
+              transition={{ duration: 0.14, ease: [0.16, 1, 0.3, 1] }}
+              style={{
+                position: 'fixed', zIndex: 9999,
+                width: 180, borderRadius: 12, overflow: 'hidden',
+                background: isLight ? '#ffffff' : '#1a1a1a',
+                border: `1px solid ${border}`,
+                boxShadow: isLight
+                  ? '0 4px 24px rgba(0,0,0,0.10), 0 1px 4px rgba(0,0,0,0.06)'
+                  : '0 4px 24px rgba(0,0,0,0.5), 0 1px 4px rgba(0,0,0,0.3)',
+                bottom: window.innerHeight - menuPos.top + 8,
+                left: menuPos.left,
+              }}
             >
-                <Plus className='w-4 h-4' />
-            </button>
+              <div style={{ padding: 5, display: 'flex', flexDirection: 'column', gap: 1 }}>
+                {[
+                  { icon: <ImageIcon style={{ width: 14, height: 14 }} />, label: 'Upload image',   onClick: () => { fileRef.current?.click() } },
+                  { icon: <Globe     style={{ width: 14, height: 14 }} />, label: 'Website URL',    onClick: () => { onUrl(); setOpen(false) } },
+                ].map(item => (
+                  <button
+                    key={item.label}
+                    onClick={item.onClick}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 9,
+                      padding: '8px 10px', borderRadius: 8,
+                      background: 'transparent', border: 'none',
+                      color: itemTxt, fontSize: 13, fontWeight: 400,
+                      cursor: 'pointer', textAlign: 'left',
+                      transition: 'background 0.1s',
+                    }}
+                    onMouseEnter={e => e.currentTarget.style.background = isLight ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.06)'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                  >
+                    <span style={{ opacity: 0.55, display: 'flex' }}>{item.icon}</span>
+                    {item.label}
+                  </button>
+                ))}
 
-            {typeof window !== 'undefined' && open && menuPos && createPortal(
-                <AnimatePresence>
-                    {open && (
-                        <motion.div
-                            ref={portalMenuRef}
-                            initial={{ opacity: 0, y: 6, scale: 0.97 }}
-                            animate={{ opacity: 1, y: 0, scale: 1 }}
-                            exit={{ opacity: 0, y: 6, scale: 0.97 }}
-                            transition={{ type: 'spring', damping: 22, stiffness: 320 }}
-                            className='fixed w-48 rounded-2xl overflow-hidden z-[9999]'
-                            style={{
-                                ...glassStyle,
-                                bottom: window.innerHeight - menuPos.top + 8,
-                                left: menuPos.left,
-                            }}
-                        >
-                        {/* Specular rim */}
-                        <div
-                            className='pointer-events-none absolute inset-x-0 top-0 h-[1px] z-10'
-                            style={{ background: 'linear-gradient(90deg, transparent 10%, rgba(255,255,255,0.90) 50%, transparent 90%)' }}
-                        />
+                <div style={{ height: 1, background: border, margin: '3px 8px' }} />
 
-                        <div className='p-1.5 flex flex-col gap-0.5'>
-                            <MenuItem
-                                icon={<ImageIcon className='w-4 h-4' />}
-                                label='Upload image'
-                                onClick={() => fileRef.current?.click()}
-                                isLight={isLight}
-                            />
-                            <MenuItem
-                                icon={<Globe className='w-4 h-4' />}
-                                label='Website URL'
-                                onClick={() => { onUrl(); setOpen(false) }}
-                                isLight={isLight}
-                            />
-                            <div className={cn('h-px mx-2 my-0.5', isLight ? 'bg-black/[0.06]' : 'bg-white/[0.06]')} />
-                            <MenuItem
-                                icon={
-                                    enhancing
-                                        ? <div className='w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin' />
-                                        : <Sparkles className='w-4 h-4' />
-                                }
-                                label='Enhance prompt'
-                                onClick={() => { onEnhance(); setOpen(false) }}
-                                isLight={isLight}
-                                disabled={!hasInput}
-                            />
-                        </div>
-                    </motion.div>
-                )}
-            </AnimatePresence>,
-            document.body
-            )}
-        </div>
-    )
-}
-
-function MenuItem({
-    icon, label, onClick, isLight, disabled
-}: {
-    icon: React.ReactNode
-    label: string
-    onClick: () => void
-    isLight: boolean
-    disabled?: boolean
-}) {
-    return (
-        <button
-            onClick={onClick}
-            disabled={disabled}
-            className={cn(
-                'flex items-center gap-2.5 w-full px-3 py-2.5 rounded-xl transition-colors text-left cursor-pointer text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed',
-                isLight
-                    ? 'text-black/75 hover:bg-black/[0.05] hover:text-black'
-                    : 'text-white/75 hover:bg-white/[0.06] hover:text-white'
-            )}
-        >
-            <span className='flex-shrink-0 opacity-60'>{icon}</span>
-            {label}
-        </button>
-    )
+                <button
+                  onClick={() => { onEnhance(); setOpen(false) }}
+                  disabled={!hasInput}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 9,
+                    padding: '8px 10px', borderRadius: 8,
+                    background: 'transparent', border: 'none',
+                    color: itemTxt, fontSize: 13, fontWeight: 400,
+                    cursor: hasInput ? 'pointer' : 'not-allowed',
+                    opacity: hasInput ? 1 : 0.38, textAlign: 'left',
+                    transition: 'background 0.1s',
+                  }}
+                  onMouseEnter={e => { if (hasInput) e.currentTarget.style.background = isLight ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.06)' }}
+                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                >
+                  <span style={{ opacity: 0.55, display: 'flex' }}>
+                    {enhancing
+                      ? <div style={{ width: 14, height: 14, border: '2px solid currentColor', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.6s linear infinite' }} />
+                      : <Sparkles style={{ width: 14, height: 14 }} />
+                    }
+                  </span>
+                  Enhance prompt
+                </button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>,
+        document.body
+      )}
+    </div>
+  )
 }

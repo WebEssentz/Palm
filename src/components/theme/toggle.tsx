@@ -6,107 +6,105 @@ import { Sun, Moon, Monitor } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const options = [
-    { label: 'Light', value: 'light', icon: Sun },
-    { label: 'System', value: 'system', icon: Monitor },
-    { label: 'Dark', value: 'dark', icon: Moon },
+  { label: 'Light',  value: 'light',  icon: Sun     },
+  { label: 'System', value: 'system', icon: Monitor  },
+  { label: 'Dark',   value: 'dark',   icon: Moon     },
 ]
 
 export function ThemeToggle() {
-    const { theme, setTheme } = useTheme()
-    const [open, setOpen] = useState(false)
-    const ref = useRef<HTMLDivElement>(null)
-    const [mounted, setMounted] = useState(false)
+  const { theme, setTheme } = useTheme()
+  const [open, setOpen]     = useState(false)
+  const [mounted, setMounted] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
 
-    useEffect(() => {
-        const handler = (e: MouseEvent) => {
-            if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
-        }
-        document.addEventListener('mousedown', handler)
-        return () => document.removeEventListener('mousedown', handler)
-    }, [])
+  useEffect(() => setMounted(true), [])
 
-    useEffect(() => setMounted(true), [])
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
 
-    const Icon = options.find(o => o.value === theme)?.icon ?? Monitor
+  if (!mounted) return <div className="w-8 h-8 rounded-full" />
 
-    // Render a stable placeholder until client has resolved the theme
-    if (!mounted) return (
-        <div className='w-8 h-8 rounded-full' />
-    )
+  const Icon = options.find(o => o.value === theme)?.icon ?? Monitor
 
-    return (
-        <div ref={ref} className='relative'>
-            <button
-                onClick={() => setOpen(o => !o)}
-                className='w-8 h-8 rounded-full flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors'
-                style={{
-                    background: 'bg-[rgba(250,246,238,0.88)] dark:bg-[rgba(255,255,255,0.07)]',
-                    backdropFilter: 'url(#palm-glass-light) blur(20px)',
-                    WebkitBackdropFilter: 'blur(20px)',
-                    border: '1px solid rgba(120,96,60,0.10) dark:rgba(255,255,255,0.12)',
-                    boxShadow: [
-                        '0 0 0 0.5px rgba(100,76,40,0.08)',
-                        '0 2px 4px rgba(80,60,30,0.06)',
-                        '0 8px 20px rgba(80,60,30,0.09)',
-                        'inset 0 1px 0 rgba(255,255,255,0.90)',
-                        'inset 0 -1px 0 rgba(100,76,40,0.04)',
-                    ].join(', '),
-                }}
-            >
-                <Icon className='w-3.5 h-3.5' />
-            </button>
+  return (
+    <div ref={ref} className="relative">
 
-            {open && (
-                <div
-                    className={cn(
-                        'absolute bottom-10 right-0 z-50 w-36',
-                        'animate-in fade-in-0 zoom-in-95 duration-200',
-                        'rounded-2xl overflow-hidden',
-                        'bg-[rgba(250,246,238,0.88)] dark:bg-[rgba(255,255,255,0.07)]',
-                        'border border-[rgba(120,96,60,0.10)] dark:border-[rgba(255,255,255,0.12)]',
-                    )}
-                    style={{
-                        backdropFilter: 'url(#palm-glass-light) blur(32px)',
-                        WebkitBackdropFilter: 'blur(32px)',
-                        boxShadow: [
-                            '0 0 0 0.5px rgba(100,76,40,0.08)',
-                            '0 2px 4px rgba(80,60,30,0.06)',
-                            '0 8px 20px rgba(80,60,30,0.09)',
-                            '0 24px 48px rgba(80,60,30,0.07)',
-                            'inset 0 1px 0 rgba(255,255,255,0.90)',
-                            'inset 0 -1px 0 rgba(100,76,40,0.04)',
-                        ].join(', '),
-                    }}
+      {/* Trigger */}
+      <button
+        onClick={() => setOpen(o => !o)}
+        style={{
+          width: 36, height: 36, borderRadius: '50%',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          background: 'var(--toggle-bg)',
+          border: '1px solid var(--toggle-border)',
+          cursor: 'pointer',
+          transition: 'opacity 0.15s',
+        }}
+        onMouseEnter={e => (e.currentTarget.style.opacity = '0.7')}
+        onMouseLeave={e => (e.currentTarget.style.opacity = '1')}
+      >
+        <style>{`
+          :root { --toggle-bg: #0a0a0a; --toggle-border: rgba(0,0,0,0.1); --toggle-icon: #ffffff; --menu-bg: #0a0a0a; --menu-border: rgba(255,255,255,0.08); --item-text: rgba(255,255,255,0.44); --item-active-bg: rgba(255,255,255,0.08); --item-active-text: #ffffff; --item-hover-bg: rgba(255,255,255,0.05); }
+          .dark { --toggle-bg: #ffffff; --toggle-border: rgba(255,255,255,0.1); --toggle-icon: #0a0a0a; --menu-bg: #ffffff; --menu-border: rgba(0,0,0,0.08); --item-text: rgba(0,0,0,0.44); --item-active-bg: rgba(0,0,0,0.06); --item-active-text: #0a0a0a; --item-hover-bg: rgba(0,0,0,0.04); }
+        `}</style>
+        <Icon style={{ width: 14, height: 14, color: 'var(--toggle-icon)' }} />
+      </button>
+
+      {/* Dropdown */}
+      {open && (
+        <div style={{
+          position: 'absolute', bottom: 44, right: 0, zIndex: 50,
+          width: 140, borderRadius: 16, overflow: 'hidden',
+          background: 'var(--menu-bg)',
+          border: '1px solid var(--menu-border)',
+          boxShadow: '0 8px 32px rgba(0,0,0,0.12)',
+          animation: 'fadeUp 0.18s ease forwards',
+        }}>
+          <style>{`
+            @keyframes fadeUp {
+              from { opacity: 0; transform: translateY(6px) scale(0.97); }
+              to   { opacity: 1; transform: translateY(0)   scale(1);    }
+            }
+          `}</style>
+
+          <div style={{ padding: 6, display: 'flex', flexDirection: 'column', gap: 2 }}>
+            {options.map(({ label, value, icon: ItemIcon }) => {
+              const active = theme === value
+              return (
+                <button
+                  key={value}
+                  onClick={() => { setTheme(value); setOpen(false) }}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 10,
+                    width: '100%', padding: '8px 10px', borderRadius: 10,
+                    background: active ? 'var(--item-active-bg)' : 'transparent',
+                    color: active ? 'var(--item-active-text)' : 'var(--item-text)',
+                    fontSize: 12, fontWeight: active ? 600 : 400,
+                    border: 'none', cursor: 'pointer',
+                    transition: 'background 0.12s, color 0.12s',
+                    letterSpacing: '-0.01em',
+                  }}
+                  onMouseEnter={e => { if (!active) e.currentTarget.style.background = 'var(--item-hover-bg)' }}
+                  onMouseLeave={e => { if (!active) e.currentTarget.style.background = 'transparent' }}
                 >
-                    {/* Specular rim */}
-                    <div
-                        className='pointer-events-none absolute inset-x-0 top-0 h-[1px]'
-                        style={{ background: 'linear-gradient(90deg, transparent 5%, rgba(255,255,255,0.95) 50%, transparent 95%)' }}
-                    />
-                    <div className='p-1.5 flex flex-col gap-0.5'>
-                        {options.map(({ label, value, icon: ItemIcon }) => (
-                            <button
-                                key={value}
-                                onClick={() => { setTheme(value); setOpen(false) }}
-                                className={cn(
-                                    'flex items-center gap-2.5 w-full px-2.5 py-2 rounded-xl text-xs font-medium transition-colors',
-                                    theme === value
-                                        ? 'bg-foreground/[0.08] text-foreground'
-                                        : 'text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground'
-                                )}
-                            >
-                                <ItemIcon className='w-3.5 h-3.5 flex-shrink-0' />
-                                {label}
-                                {theme === value && (
-                                    <svg className='ml-auto w-3 h-3 text-primary' viewBox='0 0 12 12' fill='none'>
-                                        <path d='M2 6l3 3 5-5' stroke='currentColor' strokeWidth='1.5' strokeLinecap='round' strokeLinejoin='round'/>
-                                    </svg>
-                                )}
-                            </button>
-                        ))}
-                    </div>
-                </div>
-            )}
+                  <ItemIcon style={{ width: 13, height: 13, flexShrink: 0 }} />
+                  {label}
+                  {active && (
+                    <svg style={{ marginLeft: 'auto', width: 11, height: 11 }} viewBox="0 0 12 12" fill="none">
+                      <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  )}
+                </button>
+              )
+            })}
+          </div>
         </div>
-    )
+      )}
+    </div>
+  )
 }

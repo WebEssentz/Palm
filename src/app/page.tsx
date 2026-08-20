@@ -1,927 +1,461 @@
 'use client'
 
-import { useRef, useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
-import {
-  motion, useScroll, useTransform, useSpring,
-  AnimatePresence, useMotionValue, useMotionTemplate,
-} from 'framer-motion'
+import { motion, AnimatePresence, useScroll, useTransform, useInView } from 'framer-motion'
 import { useTheme } from 'next-themes'
 import ParticleBackground from '@/components/home/particle-background'
 import { ThemeToggle } from '@/components/theme/toggle'
 import { GlassTooltip } from '@/components/ui/glass-tooltip'
 import Loading from '@/app/(protected)/dashboard/loading'
 
-// ─── Spring configs ────────────────────────────────────────────────────────
-const SPRING_SNAPPY  = { type: 'spring', stiffness: 400, damping: 18 } as const
-const SPRING_SOFT    = { type: 'spring', stiffness: 180, damping: 22 } as const
-const EASE_OUT_EXPO  = [0.16, 1, 0.3, 1] as const
+// ─── Constants ────────────────────────────────────────────────────────────────
+const EX = [0.16, 1, 0.3, 1] as const
+const WORDS = ['instantly.', 'effortlessly.', 'beautifully.', 'magically.']
 
-// ─── Glass scrollbar ──────────────────────────────────────────────────────
-const SCROLLBAR_CSS = `
-  * { scrollbar-width: thin; scrollbar-color: rgba(160,120,80,0.28) transparent; }
+const GLOBAL_CSS = `
+  @import url('https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600;14..32,700;14..32,800;14..32,900&display=swap');
+  html, body, *, *::before, *::after {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  }
+  * { scrollbar-width: thin; scrollbar-color: rgba(128,128,128,0.22) transparent; }
   ::-webkit-scrollbar { width: 5px; }
-  ::-webkit-scrollbar-track { background: transparent; }
-  ::-webkit-scrollbar-thumb { background: rgba(160,120,80,0.28); border-radius: 9999px; }
-  ::-webkit-scrollbar-thumb:hover { background: rgba(160,120,80,0.52); }
+  ::-webkit-scrollbar-thumb { background: rgba(128,128,128,0.24); border-radius: 9999px; }
+  @keyframes blink { 0%,100% { opacity:1 } 50% { opacity:0 } }
 `
 
-// ─────────────────────────────────────────────────────────────────────────────
-// useIsMobile — SSR-safe, resize-reactive
-// ─────────────────────────────────────────────────────────────────────────────
-function useIsMobile(breakpoint = 768) {
-  const [isMobile, setIsMobile] = useState(false)
+// ─── Hooks ────────────────────────────────────────────────────────────────────
+function useIsMobile(bp = 768) {
+  const [m, setM] = useState(false)
   useEffect(() => {
-    const check = () => setIsMobile(window.innerWidth < breakpoint)
-    check()
-    window.addEventListener('resize', check, { passive: true })
-    return () => window.removeEventListener('resize', check)
-  }, [breakpoint])
-  return isMobile
+    const fn = () => setM(window.innerWidth < bp)
+    fn()
+    window.addEventListener('resize', fn, { passive: true })
+    return () => window.removeEventListener('resize', fn)
+  }, [bp])
+  return m
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// PHYSICS BUTTON
-// ─────────────────────────────────────────────────────────────────────────────
-function PhysicsLink({
-  href, children, dark, style = {},
-}: {
-  href: string
-  children: React.ReactNode
-  dark?: boolean
-  style?: React.CSSProperties
-}) {
+function useTypewriter() {
+  const [text, setText] = useState('')
+  const [idx, setIdx] = useState(0)
+  const [deleting, setDel] = useState(false)
+
+  useEffect(() => {
+    const word = WORDS[idx]
+    if (!deleting && text === word) {
+      const t = setTimeout(() => setDel(true), 2400)
+      return () => clearTimeout(t)
+    }
+    if (deleting && text === '') {
+      setDel(false); setIdx(i => (i + 1) % WORDS.length); return
+    }
+    const t = setTimeout(
+      () => setText(deleting ? text.slice(0, -1) : word.slice(0, text.length + 1)),
+      deleting ? 34 : 68,
+    )
+    return () => clearTimeout(t)
+  }, [text, idx, deleting])
+
+  return text
+}
+
+function useStaticTypewriter(full: string, onDone: () => void) {
+  const [text, setText] = useState('')
+  const done = useRef(false)
+
+  useEffect(() => {
+    if (done.current) return
+    if (text === full) { done.current = true; onDone(); return }
+    const t = setTimeout(() => setText(full.slice(0, text.length + 1)), 52)
+    return () => clearTimeout(t)
+  }, [text, full, onDone])
+
+  return text
+}
+
+// ─── FadeIn ───────────────────────────────────────────────────────────────────
+function FadeIn({
+  children, delay = 0, style = {},
+}: { children: React.ReactNode; delay?: number; style?: React.CSSProperties }) {
   return (
     <motion.div
-      whileHover={{ scale: 1.04, y: -2 }}
-      whileTap={{ scale: 0.97, y: 0 }}
-      transition={SPRING_SNAPPY}
-      style={{ display: 'inline-flex' }}
+      style={style}
+      initial={{ opacity: 0, y: 28 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, margin: '-50px' }}
+      transition={{ duration: 0.75, ease: EX, delay }}
     >
-      <Link
-        href={href}
-        style={{
-          padding: '15px 38px', borderRadius: 9999,
-          background: dark ? '#0a0a0a' : '#ffffff',
-          color: dark ? '#F5F0E8' : '#070707',
-          fontSize: 15, fontWeight: 700, letterSpacing: '-0.015em',
-          textDecoration: 'none',
-          boxShadow: dark
-            ? '0 4px 20px rgba(0,0,0,0.18)'
-            : '0 0 0 1px rgba(255,255,255,0.1), 0 8px 40px rgba(0,0,0,0.4)',
-          display: 'inline-flex', alignItems: 'center', gap: 10,
-          ...style,
-        }}
-      >
-        {children}
-      </Link>
-    </motion.div>
-  )
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// CUSTOM CURSOR — killed entirely on touch/pointer:coarse
-// ─────────────────────────────────────────────────────────────────────────────
-function CustomCursor() {
-  // Default true so we never flash the cursor on mobile during hydration
-  const [isTouch, setIsTouch] = useState(true)
-  const mouseX = useMotionValue(-200)
-  const mouseY = useMotionValue(-200)
-  const [isHovered, setIsHovered] = useState(false)
-
-  const x = useSpring(mouseX, SPRING_SOFT)
-  const y = useSpring(mouseY, SPRING_SOFT)
-
-  const glassHighlight = useMotionTemplate`radial-gradient(
-    circle at 30% 28%,
-    rgba(255,255,255,0.55) 0%,
-    rgba(255,255,255,0.06) 50%,
-    transparent 72%
-  )`
-
-  useEffect(() => {
-    setIsTouch(window.matchMedia('(pointer: coarse)').matches)
-  }, [])
-
-  useEffect(() => {
-    if (isTouch) return
-    const onMove = (e: MouseEvent) => { mouseX.set(e.clientX); mouseY.set(e.clientY) }
-    const onOver = (e: MouseEvent) => {
-      if ((e.target as Element).closest('a,button,[data-cursor]')) setIsHovered(true)
-    }
-    const onOut = () => setIsHovered(false)
-    window.addEventListener('mousemove', onMove)
-    document.addEventListener('mouseover', onOver)
-    document.addEventListener('mouseout', onOut)
-    return () => {
-      window.removeEventListener('mousemove', onMove)
-      document.removeEventListener('mouseover', onOver)
-      document.removeEventListener('mouseout', onOut)
-    }
-  }, [mouseX, mouseY, isTouch])
-
-  if (isTouch) return null
-
-  return (
-    <motion.div
-      style={{
-        position: 'fixed', top: 0, left: 0, zIndex: 99999,
-        pointerEvents: 'none', x, y,
-        translateX: '-50%', translateY: '-50%',
-      }}
-    >
-      <motion.div
-        animate={{ width: isHovered ? 54 : 32, height: isHovered ? 54 : 32, opacity: isHovered ? 0.92 : 0.80 }}
-        transition={SPRING_SOFT}
-        style={{
-          borderRadius: '50%',
-          background: 'rgba(160,120,80,0.07)',
-          backdropFilter: 'blur(14px) saturate(1.6)',
-          WebkitBackdropFilter: 'blur(14px) saturate(1.6)',
-          border: '1px solid rgba(160,120,80,0.40)',
-          boxShadow: [
-            'inset 0 1.5px 0 rgba(255,255,255,0.45)',
-            'inset 0 -1px 0 rgba(0,0,0,0.08)',
-            '0 4px 20px rgba(160,120,80,0.14)',
-          ].join(', '),
-          overflow: 'hidden', position: 'relative',
-        }}
-      >
-        <motion.div style={{ position: 'absolute', inset: 0, borderRadius: '50%', background: glassHighlight }} />
-      </motion.div>
-    </motion.div>
-  )
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// NAV — links hidden on mobile, padding responsive, pill morph intact
-// ─────────────────────────────────────────────────────────────────────────────
-function Nav({ isLight }: { isLight: boolean }) {
-  const [scrolled, setScrolled] = useState(false)
-  const isMobile = useIsMobile()
-
-  const scrollProg = useMotionValue(0)
-  const sp = useSpring(scrollProg, SPRING_SOFT)
-  const blurAmt = useTransform(sp, [0, 1], [0, 28])
-  const backdropBlur = useMotionTemplate`blur(${blurAmt}px)`
-
-  useEffect(() => {
-    const fn = () => {
-      const s = window.scrollY > 60
-      setScrolled(s)
-      scrollProg.set(s ? 1 : 0)
-    }
-    window.addEventListener('scroll', fn, { passive: true })
-    return () => window.removeEventListener('scroll', fn)
-  }, [scrollProg])
-
-  return (
-    <>
-      <svg style={{ position: 'absolute', width: 0, height: 0, overflow: 'hidden' }} aria-hidden="true">
-        <defs>
-          {['dark', 'light'].map(m => (
-            <filter key={m} id={`nav-glass-${m}`} x="-10%" y="-40%" width="120%" height="180%" colorInterpolationFilters="sRGB">
-              <feTurbulence type="fractalNoise" baseFrequency="0.65 0.42" numOctaves="3" seed="7" result="noise">
-                <animate attributeName="baseFrequency" values="0.65 0.42;0.67 0.44;0.65 0.42" dur="10s" repeatCount="indefinite"/>
-              </feTurbulence>
-              <feGaussianBlur in="noise" stdDeviation="1.2" result="blurNoise"/>
-              <feDisplacementMap in="SourceGraphic" in2="blurNoise" scale="8" xChannelSelector="R" yChannelSelector="G" result="displaced"/>
-              <feComposite in="displaced" in2="SourceGraphic" operator="atop"/>
-            </filter>
-          ))}
-        </defs>
-      </svg>
-
-      <div style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 1000, display: 'flex', justifyContent: 'center', pointerEvents: 'none' }}>
-        <motion.nav
-          initial={{ y: -32, opacity: 0 }}
-          animate={{
-            y:             scrolled ? 12   : 0,
-            opacity:       1,
-            maxWidth:      scrolled ? 580  : 2000,
-            paddingTop:    scrolled ? 10   : 16,
-            paddingBottom: scrolled ? 10   : 16,
-            // Tighter horizontal padding on mobile in both states
-            paddingLeft:   scrolled ? 16   : (isMobile ? 20 : 48),
-            paddingRight:  scrolled ? 16   : (isMobile ? 20 : 48),
-            borderRadius:  scrolled ? 9999 : 0,
-          }}
-          transition={scrolled ? { duration: 0.52, ease: EASE_OUT_EXPO } : SPRING_SOFT}
-          style={{
-            pointerEvents: 'auto', width: '100%',
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            background: scrolled ? (isLight ? 'rgba(245,240,232,0.78)' : 'rgba(8,8,8,0.80)') : 'transparent',
-            backdropFilter: backdropBlur as unknown as string,
-            WebkitBackdropFilter: backdropBlur as unknown as string,
-            border: scrolled
-              ? (isLight ? '1px solid rgba(0,0,0,0.09)' : '1px solid rgba(255,255,255,0.10)')
-              : '1px solid transparent',
-            boxShadow: scrolled
-              ? (isLight
-                  ? '0 2px 28px rgba(0,0,0,0.09),inset 0 1px 0 rgba(255,255,255,0.62)'
-                  : '0 2px 28px rgba(0,0,0,0.55),inset 0 1px 0 rgba(255,255,255,0.08)')
-              : 'none',
-            filter: scrolled ? `url(#nav-glass-${isLight ? 'light' : 'dark'})` : 'none',
-            overflow: 'hidden', position: 'relative',
-          }}
-        >
-          <AnimatePresence>
-            {scrolled && (
-              <motion.span
-                key="streak"
-                initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                transition={{ duration: 0.3 }}
-                aria-hidden="true"
-                style={{
-                  position: 'absolute', top: 0, left: '8%', right: '8%', height: 1,
-                  background: isLight
-                    ? 'linear-gradient(90deg,transparent,rgba(255,255,255,0.80),transparent)'
-                    : 'linear-gradient(90deg,transparent,rgba(255,255,255,0.20),transparent)',
-                  borderRadius: 9999, pointerEvents: 'none',
-                }}
-              />
-            )}
-          </AnimatePresence>
-
-          {/* Logo */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 9, flexShrink: 0 }}>
-            <div style={{
-              width: 26, height: 26, borderRadius: 7,
-              background: isLight ? 'rgba(0,0,0,0.85)' : 'rgba(255,255,255,0.88)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}>
-              <div style={{ width: 10, height: 10, borderRadius: '50%', background: isLight ? '#F5F0E8' : '#070707' }}/>
-            </div>
-            <span style={{
-              color: isLight ? 'rgba(0,0,0,0.65)' : 'rgba(255,255,255,0.70)',
-              fontSize: 14, fontWeight: 600, letterSpacing: '-0.01em',
-            }}>Palm</span>
-          </div>
-
-          {/* Right side — links only on desktop, CTA always */}
-          <div style={{ display: 'flex', alignItems: 'center' }}>
-            {!isMobile && (
-              <>
-                {[
-                  { label: 'Features', href: '#' },
-                  { label: 'Pricing', href: '/pricing' },
-                  { label: 'Docs', href: '#' },
-                ].map(({ label, href }) => (
-                  <motion.a
-                    key={label} href={href}
-                    whileHover={{ y: -1 }}
-                    transition={SPRING_SNAPPY}
-                    style={{
-                      color: isLight ? 'rgba(0,0,0,0.40)' : 'rgba(255,255,255,0.38)',
-                      fontSize: 13, fontWeight: 500, letterSpacing: '-0.01em',
-                      transition: 'color 0.15s', textDecoration: 'none', marginRight: 32,
-                    }}
-                    onMouseEnter={e => (e.currentTarget.style.color = isLight ? 'rgba(0,0,0,0.75)' : 'rgba(255,255,255,0.80)')}
-                    onMouseLeave={e => (e.currentTarget.style.color = isLight ? 'rgba(0,0,0,0.40)' : 'rgba(255,255,255,0.38)')}
-                  >{label}</motion.a>
-                ))}
-              </>
-            )}
-            <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.97 }} transition={SPRING_SNAPPY}>
-              <Link
-                href="/auth/sign-up"
-                style={{
-                  padding: isMobile ? '7px 14px' : '8px 18px',
-                  borderRadius: 9999,
-                  background: isLight ? 'rgba(0,0,0,0.88)' : 'rgba(255,255,255,0.92)',
-                  color: isLight ? '#F5F0E8' : '#070707',
-                  fontSize: 13, fontWeight: 600, letterSpacing: '-0.01em',
-                  textDecoration: 'none', display: 'block', whiteSpace: 'nowrap',
-                }}
-              >
-                Get started
-              </Link>
-            </motion.div>
-          </div>
-        </motion.nav>
-      </div>
-    </>
-  )
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// HERO — no hardcoded <br/>, font sizes tightened for mobile
-// ─────────────────────────────────────────────────────────────────────────────
-const HERO_WORDS = ['instantly.', 'effortlessly.', 'beautifully.', 'magically.']
-
-function Hero({ isLight }: { isLight: boolean }) {
-  const [wordIdx, setWordIdx] = useState(0)
-  const heroRef = useRef<HTMLElement>(null)
-  const isMobile = useIsMobile()
-
-  const { scrollYProgress } = useScroll({ target: heroRef, offset: ['start start', 'end start'] })
-  const sp = useSpring(scrollYProgress, { stiffness: 60, damping: 18 })
-
-  const particleY   = useTransform(sp, [0, 1], [0, -60])
-  const glowY       = useTransform(sp, [0, 1], [0, 80])
-  const titleY      = useTransform(sp, [0, 1], [0, -220])
-  const titleScale  = useTransform(sp, [0, 1], [1, 0.88])
-  const subtitleY   = useTransform(sp, [0, 1], [0, -140])
-  const ctaY        = useTransform(sp, [0, 1], [0, -80])
-  const heroOpacity = useTransform(sp, [0, 0.6], [1, 0])
-
-  useEffect(() => {
-    const id = setInterval(() => setWordIdx(i => (i + 1) % HERO_WORDS.length), 3200)
-    return () => clearInterval(id)
-  }, [])
-
-  const bg   = isLight ? '#F5F0E8' : '#070707'
-  const text = isLight ? '#0a0a0a' : '#ffffff'
-  const sub  = isLight ? 'rgba(0,0,0,0.44)' : 'rgba(255,255,255,0.36)'
-
-  const stagger = { hidden: {}, show: { transition: { staggerChildren: 0.15, delayChildren: 0.1 } } }
-  const itemUp  = {
-    hidden: { opacity: 0, y: 48, filter: 'blur(4px)' },
-    show:   { opacity: 1, y: 0,  filter: 'blur(0px)', transition: { duration: 0.9, ease: EASE_OUT_EXPO } },
-  }
-  const itemFade = {
-    hidden: { opacity: 0, y: 24 },
-    show:   { opacity: 1, y: 0,  transition: { duration: 0.8, ease: EASE_OUT_EXPO } },
-  }
-
-  return (
-    <section ref={heroRef} style={{
-      position: 'relative', minHeight: '100dvh',
-      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-      overflow: 'hidden', background: bg,
-    }}>
-      <motion.div style={{ position: 'absolute', inset: 0, y: particleY }}>
-        <ParticleBackground />
-      </motion.div>
-
-      <motion.div style={{
-        position: 'absolute', inset: 0, pointerEvents: 'none', y: glowY,
-        background: isLight
-          ? 'radial-gradient(ellipse 55% 45% at 50% 65%, rgba(160,120,80,0.10) 0%, transparent 70%)'
-          : 'radial-gradient(ellipse 60% 50% at 50% 60%, rgba(160,120,80,0.14) 0%, transparent 70%)',
-      }}/>
-
-      <motion.div style={{ opacity: heroOpacity, position: 'relative', zIndex: 10, width: '100%' }}>
-        <motion.div
-          variants={stagger} initial="hidden" animate="show"
-          style={{ textAlign: 'center', padding: '0 24px', maxWidth: 940, margin: '0 auto' }}
-        >
-          <motion.div variants={itemUp} style={{ y: titleY, scale: titleScale, transformOrigin: '50% 60%' }}>
-            <h1 style={{
-              // Tighter clamp on mobile so heading doesn't blow past the screen
-              fontSize: isMobile ? 'clamp(2.2rem, 10vw, 3.2rem)' : 'clamp(3.2rem, 8vw, 7rem)',
-              fontWeight: 800,
-              lineHeight: 1.06, letterSpacing: '-0.045em', color: text, margin: 0,
-            }}>
-              {/*
-                KEY FIX: removed hardcoded <br/> — on mobile it forced a bad break
-                mid-phrase. The animated word now flows inline naturally.
-              */}
-              Turn ideas into interfaces,{' '}
-              <AnimatePresence mode="wait">
-                <motion.span
-                  key={wordIdx}
-                  initial={{ opacity: 0, y: 28, filter: 'blur(12px)' }}
-                  animate={{ opacity: 1, y: 0,  filter: 'blur(0px)' }}
-                  exit={{ opacity: 0, y: -18, filter: 'blur(8px)', transition: { duration: 0.28, ease: 'easeIn' } }}
-                  transition={{ duration: 0.52, ease: EASE_OUT_EXPO }}
-                  style={{ color: '#A07850', display: 'inline-block' }}
-                >
-                  {HERO_WORDS[wordIdx]}
-                </motion.span>
-              </AnimatePresence>
-            </h1>
-          </motion.div>
-
-          <motion.div variants={itemFade} style={{ y: subtitleY }}>
-            <p style={{
-              marginTop: isMobile ? 20 : 32,
-              fontSize: isMobile ? '0.94rem' : 'clamp(1rem, 2.2vw, 1.22rem)',
-              color: sub, fontWeight: 400, lineHeight: 1.68, letterSpacing: '0.005em',
-            }}>
-              {/* Also removed the <br/> here — was breaking into ugly fragments on mobile */}
-              Describe what you want to build. Palm generates production-ready UI{' '}
-              that you can refine, export, and ship — no design tools required.
-            </p>
-          </motion.div>
-
-          <motion.div variants={itemFade} style={{ marginTop: isMobile ? 32 : 48, display: 'flex', justifyContent: 'center', y: ctaY }}>
-            <PhysicsLink href="/auth/sign-up" dark={isLight}>
-              Start building free
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                <path d="M2 7h10M8 3l4 4-4 4" stroke={isLight ? '#F5F0E8' : '#070707'} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-            </PhysicsLink>
-          </motion.div>
-        </motion.div>
-      </motion.div>
-
-      <motion.div
-        initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 2.4, duration: 1.2 }}
-        style={{ position: 'absolute', bottom: 36, left: '50%', transform: 'translateX(-50%)', zIndex: 10 }}
-      >
-        <motion.div
-          animate={{ y: [0, 10, 0] }} transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
-          style={{
-            width: 1, height: 44,
-            background: isLight
-              ? 'linear-gradient(to bottom,rgba(0,0,0,0),rgba(0,0,0,0.22))'
-              : 'linear-gradient(to bottom,rgba(255,255,255,0),rgba(255,255,255,0.24))',
-            margin: '0 auto',
-          }}
-        />
-      </motion.div>
-    </section>
-  )
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// HOW IT WORKS — 3-column grid → vertical stack on mobile
-// ─────────────────────────────────────────────────────────────────────────────
-function HowItWorks({ isLight }: { isLight: boolean }) {
-  const ref = useRef<HTMLElement>(null)
-  const isMobile = useIsMobile()
-  const { scrollYProgress } = useScroll({ target: ref, offset: ['start 0.85', 'end 0.3'] })
-  const sp = useSpring(scrollYProgress, { stiffness: 60, damping: 20 })
-
-  const bg      = isLight ? '#F5F0E8' : '#070707'
-  const text    = isLight ? '#0a0a0a' : '#ffffff'
-  const sub     = isLight ? 'rgba(0,0,0,0.44)' : 'rgba(255,255,255,0.38)'
-  const lineClr = isLight ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.07)'
-
-  const steps = [
-    {
-      n: '01', title: 'Describe your idea',
-      body: 'Type anything — "a dark dashboard for crypto analytics" or "mobile onboarding for a fitness app". Plain language, no syntax.',
-    },
-    {
-      n: '02', title: 'Palm materializes it',
-      body: 'Watch the interface appear in real time. Every layout decision, every color, every component — generated with production intent.',
-    },
-    {
-      n: '03', title: 'Refine and ship',
-      body: 'Iterate with follow-up prompts. Export clean React, copy the code, or push directly to Figma. Zero friction, start to finish.',
-    },
-  ]
-
-  return (
-    <section ref={ref} style={{ background: bg, padding: isMobile ? '80px 24px' : '140px 48px' }}>
-      <div style={{ maxWidth: 1100, margin: '0 auto' }}>
-        <motion.div
-          initial={{ opacity: 0, y: 32 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, margin: '-80px' }}
-          transition={{ duration: 0.8, ease: EASE_OUT_EXPO }}
-          style={{ marginBottom: isMobile ? 52 : 100 }}
-        >
-          <span style={{ fontSize: 11, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'rgba(160,120,80,0.65)' }}>
-            How it works
-          </span>
-          <h2 style={{
-            marginTop: 14,
-            fontSize: isMobile ? 'clamp(1.7rem, 7vw, 2.4rem)' : 'clamp(2rem, 4vw, 3.4rem)',
-            fontWeight: 800, letterSpacing: '-0.038em', color: text, maxWidth: 520,
-          }}>
-            Three steps from idea to interface.
-          </h2>
-        </motion.div>
-
-        <div style={{ display: 'flex', flexDirection: 'column' }}>
-          {steps.map((s, i) => {
-            // Hooks extracted above the JSX return to keep call order stable across renders
-            const dotOpacity = useTransform(sp, [i / 3, (i + 0.5) / 3], [0, 1])
-            const dotScale   = useTransform(sp, [i / 3, (i + 0.5) / 3], [0.5, 1])
-
-            return (
-              <motion.div
-                key={s.n}
-                initial={{ opacity: 0, x: -24 }}
-                whileInView={{ opacity: 1, x: 0 }}
-                viewport={{ once: true, margin: '-60px' }}
-                transition={{ duration: 0.7, ease: EASE_OUT_EXPO, delay: i * 0.14 }}
-                style={isMobile ? {
-                  // Mobile: number → title → body stacked vertically
-                  display: 'flex', flexDirection: 'column', gap: 10,
-                  paddingTop: 32, paddingBottom: 32,
-                  borderTop: `1px solid ${lineClr}`, position: 'relative',
-                } : {
-                  // Desktop: unchanged 2-column grid
-                  display: 'grid', gridTemplateColumns: '80px 1fr',
-                  gap: '0 48px', paddingTop: 48, paddingBottom: 48,
-                  borderTop: `1px solid ${lineClr}`, position: 'relative',
-                }}
-              >
-                <div style={{ paddingTop: isMobile ? 0 : 4 }}>
-                  <span style={{
-                    fontSize: isMobile ? '1.8rem' : 'clamp(2.4rem, 4vw, 3.2rem)',
-                    fontWeight: 800, letterSpacing: '-0.05em',
-                    color: 'rgba(160,120,80,0.25)', lineHeight: 1,
-                  }}>{s.n}</span>
-                </div>
-
-                <div style={isMobile ? {
-                  display: 'flex', flexDirection: 'column', gap: 8,
-                } : {
-                  display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 80px', alignItems: 'start',
-                }}>
-                  <h3 style={{
-                    fontSize: isMobile ? '1.1rem' : 'clamp(1.3rem, 2.2vw, 1.8rem)',
-                    fontWeight: 700, letterSpacing: '-0.03em', color: text, margin: 0,
-                  }}>{s.title}</h3>
-                  <p style={{ fontSize: isMobile ? '0.9rem' : '1rem', lineHeight: 1.72, color: sub, margin: 0 }}>{s.body}</p>
-                </div>
-
-                {/* Dot: hidden on mobile via display:none so it doesn't conflict with flex layout */}
-                <motion.div style={{
-                  position: 'absolute', left: 0, top: '50%', transform: 'translateY(-50%)',
-                  width: 6, height: 6, borderRadius: '50%', background: '#A07850',
-                  display: isMobile ? 'none' : 'block',
-                  opacity: dotOpacity, scale: dotScale,
-                }}/>
-              </motion.div>
-            )
-          })}
-          <div style={{ borderTop: `1px solid ${lineClr}` }}/>
-        </div>
-      </div>
-    </section>
-  )
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// 3D CAMERA SECTION — scene scaled down on mobile, 220vh instead of 350vh
-// ─────────────────────────────────────────────────────────────────────────────
-function CameraSection({ isLight }: { isLight: boolean }) {
-  const containerRef = useRef<HTMLDivElement>(null)
-  const isMobile = useIsMobile()
-  const { scrollYProgress } = useScroll({ target: containerRef, offset: ['start start', 'end end'] })
-  const sp = useSpring(scrollYProgress, { stiffness: 55, damping: 22 })
-
-  // Compute a CSS scale so the 700px scene fits within the mobile viewport.
-  // We do this in a separate useEffect (not useIsMobile) so it also
-  // reacts to resize without needing window access during SSR.
-  const [sceneScale, setSceneScale] = useState(1)
-  useEffect(() => {
-    const compute = () => {
-      setSceneScale(
-        window.innerWidth < 768
-          ? Math.min(1, (window.innerWidth * 0.88) / 700)
-          : 1
-      )
-    }
-    compute()
-    window.addEventListener('resize', compute, { passive: true })
-    return () => window.removeEventListener('resize', compute)
-  }, [])
-
-  const rotateX    = useTransform(sp, [0, 0.55], [56, 0])
-  const rotateY    = useTransform(sp, [0, 0.55], [-22, 0])
-  const camZ       = useTransform(sp, [0, 0.65], [-1100, 0])
-  const sceneScaleMV = useTransform(sp, [0, 0.65], [0.44, 1])
-  const sceneOpac  = useTransform(sp, [0, 0.07, 0.88, 1], [0, 1, 1, 0])
-  const titleOpac  = useTransform(sp, [0.10, 0.34, 0.76, 0.88], [0, 1, 1, 0])
-  const titleY     = useTransform(sp, [0.10, 0.34], [36, 0])
-  const subOpac    = useTransform(sp, [0.26, 0.44, 0.78, 0.90], [0, 1, 1, 0])
-  const subY       = useTransform(sp, [0.26, 0.44], [24, 0])
-  const glowOpac   = useTransform(sp, [0.28, 0.58], [0, 1])
-
-  const bg      = isLight ? '#F5F0E8' : '#070707'
-  const cardBg  = isLight ? 'rgba(0,0,0,0.04)'            : 'rgba(255,255,255,0.05)'
-  const cardBdr = isLight ? '1px solid rgba(0,0,0,0.08)'  : '1px solid rgba(255,255,255,0.11)'
-  const skelHi  = isLight ? 'rgba(0,0,0,0.14)'            : 'rgba(255,255,255,0.18)'
-  const skelLo  = isLight ? 'rgba(0,0,0,0.07)'            : 'rgba(255,255,255,0.08)'
-  const titleClr= isLight ? '#0a0a0a' : '#ffffff'
-  const subClr  = isLight ? 'rgba(0,0,0,0.42)' : 'rgba(255,255,255,0.32)'
-
-  return (
-    // Reduced scroll canvas on mobile — 220vh feels right for the scale of the scene
-    <div ref={containerRef} style={{ height: isMobile ? '220vh' : '350vh', position: 'relative', background: bg }}>
-      <div style={{
-        position: 'sticky', top: 0, height: '100vh', overflow: 'hidden',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-      }}>
-        <div style={{
-          position: 'absolute', inset: 0, pointerEvents: 'none',
-          background: isLight
-            ? 'radial-gradient(ellipse 70% 50% at 50% 70%, rgba(160,120,80,0.07) 0%, transparent 70%)'
-            : 'radial-gradient(ellipse 70% 50% at 50% 70%, rgba(160,120,80,0.09) 0%, transparent 70%)',
-        }}/>
-
-        <div style={{
-          position: 'absolute', top: isMobile ? '7%' : '10%',
-          left: 0, right: 0, textAlign: 'center', zIndex: 20, pointerEvents: 'none',
-          padding: '0 24px',
-        }}>
-          <motion.p style={{
-            fontSize: 11, letterSpacing: '0.18em', textTransform: 'uppercase',
-            color: 'rgba(160,120,80,0.65)', marginBottom: 12, opacity: titleOpac, y: titleY,
-          }}>
-            The experience
-          </motion.p>
-          <motion.h2 style={{
-            fontSize: isMobile ? 'clamp(1.6rem, 7vw, 2.4rem)' : 'clamp(2rem,4.5vw,3.8rem)',
-            fontWeight: 800, letterSpacing: '-0.038em', color: titleClr, margin: 0,
-            opacity: titleOpac, y: titleY,
-          }}>
-            From thought to interface
-          </motion.h2>
-          <motion.p style={{
-            marginTop: 14,
-            fontSize: isMobile ? '0.9rem' : '1.05rem',
-            color: subClr, opacity: subOpac, y: subY,
-          }}>
-            Describe anything. Watch it materialize.
-          </motion.p>
-        </div>
-
-        <motion.div style={{
-          width: '100%', height: '100%',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          perspective: 900, opacity: sceneOpac,
-        }}>
-          {/*
-            Scale wrapper: the 3D scene is always 700×460 internally so all the
-            translateZ / card positions stay correct. We just shrink the wrapper
-            on mobile so it fits without overflow.
-          */}
-          <div style={{ transform: `scale(${sceneScale})`, transformOrigin: 'center center' }}>
-            <motion.div style={{
-              width: 700, height: 460, position: 'relative',
-              transformStyle: 'preserve-3d',
-              rotateX, rotateY, z: camZ, scale: sceneScaleMV,
-            }}>
-              <svg width="700" height="460" viewBox="0 0 700 460" style={{ position: 'absolute', inset: 0 }}>
-                <defs>
-                  <radialGradient id="gridGlow2" cx="50%" cy="50%" r="50%">
-                    <stop offset="0%"   stopColor="#A07850" stopOpacity="0.22"/>
-                    <stop offset="100%" stopColor="#A07850" stopOpacity="0"/>
-                  </radialGradient>
-                </defs>
-                {Array.from({ length: 11 }).map((_, i) => {
-                  const x = (i / 10) * 700
-                  return <line key={`v${i}`} x1={x} y1={0} x2={x} y2={460} stroke={isLight ? 'rgba(0,0,0,0.08)' : 'rgba(160,120,80,0.12)'} strokeWidth={0.6}/>
-                })}
-                {Array.from({ length: 8 }).map((_, i) => {
-                  const y = (i / 7) * 460
-                  return <line key={`h${i}`} x1={0} y1={y} x2={700} y2={y} stroke={isLight ? 'rgba(0,0,0,0.08)' : 'rgba(160,120,80,0.12)'} strokeWidth={0.6}/>
-                })}
-                {[0, 0.16, 0.33, 0.5, 0.66, 0.84, 1].map((t, i) => (
-                  <line key={`r${i}`} x1={t * 700} y1={0} x2={350} y2={230} stroke={isLight ? 'rgba(0,0,0,0.08)' : 'rgba(160,120,80,0.16)'} strokeWidth={0.5}/>
-                ))}
-                <ellipse cx="350" cy="230" rx="220" ry="140" fill="url(#gridGlow2)"/>
-                <motion.line x1="0" y1="230" x2="700" y2="230" stroke="#A07850" strokeWidth={1} strokeDasharray="20 8" style={{ opacity: glowOpac }} animate={{ strokeDashoffset: [0, -280] }} transition={{ duration: 3, repeat: Infinity, ease: 'linear' }}/>
-                <motion.line x1="350" y1="0" x2="350" y2="460" stroke="#A07850" strokeWidth={1} strokeDasharray="20 8" style={{ opacity: glowOpac }} animate={{ strokeDashoffset: [0, -280] }} transition={{ duration: 3, repeat: Infinity, ease: 'linear', delay: 1.5 }}/>
-              </svg>
-
-              <motion.div
-                style={{
-                  position: 'absolute', top: '50%', left: '50%',
-                  transform: 'translate(-50%,-50%)',
-                  width: 280, height: 200, borderRadius: 20,
-                  background: cardBg, backdropFilter: 'blur(24px)',
-                  WebkitBackdropFilter: 'blur(24px)', border: cardBdr,
-                  boxShadow: isLight ? '0 12px 48px rgba(0,0,0,0.12)' : '0 24px 80px rgba(0,0,0,0.6)',
-                  padding: '22px 20px', display: 'flex', flexDirection: 'column', gap: 10,
-                  translateZ: 60,
-                }}
-                animate={{ y: [0, -7, 0] }} transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                  <div style={{ width: 28, height: 28, borderRadius: 8, background: 'rgba(160,120,80,0.25)' }}/>
-                  <div style={{ width: 80, height: 7, borderRadius: 4, background: skelHi }}/>
-                </div>
-                {[null, null, null].map((_, i) => (
-                  <div key={i} style={{ width: i === 1 ? '80%' : i === 2 ? '90%' : '100%', height: 7, borderRadius: 4, background: skelLo }}/>
-                ))}
-                <div style={{ marginTop: 6, display: 'flex', gap: 8 }}>
-                  <div style={{ flex: 1, height: 32, borderRadius: 8, background: 'rgba(160,120,80,0.42)' }}/>
-                  <div style={{ width: 72, height: 32, borderRadius: 8, background: skelLo }}/>
-                </div>
-              </motion.div>
-
-              <motion.div
-                style={{
-                  position: 'absolute', top: '30%', left: '4%',
-                  width: 130, height: 90, borderRadius: 14,
-                  background: cardBg, border: cardBdr,
-                  padding: '14px', display: 'flex', flexDirection: 'column', gap: 7,
-                  translateZ: 30,
-                }}
-                animate={{ y: [0, 6, 0] }} transition={{ duration: 5.5, repeat: Infinity, ease: 'easeInOut', delay: 0.8 }}
-              >
-                <div style={{ width: '70%', height: 6, borderRadius: 3, background: skelHi }}/>
-                <div style={{ width: '100%', height: 6, borderRadius: 3, background: skelLo }}/>
-                <div style={{ width: '60%', height: 6, borderRadius: 3, background: skelLo }}/>
-              </motion.div>
-
-              <motion.div
-                style={{
-                  position: 'absolute', top: '20%', right: '4%',
-                  width: 120, height: 80, borderRadius: 14,
-                  background: cardBg, border: cardBdr,
-                  padding: '12px', display: 'flex', flexDirection: 'column', gap: 6,
-                  translateZ: 20,
-                }}
-                animate={{ y: [0, -9, 0] }} transition={{ duration: 6, repeat: Infinity, ease: 'easeInOut', delay: 1.4 }}
-              >
-                <div style={{ width: '80%', height: 6, borderRadius: 3, background: 'rgba(160,120,80,0.35)' }}/>
-                <div style={{ width: '60%', height: 6, borderRadius: 3, background: skelLo }}/>
-                <div style={{ width: '90%', height: 6, borderRadius: 3, background: skelLo }}/>
-              </motion.div>
-
-              <motion.div
-                style={{
-                  position: 'absolute', bottom: '8%', left: '50%',
-                  transform: 'translateX(-50%)',
-                  width: 200, height: 52, borderRadius: 12,
-                  background: cardBg, border: cardBdr,
-                  padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 10,
-                  translateZ: 10,
-                }}
-                animate={{ y: [0, 5, 0] }} transition={{ duration: 4.5, repeat: Infinity, ease: 'easeInOut', delay: 2 }}
-              >
-                <div style={{ width: 28, height: 28, borderRadius: 8, background: 'rgba(160,120,80,0.25)', flexShrink: 0 }}/>
-                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 5 }}>
-                  <div style={{ height: 5, borderRadius: 3, background: skelHi }}/>
-                  <div style={{ height: 5, width: '60%', borderRadius: 3, background: skelLo }}/>
-                </div>
-              </motion.div>
-            </motion.div>
-          </div>
-        </motion.div>
-      </div>
-    </div>
-  )
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// FEATURES BENTO — 12-col grid on desktop, flex column on mobile
-// MagneticCard tilt still works on desktop; no-ops naturally on touch
-// ─────────────────────────────────────────────────────────────────────────────
-function MagneticCard({
-  children, delay = 0, isLight, style = {},
-}: {
-  children: React.ReactNode
-  delay?: number
-  isLight: boolean
-  style?: React.CSSProperties
-}) {
-  const ref = useRef<HTMLDivElement>(null)
-  const [visible, setVisible] = useState(false)
-  const rotX = useMotionValue(0)
-  const rotY = useMotionValue(0)
-
-  useEffect(() => {
-    const obs = new IntersectionObserver(([e]) => { if (e.isIntersecting) setVisible(true) }, { threshold: 0.12 })
-    if (ref.current) obs.observe(ref.current)
-    return () => obs.disconnect()
-  }, [])
-
-  const onMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect()
-    rotX.set(((e.clientY - (rect.top  + rect.height / 2)) / rect.height) * -8)
-    rotY.set(((e.clientX - (rect.left + rect.width  / 2)) / rect.width)  *  8)
-  }
-  const onMouseLeave = () => { rotX.set(0); rotY.set(0) }
-
-  const srX = useSpring(rotX, { stiffness: 260, damping: 24 })
-  const srY = useSpring(rotY, { stiffness: 260, damping: 24 })
-
-  return (
-    <motion.div
-      ref={ref}
-      initial={{ opacity: 0, y: 32 }}
-      animate={visible ? { opacity: 1, y: 0 } : {}}
-      transition={{ duration: 0.72, ease: EASE_OUT_EXPO, delay }}
-      onMouseMove={onMouseMove}
-      onMouseLeave={onMouseLeave}
-      style={{
-        rotateX: srX, rotateY: srY,
-        transformStyle: 'preserve-3d',
-        borderRadius: 22,
-        background: isLight ? 'rgba(0,0,0,0.03)' : 'rgba(255,255,255,0.04)',
-        backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)',
-        border: isLight ? '1px solid rgba(0,0,0,0.07)' : '1px solid rgba(255,255,255,0.09)',
-        boxShadow: isLight
-          ? '0 4px 24px rgba(0,0,0,0.06),inset 0 1px 0 rgba(255,255,255,0.70)'
-          : '0 8px 40px rgba(0,0,0,0.4),inset 0 1px 0 rgba(255,255,255,0.07)',
-        overflow: 'hidden', position: 'relative',
-        ...style,
-      }}
-    >
-      <div style={{
-        position: 'absolute', top: 0, left: '10%', right: '10%', height: 1,
-        background: isLight
-          ? 'linear-gradient(90deg,transparent,rgba(255,255,255,0.90),transparent)'
-          : 'linear-gradient(90deg,transparent,rgba(255,255,255,0.14),transparent)',
-        pointerEvents: 'none',
-      }}/>
       {children}
     </motion.div>
   )
 }
 
-function Features({ isLight }: { isLight: boolean }) {
+// ─── Nav ──────────────────────────────────────────────────────────────────────
+function Nav({ isLight }: { isLight: boolean }) {
+  const [scrolled, setScrolled] = useState(false)
   const isMobile = useIsMobile()
-  const text    = isLight ? '#0a0a0a' : '#ffffff'
-  const subText = isLight ? 'rgba(0,0,0,0.44)' : 'rgba(255,255,255,0.38)'
 
-  const features = [
-    {
-      title: 'Describe once, ship forever',
-      body: "Type what you want to build in plain language. Palm interprets intent, not keywords — and generates interfaces that look like a designer spent weeks on them.",
-      col: '1 / 8', row: '1', large: true,
-      icon: <svg width="22" height="22" viewBox="0 0 22 22" fill="none"><path d="M3 11h16M11 3v16" stroke="#A07850" strokeWidth="2" strokeLinecap="round"/><circle cx="11" cy="11" r="2" fill="#A07850"/></svg>,
-    },
-    {
-      title: 'Liquid glass. Always.',
-      body: "Every output inherits Palm's glass design system — your brand, our polish. Dark, light, in-between.",
-      col: '8 / 13', row: '1', large: false,
-      icon: <svg width="22" height="22" viewBox="0 0 22 22" fill="none"><circle cx="11" cy="11" r="8" stroke="#A07850" strokeWidth="1.5"/><path d="M11 3c4.4 0 8 3.6 8 8" stroke="#A07850" strokeWidth="1.5" strokeLinecap="round"/></svg>,
-    },
-    {
-      title: 'Export-ready code',
-      body: 'Clean React, HTML, or Figma. Copy, paste, ship.',
-      col: '1 / 5', row: '2', large: false,
-      icon: <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M3 9h12M10 5l4 4-4 4" stroke="#A07850" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/></svg>,
-    },
-    {
-      title: 'Any platform',
-      body: 'Web, mobile, tablet — Palm knows the canvas and designs accordingly.',
-      col: '5 / 9', row: '2', large: false,
-      icon: <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><rect x="1.5" y="3" width="15" height="10" rx="2" stroke="#A07850" strokeWidth="1.5"/><path d="M6 15h6" stroke="#A07850" strokeWidth="1.5" strokeLinecap="round"/></svg>,
-    },
-    {
-      title: 'Real-time refinement',
-      body: 'Iterate with follow-up prompts. Palm remembers context and improves every iteration.',
-      col: '9 / 13', row: '2', large: false,
-      icon: <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M2 9a7 7 0 0 1 13.5-2.5" stroke="#A07850" strokeWidth="1.5" strokeLinecap="round"/><path d="M16 9a7 7 0 0 1-13.5 2.5" stroke="#A07850" strokeWidth="1.5" strokeLinecap="round"/><path d="M14 4l1.5 2.5L13 7" stroke="#A07850" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>,
-    },
-  ]
+  useEffect(() => {
+    const fn = () => setScrolled(window.scrollY > 60)
+    window.addEventListener('scroll', fn, { passive: true })
+    return () => window.removeEventListener('scroll', fn)
+  }, [])
+
+  const text = isLight ? '#0a0a0a' : '#ffffff'
+  const muted = isLight ? 'rgba(0,0,0,0.44)' : 'rgba(255,255,255,0.44)'
+  const navBg = scrolled
+    ? (isLight ? 'rgba(255,255,255,0.86)' : 'rgba(10,10,10,0.88)')
+    : 'transparent'
+  const border = scrolled
+    ? (isLight ? '1px solid rgba(0,0,0,0.08)' : '1px solid rgba(255,255,255,0.08)')
+    : '1px solid transparent'
 
   return (
-    <section style={{ background: isLight ? '#F5F0E8' : '#070707', padding: isMobile ? '80px 24px' : '130px 48px' }}>
-      <div style={{ maxWidth: 1100, margin: '0 auto' }}>
-        <motion.div
-          initial={{ opacity: 0, y: 28 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, margin: '-80px' }}
-          transition={{ duration: 0.8, ease: EASE_OUT_EXPO }}
-          style={{ textAlign: 'center', marginBottom: isMobile ? 48 : 80 }}
-        >
-          <span style={{ fontSize: 11, letterSpacing: '0.18em', textTransform: 'uppercase', color: isLight ? 'rgba(160,120,80,0.70)' : 'rgba(160,120,80,0.60)' }}>
-            Why Palm
-          </span>
-          <h2 style={{
-            marginTop: 14,
-            fontSize: isMobile ? 'clamp(1.7rem, 7vw, 2.4rem)' : 'clamp(2rem,4vw,3.4rem)',
-            fontWeight: 800, letterSpacing: '-0.038em', color: text,
-          }}>
-            Every detail. No friction.
-          </h2>
-        </motion.div>
+    <div style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 1000, display: 'flex', justifyContent: 'center', pointerEvents: 'none' }}>
+      <motion.nav
+        initial={{ y: -24, opacity: 0 }}
+        animate={{
+          y: scrolled ? 12 : 0, opacity: 1,
+          maxWidth: scrolled ? 600 : 2000,
+          borderRadius: scrolled ? 9999 : 0,
+          paddingTop: scrolled ? 10 : 18,
+          paddingBottom: scrolled ? 10 : 18,
+          paddingLeft: scrolled ? 20 : (isMobile ? 20 : 48),
+          paddingRight: scrolled ? 20 : (isMobile ? 20 : 48),
+        }}
+        transition={{ duration: 0.44, ease: EX }}
+        style={{
+          pointerEvents: 'auto', width: '100%',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          background: navBg,
+          backdropFilter: scrolled ? 'blur(20px)' : 'none',
+          WebkitBackdropFilter: scrolled ? 'blur(20px)' : 'none',
+          border,
+          boxShadow: scrolled ? (isLight ? '0 1px 24px rgba(0,0,0,0.07)' : '0 1px 24px rgba(0,0,0,0.44)') : 'none',
+        }}
+      >
+        {/* Logo */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{ width: 24, height: 24, borderRadius: 6, background: text, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div style={{ width: 9, height: 9, borderRadius: '50%', background: isLight ? '#fff' : '#0a0a0a' }} />
+          </div>
+          <span style={{ fontSize: 14, fontWeight: 600, letterSpacing: '-0.01em', color: text }}>Palm</span>
+        </div>
 
-        {/*
-          Desktop: 12-column bento grid with explicit col/row placement.
-          Mobile: plain flex column — gridColumn/gridRow on each card are ignored.
-        */}
-        <div style={isMobile ? {
-          display: 'flex', flexDirection: 'column', gap: 12,
-        } : {
-          display: 'grid', gridTemplateColumns: 'repeat(12,1fr)', gridTemplateRows: 'auto auto', gap: 14,
+        {/* Right */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 12 : 32 }}>
+          {!isMobile && (['Features', 'Pricing', 'Docs'] as const).map(label => (
+            <a key={label} href="#" style={{ fontSize: 13, fontWeight: 500, letterSpacing: '-0.01em', color: muted, textDecoration: 'none', transition: 'color 0.15s' }}
+              onMouseEnter={e => (e.currentTarget.style.color = text)}
+              onMouseLeave={e => (e.currentTarget.style.color = muted)}
+            >{label}</a>
+          ))}
+          <Link href="/auth/sign-up" style={{
+            padding: isMobile ? '7px 14px' : '8px 18px', borderRadius: 9999,
+            background: text, color: isLight ? '#fff' : '#0a0a0a',
+            fontSize: 13, fontWeight: 600, letterSpacing: '-0.01em',
+            textDecoration: 'none', whiteSpace: 'nowrap',
+          }}>Get started</Link>
+        </div>
+      </motion.nav>
+    </div>
+  )
+}
+
+// ─── Hero ─────────────────────────────────────────────────────────────────────
+function Hero({ isLight }: { isLight: boolean }) {
+  const isMobile = useIsMobile()
+  const ref      = useRef<HTMLElement>(null)
+
+  const [staticDone, setStaticDone] = useState(false)
+  const [showRest, setShowRest]     = useState(false)
+
+  const onStaticDone = useRef(() => setStaticDone(true))
+  const staticText   = useStaticTypewriter('Turn ideas into interfaces,', onStaticDone.current)
+  const typed        = useTypewriter()
+
+  // Wait for first word to finish typing + small breath, then fade in smoothly
+  useEffect(() => {
+    if (!staticDone) return
+    const t = setTimeout(() => setShowRest(true), 1100)
+    return () => clearTimeout(t)
+  }, [staticDone])
+
+  const { scrollYProgress } = useScroll({ target: ref, offset: ['start start', 'end start'] })
+  const y       = useTransform(scrollYProgress, [0, 1], [0, -90])
+  const opacity = useTransform(scrollYProgress, [0, 0.5], [1, 0])
+
+  const text  = isLight ? '#0a0a0a' : '#ffffff'
+  const muted = isLight ? 'rgba(0,0,0,0.44)' : 'rgba(255,255,255,0.44)'
+
+  const headSize = isMobile ? 'clamp(2.2rem, 9vw, 3rem)' : 'clamp(2.8rem, 5.5vw, 5rem)'
+
+  return (
+    <section ref={ref} style={{
+      position: 'relative', minHeight: '100dvh',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      overflow: 'hidden', background: isLight ? '#ffffff' : '#0a0a0a',
+    }}>
+      <ParticleBackground isLight={isLight} />
+
+      <motion.div style={{ y, opacity, position: 'relative', zIndex: 10, width: '100%' }}>
+        <div style={{ textAlign: 'center', padding: '0 48px', maxWidth: 1100, margin: '0 auto' }}>
+
+          {/* Static heading — types out on load */}
+          <h1 style={{ fontSize: headSize, fontWeight: 600, lineHeight: 1.12, letterSpacing: '-0.03em', color: text, margin: 0, minHeight: '1.2em' }}>
+            {staticText}
+            {!staticDone && (
+              <span style={{ width: 2, height: '0.75em', background: text, marginLeft: 3, borderRadius: 2, display: 'inline-block', animation: 'blink 1s step-end infinite' }} />
+            )}
+          </h1>
+
+          {/* Typewriter line — starts after static is done */}
+          {staticDone && (
+            <div style={{
+              fontSize: headSize, fontWeight: 600, lineHeight: 1.12, letterSpacing: '-0.03em',
+              color: text, minHeight: '1.2em',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+              {typed}
+              <span style={{ width: 2, height: '0.75em', background: text, marginLeft: 3, borderRadius: 2, display: 'inline-block', animation: 'blink 1s step-end infinite' }} />
+            </div>
+          )}
+
+          {/* Subtitle + buttons — fade in once first word is fully typed */}
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={showRest ? { opacity: 1, y: 0 } : { opacity: 0, y: 10 }}
+            transition={{ duration: 1.4, ease: [0.16, 1, 0.3, 1] }}
+          >
+            <p style={{
+              fontSize: isMobile ? '0.95rem' : '1rem', color: muted,
+              lineHeight: 1.72, maxWidth: 460, margin: `${isMobile ? 20 : 28}px auto 0`,
+            }}>
+              The fastest way from idea to something you can actually show people.
+            </p>
+          </motion.div>
+
+        </div>
+      </motion.div>
+
+      {/* Scroll line */}
+      <motion.div
+        initial={{ opacity: 0 }} animate={showRest ? { opacity: 1 } : { opacity: 0 }} transition={{ delay: 1, duration: 1 }}
+        style={{ position: 'absolute', bottom: 36, left: '50%', transform: 'translateX(-50%)', zIndex: 10 }}
+      >
+        <motion.div
+          animate={{ y: [0, 8, 0] }} transition={{ duration: 1.8, repeat: Infinity, ease: 'easeInOut' }}
+          style={{
+            width: 1, height: 38,
+            background: isLight
+              ? 'linear-gradient(to bottom, transparent, rgba(0,0,0,0.2))'
+              : 'linear-gradient(to bottom, transparent, rgba(255,255,255,0.2))',
+          }}
+        />
+      </motion.div>
+    </section>
+  )
+}
+
+// ─── Prompt Stage ─────────────────────────────────────────────────────────────
+const PROMPTS = [
+  'A dark dashboard for a crypto analytics startup',
+  'Mobile onboarding for a fitness app, clean and minimal',
+  'SaaS pricing page, three tiers, glassmorphism aesthetic',
+  'Landing page for an AI writing tool, bold typography',
+  'E-commerce product page for a luxury fashion brand',
+  'Admin panel with sidebar nav and data tables, minimal',
+]
+
+function PromptStage() {
+  const ref    = useRef<HTMLDivElement>(null)
+  const inView = useInView(ref, { once: false, margin: '-20%' })
+
+  const { scrollYProgress } = useScroll({ target: ref, offset: ['start end', 'end start'] })
+  const spotOpacity = useTransform(scrollYProgress, [0.05, 0.25, 0.75, 0.95], [0, 1, 1, 0])
+  const boxY        = useTransform(scrollYProgress, [0.05, 0.3],  [40, 0])
+  const boxOpacity  = useTransform(scrollYProgress, [0.05, 0.3],  [0, 1])
+
+  const [promptIdx, setPromptIdx] = useState(0)
+  const [typed,     setTyped]     = useState('')
+  const [deleting,  setDeleting]  = useState(false)
+
+  useEffect(() => {
+    if (!inView) return
+    const word = PROMPTS[promptIdx]
+    if (!deleting && typed === word) {
+      const t = setTimeout(() => setDeleting(true), 2200)
+      return () => clearTimeout(t)
+    }
+    if (deleting && typed === '') {
+      setDeleting(false)
+      setPromptIdx(i => (i + 1) % PROMPTS.length)
+      return
+    }
+    const t = setTimeout(
+      () => setTyped(deleting ? typed.slice(0, -1) : word.slice(0, typed.length + 1)),
+      deleting ? 18 : 52,
+    )
+    return () => clearTimeout(t)
+  }, [typed, promptIdx, deleting, inView])
+
+  return (
+    <section ref={ref} style={{
+      position: 'relative', background: '#000',
+      minHeight: '100vh', display: 'flex',
+      alignItems: 'center', justifyContent: 'center',
+      overflow: 'hidden',
+    }}>
+
+      {/* Spotlight cone from top */}
+      <motion.div style={{
+        position: 'absolute', top: 0, left: '50%',
+        transform: 'translateX(-50%)',
+        width: '70%', height: '100%',
+        background: 'radial-gradient(ellipse 55% 55% at 50% 0%, rgba(255,255,255,0.11) 0%, transparent 70%)',
+        opacity: spotOpacity,
+        pointerEvents: 'none',
+      }} />
+
+      {/* Soft pool of light behind the box */}
+      <motion.div style={{
+        position: 'absolute',
+        width: 700, height: 400,
+        borderRadius: '50%',
+        background: 'radial-gradient(ellipse, rgba(255,255,255,0.05) 0%, transparent 70%)',
+        opacity: spotOpacity,
+        pointerEvents: 'none',
+      }} />
+
+      {/* Dotted grid — same treatment as hero but dark */}
+      <div style={{
+        position: 'absolute', inset: 0,
+        backgroundImage: 'radial-gradient(circle, rgba(255,255,255,0.12) 1px, transparent 1px)',
+        backgroundSize: '28px 28px',
+        pointerEvents: 'none',
+      }} />
+
+      <motion.div style={{
+        position: 'relative', zIndex: 2,
+        width: '100%', maxWidth: 680,
+        padding: '0 32px',
+        y: boxY, opacity: boxOpacity,
+      }}>
+
+        {/* Label */}
+        <p style={{
+          fontSize: 11, letterSpacing: '0.16em', textTransform: 'uppercase',
+          color: 'rgba(255,255,255,0.28)', margin: '0 0 22px', textAlign: 'center',
+        }}>Describe anything</p>
+
+        {/* Glass textarea */}
+        <div style={{
+          borderRadius: 22,
+          background: 'rgba(255,255,255,0.04)',
+          border: '1px solid rgba(255,255,255,0.1)',
+          backdropFilter: 'blur(32px)',
+          WebkitBackdropFilter: 'blur(32px)',
+          boxShadow: [
+            '0 0 0 1px rgba(255,255,255,0.04)',
+            '0 32px 80px rgba(0,0,0,0.7)',
+            '0 8px 24px rgba(0,0,0,0.5)',
+            'inset 0 1px 0 rgba(255,255,255,0.12)',
+          ].join(', '),
+          padding: '28px 32px 22px',
+          minHeight: 160,
+          position: 'relative',
         }}>
-          {features.map((f, i) => (
-            <MagneticCard
-              key={f.title} isLight={isLight} delay={i * 0.07}
-              style={isMobile ? {
-                // No grid placement needed — flex handles it
-                padding: f.large ? '32px 24px' : '28px 20px',
-              } : {
-                gridColumn: f.col, gridRow: f.row,
-                padding: f.large ? '44px 40px' : '36px 32px',
-                minHeight: f.large ? 300 : 210,
-              }}
+
+          {/* Specular rim */}
+          <div style={{
+            position: 'absolute', top: 0, left: '8%', right: '8%', height: 1,
+            background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.22), transparent)',
+          }} />
+
+          {/* Typed prompt */}
+          <p style={{
+            fontSize: '1.08rem', lineHeight: 1.72,
+            color: 'rgba(255,255,255,0.82)',
+            margin: 0, minHeight: '5em',
+            letterSpacing: '-0.012em', fontWeight: 400,
+          }}>
+            {typed}
+            <span style={{
+              display: 'inline-block', width: 2, height: '1em',
+              background: 'rgba(255,255,255,0.75)',
+              marginLeft: 2, borderRadius: 1,
+              verticalAlign: 'text-bottom',
+              animation: 'blink 1s step-end infinite',
+            }} />
+          </p>
+
+          {/* Bottom row */}
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            marginTop: 20, paddingTop: 16,
+            borderTop: '1px solid rgba(255,255,255,0.07)',
+          }}>
+            <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.2)', letterSpacing: '-0.01em' }}>
+              Palm · UI Generator
+            </span>
+            {/* Send button */}
+            <div style={{
+              width: 34, height: 34, borderRadius: '50%',
+              background: 'rgba(255,255,255,0.88)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              boxShadow: '0 2px 12px rgba(255,255,255,0.15)',
+            }}>
+              <svg width="13" height="13" viewBox="0 0 14 14" fill="none">
+                <path d="M7 11V3M3 7l4-4 4 4" stroke="#000" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </div>
+          </div>
+        </div>
+
+        <p style={{
+          textAlign: 'center', fontSize: 12,
+          color: 'rgba(255,255,255,0.18)',
+          margin: '22px 0 0', letterSpacing: '-0.01em',
+        }}>
+          No design skills. No templates. Just describe.
+        </p>
+      </motion.div>
+    </section>
+  )
+}
+
+// ─── Statement — inverted section, word-by-word scroll reveal ─────────────────
+function Statement({ isLight }: { isLight: boolean }) {
+  const isMobile = useIsMobile()
+  const ref = useRef<HTMLDivElement>(null)
+  const inView = useInView(ref, { once: true, margin: '-15%' })
+
+  const bg = isLight ? '#0a0a0a' : '#f4f4f4'
+  const text = isLight ? '#ffffff' : '#0a0a0a'
+  const words = 'Palm is your AI design partner, built for founders who move fast and ship without compromise.'.split(' ')
+
+  return (
+    <section style={{ background: bg, padding: isMobile ? '100px 28px' : '160px 64px' }}>
+      <div style={{ maxWidth: 1000, margin: '0 auto' }}>
+        <div
+          ref={ref}
+          style={{
+            fontSize: isMobile ? 'clamp(1.8rem, 5.5vw, 2.4rem)' : 'clamp(2.4rem, 4.2vw, 3.8rem)',
+            fontWeight: 700, lineHeight: 1.22, letterSpacing: '-0.035em',
+            display: 'flex', flexWrap: 'wrap', gap: '0 0.26em', alignItems: 'baseline',
+          }}
+        >
+          {words.map((word, i) => (
+            <motion.span
+              key={i}
+              initial={{ opacity: 0.1 }}
+              animate={inView ? { opacity: 1 } : { opacity: 0.1 }}
+              transition={{ duration: 0.7, delay: i * 0.08, ease: EX }}
+              style={{ display: 'inline-block', color: text }}
             >
-              <div style={{
-                width: f.large ? 48 : 40, height: f.large ? 48 : 40,
-                borderRadius: f.large ? 14 : 12,
-                background: 'rgba(160,120,80,0.16)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                marginBottom: f.large ? (isMobile ? 16 : 24) : (isMobile ? 14 : 20),
-              }}>{f.icon}</div>
-              <h3 style={{
-                fontSize: f.large
-                  ? (isMobile ? '1.15rem' : '1.6rem')
-                  : (isMobile ? '1.02rem' : '1.22rem'),
-                fontWeight: 700, letterSpacing: '-0.028em', color: text, margin: '0 0 10px',
-              }}>{f.title}</h3>
-              <p style={{
-                fontSize: f.large
-                  ? (isMobile ? '0.9rem' : '0.97rem')
-                  : (isMobile ? '0.86rem' : '0.9rem'),
-                lineHeight: 1.7, color: subText, margin: 0,
-              }}>{f.body}</p>
-            </MagneticCard>
+              {word}
+            </motion.span>
           ))}
         </div>
       </div>
@@ -929,519 +463,307 @@ function Features({ isLight }: { isLight: boolean }) {
   )
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// FAQ — padding fixed, answer paddingRight removed on mobile
-// ─────────────────────────────────────────────────────────────────────────────
-const FAQ_ITEMS = [
+// ─── How It Works ─────────────────────────────────────────────────────────────
+const STEPS = [
   {
-    q: 'What exactly is Palm?',
-    a: "Palm is an AI UI generator with a design point of view. Describe what you want to build in plain English and watch a polished, production-ready interface appear. No drag-and-drop, no templates, no design tools.",
+    n: '01', title: 'Describe your idea',
+    body: 'Type anything in plain language — "dark dashboard for crypto analytics" or "mobile onboarding for a fitness app". No syntax, no templates.',
   },
   {
-    q: 'Is it free to start?',
-    a: "Yes — early access is completely free with no credit card required. We'll introduce paid plans as we scale. Early users get priority access and preferential pricing, permanently.",
+    n: '02', title: 'Palm materializes it',
+    body: 'Watch your interface appear in real time. Every layout, color, and component generated with production intent.',
   },
   {
-    q: 'What can I export?',
-    a: "Clean React (TypeScript), raw HTML/CSS, or Figma-ready components. Everything Palm generates is production-intent — not just pretty, but shippable.",
+    n: '03', title: 'Refine and ship',
+    body: 'Iterate with follow-up prompts. Export clean React, copy the code, or push to Figma. Zero friction, start to finish.',
   },
-  {
-    q: 'Does it handle mobile and responsive UI?',
-    a: "Absolutely. Palm understands the canvas. Whether you're describing a 375px mobile onboarding flow or a 1440px analytics dashboard, the output is responsive and intentional by default.",
-  },
-  {
-    q: 'How is Palm different from v0, Galileo, or other AI design tools?',
-    a: "Palm has a point of view. It's not a generic code generator — it's built around a specific aesthetic (liquid glass, precise motion, typographic craft) that makes every output feel considered, not computed.",
-  },
+]
+
+function HowItWorks({ isLight }: { isLight: boolean }) {
+  const isMobile = useIsMobile()
+  const text = isLight ? '#0a0a0a' : '#ffffff'
+  const muted = isLight ? 'rgba(0,0,0,0.44)' : 'rgba(255,255,255,0.44)'
+  const line = isLight ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.07)'
+  const num = isLight ? 'rgba(0,0,0,0.09)' : 'rgba(255,255,255,0.09)'
+
+  return (
+    <section id="how" style={{ background: isLight ? '#ffffff' : '#0a0a0a', padding: isMobile ? '80px 24px' : '140px 48px' }}>
+      <div style={{ maxWidth: 1100, margin: '0 auto' }}>
+        <FadeIn>
+          <p style={{ fontSize: 11, letterSpacing: '0.15em', textTransform: 'uppercase', color: muted, margin: '0 0 12px' }}>How it works</p>
+          <h2 style={{
+            fontSize: isMobile ? 'clamp(1.8rem, 7vw, 2.4rem)' : 'clamp(2rem, 4vw, 3.2rem)',
+            fontWeight: 700, letterSpacing: '-0.035em', color: text, margin: '0 0 80px', maxWidth: 460,
+          }}>Three steps from idea to interface.</h2>
+        </FadeIn>
+
+        {STEPS.map((s, i) => (
+          <FadeIn key={s.n} delay={i * 0.1}>
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: isMobile ? '1fr' : '80px 1fr 1.2fr',
+              gap: isMobile ? 8 : '0 48px',
+              padding: `${isMobile ? 28 : 44}px 0`,
+              borderTop: `1px solid ${line}`,
+            }}>
+              <span style={{ fontSize: isMobile ? '1.8rem' : 'clamp(2.2rem, 4vw, 3rem)', fontWeight: 800, letterSpacing: '-0.05em', color: num, lineHeight: 1 }}>
+                {s.n}
+              </span>
+              <h3 style={{
+                fontSize: isMobile ? '1.08rem' : 'clamp(1.2rem, 2vw, 1.55rem)',
+                fontWeight: 700, letterSpacing: '-0.025em', color: text,
+                margin: isMobile ? '4px 0 8px' : 0,
+              }}>{s.title}</h3>
+              <p style={{ fontSize: '0.93rem', lineHeight: 1.75, color: muted, margin: 0 }}>{s.body}</p>
+            </div>
+          </FadeIn>
+        ))}
+        <div style={{ borderTop: `1px solid ${line}` }} />
+      </div>
+    </section>
+  )
+}
+
+// ─── Features ─────────────────────────────────────────────────────────────────
+const FEATS = [
+  { title: 'Describe once, ship forever', body: 'Plain language in, production-ready UI out. Palm interprets intent — every output looks like a designer spent weeks on it.', span: 2 },
+  { title: 'Export-ready code', body: 'Clean React, HTML, or Figma. Copy, paste, ship.', span: 1 },
+  { title: 'Liquid glass design system', body: 'Every output inherits a refined aesthetic. Dark, light, and everything in between.', span: 1 },
+  { title: 'Any platform', body: 'Web, mobile, tablet — Palm designs for the canvas you give it. Responsive by default.', span: 2 },
+  { title: 'Real-time refinement', body: 'Iterate with follow-up prompts. Palm remembers context and improves every iteration.', span: 2 },
+]
+
+function Features({ isLight }: { isLight: boolean }) {
+  const isMobile = useIsMobile()
+  const text = isLight ? '#0a0a0a' : '#ffffff'
+  const muted = isLight ? 'rgba(0,0,0,0.44)' : 'rgba(255,255,255,0.44)'
+  const cardBg = isLight ? 'rgba(0,0,0,0.03)' : 'rgba(255,255,255,0.03)'
+  const cardBorder = isLight ? 'rgba(0,0,0,0.07)' : 'rgba(255,255,255,0.07)'
+
+  return (
+    <section style={{ background: isLight ? '#f9f9f9' : '#0d0d0d', padding: isMobile ? '80px 24px' : '140px 48px' }}>
+      <div style={{ maxWidth: 1100, margin: '0 auto' }}>
+        <FadeIn style={{ textAlign: 'center', marginBottom: isMobile ? 48 : 72 }}>
+          <p style={{ fontSize: 11, letterSpacing: '0.15em', textTransform: 'uppercase', color: muted, margin: '0 0 12px' }}>Why Palm</p>
+          <h2 style={{ fontSize: isMobile ? 'clamp(1.8rem, 7vw, 2.4rem)' : 'clamp(2rem, 4vw, 3.2rem)', fontWeight: 700, letterSpacing: '-0.035em', color: text, margin: 0 }}>
+            Every detail. No friction.
+          </h2>
+        </FadeIn>
+
+        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(4, 1fr)', gap: 12 }}>
+          {FEATS.map((f, i) => (
+            <FadeIn key={f.title} delay={i * 0.07} style={{ gridColumn: isMobile ? 'auto' : `span ${f.span}` }}>
+              <div style={{
+                background: cardBg, border: `1px solid ${cardBorder}`,
+                borderRadius: 18, height: '100%', boxSizing: 'border-box',
+                padding: isMobile ? '28px 24px' : `${f.span === 2 ? 40 : 32}px ${f.span === 2 ? 36 : 28}px`,
+              }}>
+                <h3 style={{
+                  fontSize: f.span === 2 ? (isMobile ? '1.1rem' : '1.35rem') : (isMobile ? '1rem' : '1.1rem'),
+                  fontWeight: 700, letterSpacing: '-0.025em', color: text, margin: '0 0 10px',
+                }}>{f.title}</h3>
+                <p style={{ fontSize: '0.9rem', lineHeight: 1.72, color: muted, margin: 0 }}>{f.body}</p>
+              </div>
+            </FadeIn>
+          ))}
+        </div>
+      </div>
+    </section>
+  )
+}
+
+// ─── FAQ ──────────────────────────────────────────────────────────────────────
+const FAQS = [
+  { q: 'What exactly is Palm?', a: 'Palm is an AI UI generator with a design point of view. Describe what you want in plain English and watch a polished, production-ready interface appear. No drag-and-drop, no templates.' },
+  { q: 'Is it free to start?', a: 'Yes — early access is completely free, no credit card required. Early users get priority access and preferential pricing, permanently.' },
+  { q: 'What can I export?', a: 'Clean React (TypeScript), raw HTML/CSS, or Figma-ready components. Everything Palm generates is production-intent — shippable, not just pretty.' },
+  { q: 'Does it handle responsive UI?', a: "Absolutely. Whether you're describing a 375px mobile flow or a 1440px dashboard, the output is responsive and intentional by default." },
+  { q: 'How is Palm different from v0 or other AI design tools?', a: "Palm has a point of view. It's built around a specific aesthetic — refined motion, typographic craft — that makes every output feel considered, not computed." },
 ]
 
 function FAQ({ isLight }: { isLight: boolean }) {
   const [open, setOpen] = useState<number | null>(null)
   const isMobile = useIsMobile()
-
-  const bg   = isLight ? '#F5F0E8' : '#070707'
   const text = isLight ? '#0a0a0a' : '#ffffff'
-  const sub  = isLight ? 'rgba(0,0,0,0.46)' : 'rgba(255,255,255,0.40)'
-  const line = isLight ? 'rgba(0,0,0,0.07)'  : 'rgba(255,255,255,0.07)'
+  const muted = isLight ? 'rgba(0,0,0,0.45)' : 'rgba(255,255,255,0.42)'
+  const line = isLight ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.07)'
 
   return (
-    <section style={{ background: bg, padding: isMobile ? '80px 24px' : '130px 48px' }}>
-      <div style={{ maxWidth: 780, margin: '0 auto' }}>
-        <motion.div
-          initial={{ opacity: 0, y: 28 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, margin: '-80px' }}
-          transition={{ duration: 0.8, ease: EASE_OUT_EXPO }}
-          style={{ marginBottom: 64 }}
-        >
-          <span style={{ fontSize: 11, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'rgba(160,120,80,0.65)' }}>
-            FAQ
-          </span>
-          <h2 style={{
-            marginTop: 14,
-            fontSize: isMobile ? 'clamp(1.7rem, 7vw, 2.4rem)' : 'clamp(2rem, 4vw, 3.2rem)',
-            fontWeight: 800, letterSpacing: '-0.038em', color: text, margin: '14px 0 0',
-          }}>
+    <section style={{ background: isLight ? '#ffffff' : '#0a0a0a', padding: isMobile ? '80px 24px' : '140px 48px' }}>
+      <div style={{ maxWidth: 720, margin: '0 auto' }}>
+        <FadeIn style={{ marginBottom: 60 }}>
+          <p style={{ fontSize: 11, letterSpacing: '0.15em', textTransform: 'uppercase', color: muted, margin: '0 0 12px' }}>FAQ</p>
+          <h2 style={{ fontSize: isMobile ? '2rem' : '2.8rem', fontWeight: 700, letterSpacing: '-0.035em', color: text, margin: 0 }}>
             Questions?
           </h2>
-        </motion.div>
+        </FadeIn>
 
-        <div style={{ display: 'flex', flexDirection: 'column' }}>
-          {FAQ_ITEMS.map((item, i) => (
-            <motion.div
-              key={i}
-              initial={{ opacity: 0, y: 16 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, margin: '-40px' }}
-              transition={{ duration: 0.6, ease: EASE_OUT_EXPO, delay: i * 0.07 }}
-              style={{ borderTop: `1px solid ${line}`, overflow: 'hidden' }}
+        {FAQS.map((item, i) => (
+          <motion.div
+            key={i}
+            initial={{ opacity: 0, y: 14 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: '-30px' }}
+            transition={{ duration: 0.55, ease: EX, delay: i * 0.07 }}
+            style={{ borderTop: `1px solid ${line}`, overflow: 'hidden' }}
+          >
+            <button
+              onClick={() => setOpen(open === i ? null : i)}
+              style={{
+                width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                padding: `${isMobile ? 20 : 26}px 0`, background: 'none', border: 'none',
+                cursor: 'pointer', textAlign: 'left', gap: 16,
+              }}
             >
-              <motion.button
-                onClick={() => setOpen(open === i ? null : i)}
-                whileHover={{ x: 2 }}
-                transition={SPRING_SOFT}
-                style={{
-                  width: '100%', display: 'flex', alignItems: 'center',
-                  justifyContent: 'space-between', padding: isMobile ? '22px 0' : '28px 0',
-                  background: 'none', border: 'none', cursor: 'pointer',
-                  textAlign: 'left', gap: 16,
-                }}
+              <span style={{ fontSize: isMobile ? '0.95rem' : '1.04rem', fontWeight: 600, letterSpacing: '-0.018em', color: text }}>
+                {item.q}
+              </span>
+              <motion.div
+                animate={{ rotate: open === i ? 45 : 0 }}
+                transition={{ duration: 0.22, ease: EX }}
+                style={{ flexShrink: 0, width: 22, height: 22, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '50%', border: `1px solid ${line}` }}
               >
-                <span style={{
-                  fontSize: isMobile ? '0.96rem' : 'clamp(0.97rem, 1.6vw, 1.12rem)',
-                  fontWeight: 600, letterSpacing: '-0.02em', color: text,
-                }}>
-                  {item.q}
-                </span>
+                <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                  <path d="M5 1v8M1 5h8" stroke={text} strokeWidth="1.4" strokeLinecap="round" />
+                </svg>
+              </motion.div>
+            </button>
+            <AnimatePresence initial={false}>
+              {open === i && (
                 <motion.div
-                  animate={{ rotate: open === i ? 45 : 0 }}
-                  transition={SPRING_SOFT}
-                  style={{
-                    flexShrink: 0, width: 22, height: 22,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    borderRadius: '50%',
-                    border: `1px solid rgba(160,120,80,0.30)`,
-                    background: open === i ? 'rgba(160,120,80,0.12)' : 'transparent',
-                  }}
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.28, ease: EX }}
+                  style={{ overflow: 'hidden' }}
                 >
-                  <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-                    <path d="M5 1v8M1 5h8" stroke="rgba(160,120,80,0.85)" strokeWidth="1.4" strokeLinecap="round"/>
-                  </svg>
+                  <p style={{ paddingBottom: 24, paddingRight: isMobile ? 0 : 40, fontSize: '0.92rem', lineHeight: 1.78, color: muted, margin: 0 }}>
+                    {item.a}
+                  </p>
                 </motion.div>
-              </motion.button>
-
-              <AnimatePresence initial={false}>
-                {open === i && (
-                  <motion.div
-                    key="answer"
-                    initial={{ height: 0, opacity: 0, y: -8 }}
-                    animate={{ height: 'auto', opacity: 1, y: 0 }}
-                    exit={{ height: 0, opacity: 0, y: -4 }}
-                    transition={SPRING_SOFT}
-                    style={{ overflow: 'hidden' }}
-                  >
-                    <p style={{
-                      paddingBottom: 24,
-                      // On mobile, remove the right padding — it's too cramped on 412px
-                      paddingRight: isMobile ? 0 : 48,
-                      fontSize: '0.94rem', lineHeight: 1.78, color: sub, margin: 0,
-                    }}>
-                      {item.a}
-                    </p>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </motion.div>
-          ))}
-          <div style={{ borderTop: `1px solid ${line}` }}/>
-        </div>
+              )}
+            </AnimatePresence>
+          </motion.div>
+        ))}
+        <div style={{ borderTop: `1px solid ${line}` }} />
       </div>
     </section>
   )
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// SUBSTRATE (unchanged — physics classes stay identical)
-// ─────────────────────────────────────────────────────────────────────────────
-const S_BOID_COUNT = 120
-const S_RD_SCALE   = 10
-const S_RD_STEPS   = 1
-const S_DU=0.2097, S_DV=0.1050, S_FEED=0.0545, S_KILL=0.0620
-const S_SEP_R=28, S_ALIGN_R=60, S_COH_R=80
-const S_MAX_SPEED=1.4, S_MAX_FORCE=0.06
-const S_SEP_W=1.6, S_ALIGN_W=0.35, S_COH_W=0.25, S_CHEM_W=0.9
-const S_VORTEX_STR=5000, S_FLEE_R=120, S_FLEE_STR=220
-const S_CELL = S_COH_R
-
-class SRDGrid {
-    cols:number; rows:number
-    u:Float32Array; v:Float32Array; nu:Float32Array; nv:Float32Array
-    constructor(cols:number,rows:number) {
-        this.cols=cols; this.rows=rows
-        const n=cols*rows
-        this.u=new Float32Array(n).fill(1); this.v=new Float32Array(n)
-        this.nu=new Float32Array(n); this.nv=new Float32Array(n)
-        for(let i=0;i<20;i++) {
-            const cx=Math.floor(Math.random()*cols),cy=Math.floor(Math.random()*rows)
-            for(let dy=-2;dy<=2;dy++) for(let dx=-2;dx<=2;dx++) {
-                const idx=this.w(cx+dx,cy+dy); this.v[idx]=1; this.u[idx]=0
-            }
-        }
-    }
-    w(x:number,y:number){return(((y%this.rows)+this.rows)%this.rows)*this.cols+(((x%this.cols)+this.cols)%this.cols)}
-    step(){
-        const{cols,rows,u,v,nu,nv}=this
-        for(let y=0;y<rows;y++) for(let x=0;x<cols;x++){
-            const i=y*cols+x,ui=u[i],vi=v[i]
-            const lu=u[this.w(x-1,y)]+u[this.w(x+1,y)]+u[this.w(x,y-1)]+u[this.w(x,y+1)]-4*ui
-            const lv=v[this.w(x-1,y)]+v[this.w(x+1,y)]+v[this.w(x,y-1)]+v[this.w(x,y+1)]-4*vi
-            const uvv=ui*vi*vi
-            nu[i]=Math.max(0,Math.min(1,ui+S_DU*lu-uvv+S_FEED*(1-ui)))
-            nv[i]=Math.max(0,Math.min(1,vi+S_DV*lv+uvv-(S_FEED+S_KILL)*vi))
-        }
-        this.u.set(nu); this.v.set(nv)
-    }
-    inject(wx:number,wy:number){
-        const cx=Math.floor(wx/S_RD_SCALE),cy=Math.floor(wy/S_RD_SCALE)
-        for(let dy=-3;dy<=3;dy++) for(let dx=-3;dx<=3;dx++){
-            const i=this.w(cx+dx,cy+dy)
-            this.v[i]=Math.min(1,this.v[i]+0.45); this.u[i]=Math.max(0,this.u[i]-0.25)
-        }
-    }
-    getV(wx:number,wy:number){return this.v[this.w(Math.floor(wx/S_RD_SCALE),Math.floor(wy/S_RD_SCALE))]}
-    grad(wx:number,wy:number):[number,number]{
-        const cx=Math.floor(wx/S_RD_SCALE),cy=Math.floor(wy/S_RD_SCALE)
-        return[(this.v[this.w(cx+1,cy)]-this.v[this.w(cx-1,cy)])*.5,
-               (this.v[this.w(cx,cy+1)]-this.v[this.w(cx,cy-1)])*.5]
-    }
-}
-
-class SSpatialHash {
-    private cells=new Map<number,number[]>()
-    clear(){this.cells.clear()}
-    private key(cx:number,cy:number){return cx*100003+cy}
-    insert(i:number,x:number,y:number){
-        const k=this.key(Math.floor(x/S_CELL),Math.floor(y/S_CELL))
-        let c=this.cells.get(k); if(!c){c=[];this.cells.set(k,c)} c.push(i)
-    }
-    nearby(x:number,y:number):number[]{
-        const cx=Math.floor(x/S_CELL),cy=Math.floor(y/S_CELL),out:number[]=[]
-        for(let dy=-1;dy<=1;dy++) for(let dx=-1;dx<=1;dx++){
-            const c=this.cells.get(this.key(cx+dx,cy+dy)); if(c) for(const i of c) out.push(i)
-        }
-        return out
-    }
-}
-
-function sClamp(vx:number,vy:number,max:number):[number,number]{
-    const m=Math.sqrt(vx*vx+vy*vy); return m>max?[vx/m*max,vy/m*max]:[vx,vy]
-}
-function sSteer(bvx:number,bvy:number,tx:number,ty:number):[number,number]{
-    const m=Math.sqrt(tx*tx+ty*ty); if(m===0)return[0,0]
-    const dx=tx/m*S_MAX_SPEED-bvx,dy=ty/m*S_MAX_SPEED-bvy
-    return sClamp(dx,dy,S_MAX_FORCE)
-}
-
-function SubstrateContained({ isLight }: { isLight: boolean }) {
-    const canvasRef = useRef<HTMLCanvasElement>(null)
-    const activeRef = useRef(false)
-
-    useEffect(() => {
-        const canvas = canvasRef.current
-        if (!canvas) return
-        const ctx = canvas.getContext('2d')!
-
-        let W = canvas.offsetWidth || 820
-        let H = canvas.offsetHeight || 500
-        canvas.width = W; canvas.height = H
-
-        let rd   = new SRDGrid(Math.ceil(W/S_RD_SCALE), Math.ceil(H/S_RD_SCALE))
-        const hash = new SSpatialHash()
-
-        interface SBoid { x:number; y:number; vx:number; vy:number }
-        let boids: SBoid[] = Array.from({length:S_BOID_COUNT},()=>({
-            x:Math.random()*W, y:Math.random()*H,
-            vx:(Math.random()-.5)*2, vy:(Math.random()-.5)*2,
-        }))
-
-        let mx=-9999, my=-9999, animId:number
-
-        const onMove = (e:MouseEvent) => {
-            const rect = canvas.getBoundingClientRect()
-            mx = e.clientX - rect.left
-            my = e.clientY - rect.top
-            if (mx>=0 && mx<=W && my>=0 && my<=H) rd.inject(mx, my)
-        }
-        window.addEventListener('mousemove', onMove)
-
-        const io = new IntersectionObserver(([e]) => {
-            activeRef.current = e.isIntersecting
-        }, { threshold: 0.05 })
-        io.observe(canvas)
-
-        const ro = new ResizeObserver(() => {
-            W = canvas.offsetWidth; H = canvas.offsetHeight
-            canvas.width = W; canvas.height = H
-            rd = new SRDGrid(Math.ceil(W/S_RD_SCALE), Math.ceil(H/S_RD_SCALE))
-            boids = boids.map(b => ({ ...b, x: Math.min(b.x, W), y: Math.min(b.y, H) }))
-        })
-        ro.observe(canvas)
-
-        const rgb = isLight ? '80,60,30' : '255,255,255'
-
-        function frame() {
-            animId = requestAnimationFrame(frame)
-            if (!activeRef.current) return
-
-            for (let s=0; s<S_RD_STEPS; s++) rd.step()
-
-            hash.clear()
-            for (let i=0;i<boids.length;i++) hash.insert(i,boids[i].x,boids[i].y)
-
-            for (let i=0;i<boids.length;i++) {
-                const b=boids[i]
-                let sx=0,sy=0,sn=0,ax=0,ay=0,an=0,cx=0,cy=0,cn=0
-                for (const j of hash.nearby(b.x,b.y)) {
-                    if(i===j) continue
-                    const o=boids[j],dx=b.x-o.x,dy=b.y-o.y,d=Math.sqrt(dx*dx+dy*dy)
-                    if(d<S_SEP_R&&d>0){sx+=dx/d;sy+=dy/d;sn++}
-                    if(d<S_ALIGN_R){ax+=o.vx;ay+=o.vy;an++}
-                    if(d<S_COH_R){cx+=o.x;cy+=o.y;cn++}
-                }
-                let fx=0,fy=0
-                if(sn>0){const[a,b2]=sSteer(b.vx,b.vy,sx/sn,sy/sn);fx+=a*S_SEP_W;fy+=b2*S_SEP_W}
-                if(an>0){const[a,b2]=sSteer(b.vx,b.vy,ax/an,ay/an);fx+=a*S_ALIGN_W;fy+=b2*S_ALIGN_W}
-                if(cn>0){const[a,b2]=sSteer(b.vx,b.vy,cx/cn-b.x,cy/cn-b.y);fx+=a*S_COH_W;fy+=b2*S_COH_W}
-                const cdx=b.x-mx,cdy=b.y-my,cr2=cdx*cdx+cdy*cdy+1
-                fx+=(-cdy*S_VORTEX_STR)/cr2; fy+=(cdx*S_VORTEX_STR)/cr2
-                const cd=Math.sqrt(cr2)
-                if(cd<S_FLEE_R){const f=S_FLEE_STR*(1-cd/S_FLEE_R)/(cd+1);fx+=cdx/cd*f;fy+=cdy/cd*f}
-                const[gx,gy]=rd.grad(b.x,b.y)
-                fx+=gx*S_CHEM_W; fy+=gy*S_CHEM_W
-                b.vx+=fx; b.vy+=fy;[b.vx,b.vy]=sClamp(b.vx,b.vy,S_MAX_SPEED)
-                b.x+=b.vx; b.y+=b.vy
-                if(b.x<0)b.x+=W; else if(b.x>W)b.x-=W
-                if(b.y<0)b.y+=H; else if(b.y>H)b.y-=H
-            }
-
-            ctx.clearRect(0,0,W,H)
-
-            ctx.lineWidth=0.5
-            for(let i=0;i<boids.length;i++) {
-                for(const j of hash.nearby(boids[i].x,boids[i].y)) {
-                    if(j<=i) continue
-                    const dx=boids[i].x-boids[j].x,dy=boids[i].y-boids[j].y,d2=dx*dx+dy*dy
-                    if(d2<2500){
-                        ctx.strokeStyle=`rgba(${rgb},${((1-d2/2500)*(isLight?.05:.04)).toFixed(3)})`
-                        ctx.beginPath(); ctx.moveTo(boids[i].x,boids[i].y)
-                        ctx.lineTo(boids[j].x,boids[j].y); ctx.stroke()
-                    }
-                }
-            }
-
-            for(const b of boids){
-                const v=rd.getV(b.x,b.y)
-                ctx.beginPath()
-                ctx.arc(b.x,b.y,1.2+v*1.8,0,Math.PI*2)
-                ctx.fillStyle=`rgba(${rgb},${(isLight?.10+v*.45:.13+v*.55).toFixed(3)})`
-                ctx.fill()
-            }
-        }
-
-        frame()
-        return()=>{
-            cancelAnimationFrame(animId)
-            window.removeEventListener('mousemove',onMove)
-            ro.disconnect(); io.disconnect()
-        }
-    }, [isLight])
-
-    return (
-        <canvas
-            ref={canvasRef}
-            className='absolute inset-0 w-full h-full pointer-events-none'
-        />
-    )
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// CTA BANNER — padding and card reduced on mobile
-// ─────────────────────────────────────────────────────────────────────────────
+// ─── CTA Banner ───────────────────────────────────────────────────────────────
 function CTABanner({ isLight }: { isLight: boolean }) {
-    const sectionRef = useRef<HTMLElement>(null)
-    const isMobile = useIsMobile()
-
-    const { scrollYProgress } = useScroll({
-        target: sectionRef,
-        offset: ['start end', 'center center'],
-    })
-    const sp = useSpring(scrollYProgress, { stiffness: 55, damping: 22 })
-
-    const subY     = useTransform(sp, [0, 1], [60, -30])
-    const subOpac  = useTransform(sp, [0, 0.35, 1], [0, 1, 1])
-    const subScale = useTransform(sp, [0, 0.6], [1.08, 1])
-    const cardY    = useTransform(sp, [0.1, 0.75], [48, 0])
-    const cardOpac = useTransform(sp, [0.1, 0.55], [0, 1])
-
-    return (
-        <section
-            ref={sectionRef}
-            style={{
-                background: isLight ? '#F5F0E8' : '#070707',
-                padding: isMobile ? '40px 20px 80px' : '60px 48px 130px',
-                position: 'relative',
-                overflow: 'hidden',
-            }}
-        >
-            <motion.div style={{ position: 'absolute', inset: 0, y: subY, opacity: subOpac, scale: subScale }}>
-                <SubstrateContained isLight={isLight} />
-            </motion.div>
-
-            <div style={{
-                position: 'absolute', inset: 0, pointerEvents: 'none',
-                background: isLight
-                    ? 'radial-gradient(ellipse 70% 60% at 50% 50%, transparent 30%, rgba(245,240,232,0.82) 100%)'
-                    : 'radial-gradient(ellipse 70% 60% at 50% 50%, transparent 30%, rgba(7,7,7,0.80) 100%)',
-                zIndex: 1,
-            }}/>
-
-            <motion.div
-                style={{
-                    position: 'relative', zIndex: 2,
-                    y: cardY, opacity: cardOpac,
-                    maxWidth: 820, margin: '0 auto',
-                    borderRadius: isMobile ? 20 : 28,
-                    background: isLight ? 'rgba(245,240,232,0.55)' : 'rgba(10,10,10,0.55)',
-                    backdropFilter: 'blur(28px)', WebkitBackdropFilter: 'blur(28px)',
-                    border: isLight ? '1px solid rgba(255,255,255,0.70)' : '1px solid rgba(255,255,255,0.10)',
-                    boxShadow: isLight
-                        ? '0 8px 40px rgba(0,0,0,0.08), inset 0 1px 0 rgba(255,255,255,0.90)'
-                        : '0 24px 80px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.08)',
-                    // Tighter padding on mobile — 80px vertical was crushing on small screens
-                    padding: isMobile ? '48px 28px' : '80px 64px',
-                    textAlign: 'center', overflow: 'hidden',
-                }}
-            >
-                <div style={{
-                    position: 'absolute', top: 0, left: '15%', right: '15%', height: 1,
-                    background: isLight
-                        ? 'linear-gradient(90deg,transparent,rgba(255,255,255,0.95),transparent)'
-                        : 'linear-gradient(90deg,transparent,rgba(255,255,255,0.18),transparent)',
-                    pointerEvents: 'none',
-                }}/>
-
-                <p style={{
-                    fontSize: 11, letterSpacing: '0.18em', textTransform: 'uppercase',
-                    color: 'rgba(160,120,80,0.65)', marginBottom: 18,
-                }}>
-                    Limited early access
-                </p>
-
-                <h2 style={{
-                    fontSize: isMobile ? 'clamp(1.7rem, 7vw, 2.6rem)' : 'clamp(2rem,4vw,3.4rem)',
-                    fontWeight: 800, letterSpacing: '-0.038em',
-                    color: isLight ? '#0a0a0a' : '#fff',
-                    margin: '0 0 16px',
-                }}>
-                    Build something beautiful today.
-                </h2>
-
-                <p style={{
-                    fontSize: isMobile ? '0.94rem' : '1.07rem',
-                    color: isLight ? 'rgba(0,0,0,0.44)' : 'rgba(255,255,255,0.36)',
-                    margin: '0 0 36px', lineHeight: 1.68,
-                }}>
-                    No design skills needed. No waiting. No compromise.
-                </p>
-
-                <PhysicsLink
-                    href="/auth/sign-up"
-                    dark={isLight}
-                    style={{ boxShadow: isLight
-                        ? '0 4px 20px rgba(0,0,0,0.18)'
-                        : '0 4px 24px rgba(255,255,255,0.15)',
-                    }}
-                >
-                    Start for free
-                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                        <path d="M2 7h10M8 3l4 4-4 4" stroke={isLight?'#F5F0E8':'#070707'} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-                    </svg>
-                </PhysicsLink>
-            </motion.div>
-        </section>
-    )
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// FOOTER — columns stack on mobile, PALM watermark hidden on mobile
-// ─────────────────────────────────────────────────────────────────────────────
-function Footer({ isLight }: { isLight: boolean }) {
   const isMobile = useIsMobile()
-  const bg      = isLight ? '#F5F0E8'              : '#070707'
-  const text    = isLight ? 'rgba(0,0,0,0.38)'     : 'rgba(255,255,255,0.38)'
-  const textHov = isLight ? 'rgba(0,0,0,0.75)'     : 'rgba(255,255,255,0.70)'
-  const label   = isLight ? 'rgba(0,0,0,0.22)'     : 'rgba(255,255,255,0.22)'
-  const border  = isLight ? 'rgba(0,0,0,0.06)'     : 'rgba(255,255,255,0.06)'
-  const mark    = isLight ? 'rgba(0,0,0,0.04)'     : 'rgba(255,255,255,0.04)'
+  const bg = isLight ? '#0a0a0a' : '#f4f4f4'
+  const text = isLight ? '#ffffff' : '#0a0a0a'
+  const muted = isLight ? 'rgba(255,255,255,0.44)' : 'rgba(0,0,0,0.44)'
+  const btnBg = isLight ? '#ffffff' : '#0a0a0a'
+  const btnTx = isLight ? '#0a0a0a' : '#ffffff'
 
   return (
-    <footer style={{
-      background: bg, borderTop: `1px solid ${border}`,
-      padding: isMobile ? '56px 24px 36px' : '80px 48px 48px',
-      position: 'relative', overflow: 'hidden',
-    }}>
-      {/* Giant PALM watermark — hidden on mobile, would overflow badly */}
-      {!isMobile && (
-        <div style={{
-          fontSize: 'clamp(6rem,20vw,18rem)', fontWeight: 900,
-          letterSpacing: '-0.05em', lineHeight: 0.88, color: mark,
-          userSelect: 'none', pointerEvents: 'none',
-          position: 'absolute', bottom: -20, left: 40, zIndex: 0,
-        }}>PALM</div>
-      )}
-
-      <div style={{
-        position: 'relative', zIndex: 1,
-        display: 'flex',
-        // Stack logo block + link columns vertically on mobile
-        flexDirection: isMobile ? 'column' : 'row',
-        alignItems: isMobile ? 'flex-start' : 'flex-start',
-        justifyContent: 'space-between',
-        flexWrap: 'wrap',
-        gap: isMobile ? 36 : 48,
-      }}>
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
-            <div style={{
-              width: 26, height: 26, borderRadius: 7,
-              background: isLight ? 'rgba(0,0,0,0.85)' : 'rgba(255,255,255,0.85)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}>
-              <div style={{ width: 10, height: 10, borderRadius: '50%', background: isLight ? '#F5F0E8' : '#070707' }}/>
-            </div>
-            <span style={{ color: isLight ? 'rgba(0,0,0,0.60)' : 'rgba(255,255,255,0.60)', fontSize: 14, fontWeight: 600 }}>Palm</span>
-          </div>
-          <p style={{ fontSize: 12, color: label, maxWidth: 200, lineHeight: 1.7 }}>
-            Turn ideas into interfaces,<br/>instantly.
+    <section style={{ background: bg, padding: isMobile ? '80px 24px 100px' : '140px 48px 160px' }}>
+      <div style={{ maxWidth: 760, margin: '0 auto', textAlign: 'center' }}>
+        <FadeIn>
+          <p style={{ fontSize: 11, letterSpacing: '0.15em', textTransform: 'uppercase', color: muted, margin: '0 0 18px' }}>
+            Limited early access
           </p>
-        </div>
+          <h2 style={{
+            fontSize: isMobile ? 'clamp(2rem, 8vw, 2.8rem)' : 'clamp(2.4rem, 5vw, 4rem)',
+            fontWeight: 700, letterSpacing: '-0.038em', color: text, margin: '0 0 14px',
+          }}>Build something beautiful today.</h2>
+          <p style={{ fontSize: isMobile ? '0.95rem' : '1.04rem', color: muted, margin: '0 0 40px', lineHeight: 1.65 }}>
+            No design skills needed. No waiting. No compromise.
+          </p>
+          <Link href="/auth/sign-up" style={{
+            padding: '14px 32px', borderRadius: 9999,
+            background: btnBg, color: btnTx,
+            fontSize: 15, fontWeight: 600, letterSpacing: '-0.015em',
+            textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 8,
+          }}>
+            Start for free
+            <svg width="13" height="13" viewBox="0 0 14 14" fill="none">
+              <path d="M2 7h10M8 3l4 4-4 4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </Link>
+        </FadeIn>
+      </div>
+    </section>
+  )
+}
 
-        <div style={{ display: 'flex', gap: isMobile ? 36 : 64, flexWrap: 'wrap' }}>
+// ─── PalmWordmark ─────────────────────────────────────────────────────────────
+function PalmWordmark({ color }: { color: string }) {
+  const ref = useRef<HTMLDivElement>(null)
+
+  const { scrollYProgress } = useScroll({
+    target: ref,
+    offset: ['start end', 'end end'], // tighter window = more noticeable
+  })
+
+  // P and A: start raised to match M, then drop hard to 0
+  const paY = useTransform(scrollYProgress, [0, 0.45, 1], ['0.22em', '0.22em', '0em'])
+
+  return (
+    <div ref={ref} aria-hidden="true" style={{
+      fontSize: 'clamp(6rem, 22vw, 22rem)',
+      fontWeight: 800,
+      lineHeight: 0.85,
+      color,
+      userSelect: 'none',
+      pointerEvents: 'none',
+      marginBottom: '-0.14em',
+      display: 'flex',
+      justifyContent: 'space-between',
+      alignItems: 'flex-end',
+    }}>
+      {/* P — starts level with M, drops down */}
+      <motion.span style={{ display: 'inline-block', marginBottom: paY }}>P</motion.span>
+
+      {/* A — starts level with M, drops down */}
+      <motion.span style={{ display: 'inline-block', marginBottom: paY }}>A</motion.span>
+
+      {/* L — permanently raised, never moves */}
+      <span style={{ display: 'inline-block', marginBottom: '0.18em' }}>L</span>
+
+      {/* M — permanently raised, never moves */}
+      <span style={{ display: 'inline-block', marginBottom: '0.22em' }}>M</span>
+    </div>
+  )
+}
+
+// ─── Footer ───────────────────────────────────────────────────────────────────
+function Footer({ isLight }: { isLight: boolean }) {
+  const isMobile = useIsMobile()
+  const bg = isLight ? '#ffffff' : '#0a0a0a'
+  const text = isLight ? '#0a0a0a' : '#ffffff'
+  const textMuted = isLight ? 'rgba(0,0,0,0.44)' : 'rgba(255,255,255,0.44)'
+  const label = isLight ? 'rgba(0,0,0,0.36)' : 'rgba(255,255,255,0.36)'
+  const border = isLight ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.06)'
+
+  return (
+    <footer style={{ background: bg, borderTop: `1px solid ${border}`, padding: isMobile ? '48px 24px 0' : '64px 48px 0', position: 'relative', overflow: 'hidden' }}>
+
+      {/* Top row: tagline left, columns right */}
+      <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', justifyContent: 'space-between', gap: isMobile ? 40 : 48, marginBottom: isMobile ? 56 : 80 }}>
+
+        {/* Tagline */}
+        <p style={{ fontSize: isMobile ? '1.3rem' : '1.5rem', fontWeight: 500, letterSpacing: '-0.02em', color: text, margin: 0, maxWidth: 340 }}>
+          Turn ideas into interfaces, instantly.
+        </p>
+
+        {/* Link columns */}
+        <div style={{ display: 'flex', gap: isMobile ? 40 : 80, flexWrap: 'wrap' }}>
           {[
             { label: 'Product', links: ['Features', 'Pricing', 'Changelog', 'Roadmap'] },
-            { label: 'Company', links: ['About', 'Blog', 'Careers', 'Press'] },
-            { label: 'Legal',   links: ['Privacy', 'Terms', 'Security'] },
+            { label: 'Resources', links: ['About', 'Blog', 'Careers', 'Privacy', 'Terms'] },
           ].map(col => (
             <div key={col.label}>
-              <p style={{ fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase', color: label, marginBottom: 16 }}>
-                {col.label}
-              </p>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <p style={{ fontSize: 13, fontWeight: 500, color: label, margin: '0 0 16px' }}>{col.label}</p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                 {col.links.map(l => (
-                  <a
-                    key={l} href="#"
-                    style={{ fontSize: 13, color: text, textDecoration: 'none', transition: 'color 0.15s' }}
-                    onMouseEnter={e => (e.currentTarget.style.color = textHov)}
+                  <a key={l} href="#"
+                    style={{ fontSize: 15, fontWeight: 400, color: text, textDecoration: 'none', transition: 'color 0.15s' }}
+                    onMouseEnter={e => (e.currentTarget.style.color = textMuted)}
                     onMouseLeave={e => (e.currentTarget.style.color = text)}
                   >{l}</a>
                 ))}
@@ -1450,47 +772,33 @@ function Footer({ isLight }: { isLight: boolean }) {
           ))}
         </div>
       </div>
-
-      <div style={{
-        position: 'relative', zIndex: 1,
-        marginTop: 56, paddingTop: 24, borderTop: `1px solid ${border}`,
-        display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12,
-      }}>
-        <p style={{ fontSize: 11, color: label }}>© {new Date().getFullYear()} Palm. All rights reserved.</p>
-        <p style={{ fontSize: 11, color: label }}>Made with obsession, not templates.</p>
-      </div>
+      <PalmWordmark color={text} />
     </footer>
   )
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// ROOT
-// ─────────────────────────────────────────────────────────────────────────────
+// ─── Root ─────────────────────────────────────────────────────────────────────
 export default function HomePage() {
   const { theme, systemTheme } = useTheme()
   const [mounted, setMounted] = useState(false)
-  const isMobile = useIsMobile()
   useEffect(() => setMounted(true), [])
   if (!mounted) return <Loading />
   const isLight = (theme === 'system' ? systemTheme : theme) === 'light'
 
   return (
     <>
-      <style dangerouslySetInnerHTML={{ __html: SCROLLBAR_CSS }}/>
-      <CustomCursor />
+      <style dangerouslySetInnerHTML={{ __html: GLOBAL_CSS }} />
       <Nav isLight={isLight} />
-
-      {/* cursor:none only on desktop — pointless and potentially broken on touch */}
-      <main style={{ cursor: isMobile ? 'auto' : 'none' }}>
-        <Hero          isLight={isLight} />
-        <HowItWorks    isLight={isLight} />
-        <CameraSection isLight={isLight} />
-        <Features      isLight={isLight} />
-        <FAQ           isLight={isLight} />
-        <CTABanner     isLight={isLight} />
-        <Footer        isLight={isLight} />
+      <main>
+        <Hero isLight={isLight} />
+        <PromptStage />
+        <Statement isLight={isLight} />
+        <HowItWorks isLight={isLight} />
+        <Features isLight={isLight} />
+        <FAQ isLight={isLight} />
+        <CTABanner isLight={isLight} />
+        <Footer isLight={isLight} />
       </main>
-
       <div style={{ position: 'fixed', bottom: 24, right: 24, zIndex: 50 }}>
         <GlassTooltip content="Toggle theme" side="left">
           <ThemeToggle />

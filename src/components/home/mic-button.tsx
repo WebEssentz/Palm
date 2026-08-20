@@ -3,258 +3,328 @@
 import { useRef, useState, useEffect, useCallback } from 'react'
 import { Mic, X, Check } from 'lucide-react'
 import { useTheme } from 'next-themes'
-import { cn } from '@/lib/utils'
 
 interface Props {
     onTranscript: (text: string) => void
     onRecordingChange?: (isRecording: boolean) => void
+    onStateChange?: (state: 'idle' | 'recording' | 'processing') => void
     disabled?: boolean
 }
 
-const SILENCE_THRESHOLD = 0.012  // RMS below this = silence
-const MIN_SPEECH_DURATION = 400  // ms — ignore tiny blips
 
-export function MicButton({ onTranscript, onRecordingChange, disabled }: Props) {
+export function MicButton({ onTranscript, onRecordingChange, onStateChange, disabled }: Props) {
     const [state, setState] = useState<'idle' | 'recording' | 'processing'>('idle')
     const [bars, setBars] = useState<number[]>(Array(16).fill(2))
 
     const { theme, systemTheme } = useTheme()
-    const effectiveTheme = theme === 'system' ? systemTheme : theme
-    const isLight = effectiveTheme === 'light'
+    const isLight = (theme === 'system' ? systemTheme : theme) === 'light'
+
+    const text = isLight ? '#0a0a0a' : '#ffffff'
+    const muted = isLight ? 'rgba(0,0,0,0.38)' : 'rgba(255,255,255,0.38)'
+    const border = isLight ? 'rgba(0,0,0,0.09)' : 'rgba(255,255,255,0.09)'
+
     const mediaRecorderRef = useRef<MediaRecorder | null>(null)
     const chunksRef = useRef<Blob[]>([])
     const analyserRef = useRef<AnalyserNode | null>(null)
-    const animFrameRef = useRef<number>(0)
     const audioCtxRef = useRef<AudioContext | null>(null)
-    const speechDetectedRef = useRef(false)
-    const speechStartTimeRef = useRef(0)
+    const gateGainRef = useRef<GainNode | null>(null)
+    const sourceRef = useRef<MediaStream | null>(null)
     const streamRef = useRef<MediaStream | null>(null)
-
-    const stopAnimation = () => {
-        cancelAnimationFrame(animFrameRef.current)
-        setBars(Array(16).fill(2))
-    }
-
-    const startAnimation = () => {
-        const analyser = analyserRef.current
-        if (!analyser) return
-        const data = new Uint8Array(analyser.frequencyBinCount)
-
-        const tick = () => {
-            analyser.getByteTimeDomainData(data)
-            // RMS
-            let sum = 0
-            for (let i = 0; i < data.length; i++) {
-                const v = (data[i] - 128) / 128
-                sum += v * v
-            }
-            const rms = Math.sqrt(sum / data.length)
-
-            // Track if speech occurred
-            if (rms > SILENCE_THRESHOLD) {
-                if (!speechDetectedRef.current) {
-                    speechDetectedRef.current = true
-                    speechStartTimeRef.current = Date.now()
-                }
-            }
-
-            // Build bar heights based on frequency data
-            analyser.getByteFrequencyData(data)
-            const newBars = Array(16).fill(0).map((_, i) => {
-                const idx = Math.floor(i * data.length / 16)
-                const norm = data[idx] / 255
-                // Only animate if above silence threshold
-                return rms > SILENCE_THRESHOLD ? Math.max(2, norm * 22) : 2
-            })
-            setBars(newBars)
-            animFrameRef.current = requestAnimationFrame(tick)
-        }
-        animFrameRef.current = requestAnimationFrame(tick)
-    }
-
-    const start = async () => {
-        try {
-            const stream = await navigator.mediaDevices.getUserMedia({
-                audio: {
-                    echoCancellation: true,
-                    noiseSuppression: true,
-                    autoGainControl: true,
-                    channelCount: 1,
-                    sampleRate: 16000,  // optimal for Whisper
-                }
-            })
-            streamRef.current = stream
-
-            // Audio analysis chain
-            const ctx = new AudioContext()
-            audioCtxRef.current = ctx
-            const source = ctx.createMediaStreamSource(stream)
-
-            // Dynamics compressor — boosts quiet speech
-            const compressor = ctx.createDynamicsCompressor()
-            compressor.threshold.value = -50
-            compressor.knee.value = 40
-            compressor.ratio.value = 12
-            compressor.attack.value = 0
-            compressor.release.value = 0.25
-
-            const analyser = ctx.createAnalyser()
-            analyser.fftSize = 256
-            analyser.smoothingTimeConstant = 0.8
-            analyserRef.current = analyser
-
-            source.connect(compressor)
-            compressor.connect(analyser)
-
-            // Use webm if supported, fallback
-            const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-                ? 'audio/webm;codecs=opus'
-                : 'audio/webm'
-
-            const recorder = new MediaRecorder(stream, { mimeType })
-            chunksRef.current = []
-            speechDetectedRef.current = false
-            recorder.ondataavailable = (e) => {
-                if (e.data.size > 0) chunksRef.current.push(e.data)
-            }
-            recorder.start(100) // collect chunks every 100ms
-            mediaRecorderRef.current = recorder
-
-            setState('recording')
-            onRecordingChange?.(true)
-            startAnimation()
-        } catch (err) {
-            console.error('Mic error:', err)
-        }
-    }
+    const vadIntervalRef = useRef<number | null>(null)
 
     const stop = useCallback(async (confirm: boolean) => {
-        stopAnimation()
+        if (vadIntervalRef.current) {
+            window.clearInterval(vadIntervalRef.current)
+            vadIntervalRef.current = null
+        }
+        setBars(Array(16).fill(2))
+
         const recorder = mediaRecorderRef.current
-        if (!recorder) return
+        if (!recorder || recorder.state === 'inactive') return
 
         recorder.onstop = async () => {
             const cleanup = () => {
                 streamRef.current?.getTracks().forEach(t => t.stop())
-                audioCtxRef.current?.close()
+                sourceRef.current?.getTracks().forEach(t => t.stop())
+                audioCtxRef.current?.close().catch(() => { })
                 analyserRef.current = null
                 audioCtxRef.current = null
+                gateGainRef.current = null
+                mediaRecorderRef.current = null
                 setState('idle')
                 onRecordingChange?.(false)
+                onStateChange?.('idle')
             }
 
-            if (!confirm) { cleanup(); return }
+            if (!confirm) {
+                cleanup()
+                return
+            }
 
-            // VAD check — if no speech or too short, discard
-            const speechDuration = speechDetectedRef.current
-                ? Date.now() - speechStartTimeRef.current
-                : 0
-
-            if (!speechDetectedRef.current || speechDuration < MIN_SPEECH_DURATION) {
-                console.log('[VAD] No speech detected, discarding')
+            if (chunksRef.current.length === 0) {
                 cleanup()
                 return
             }
 
             setState('processing')
+            onStateChange?.('processing')
+
             const blob = new Blob(chunksRef.current, { type: 'audio/webm' })
             const form = new FormData()
             form.append('audio', blob, 'audio.webm')
 
             try {
                 const res = await fetch('/api/stt', { method: 'POST', body: form })
-                const { text } = await res.json()
-                if (text?.trim()) onTranscript(text.trim())
+                if (!res.ok) throw new Error(`STT failed: ${res.status}`)
+                const data = await res.json()
+                const HALLUCINATIONS = ['you', 'thank you', 'thanks', 'bye', '.', '']
+                const transcribed = data.data?.text?.trim()
+                if (transcribed && !HALLUCINATIONS.includes(transcribed.toLowerCase())) {
+                    onTranscript(transcribed)
+                }
             } catch (err) {
                 console.error('STT error:', err)
+            } finally {
+                cleanup()
             }
-            cleanup()
         }
 
         recorder.stop()
-    }, [onTranscript])
+    }, [onTranscript, onRecordingChange, onStateChange])
 
-    // Cleanup on unmount
+    const start = async () => {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+            streamRef.current = stream
+
+            const AudioCtx = (window.AudioContext || (window as any).webkitAudioContext)
+            const ctx = new AudioCtx()
+            if (ctx.state === 'suspended') await ctx.resume()
+            audioCtxRef.current = ctx
+
+            const source = ctx.createMediaStreamSource(stream)
+            sourceRef.current = stream
+
+            const highpass = ctx.createBiquadFilter()
+            highpass.type = 'highpass'
+            highpass.frequency.value = 90
+
+            const lowpass = ctx.createBiquadFilter()
+            lowpass.type = 'lowpass'
+            lowpass.frequency.value = 8000
+
+            const gateGain = ctx.createGain()
+            gateGain.gain.value = 1
+            gateGainRef.current = gateGain
+
+            const analyser = ctx.createAnalyser()
+            analyser.fftSize = 2048
+            analyser.smoothingTimeConstant = 0.3
+            analyserRef.current = analyser
+
+            source.connect(highpass)
+            highpass.connect(lowpass)
+            lowpass.connect(analyser)
+            lowpass.connect(gateGain)
+
+            const destination = ctx.createMediaStreamDestination()
+            gateGain.connect(destination)
+
+            const recorder = new MediaRecorder(destination.stream)
+            chunksRef.current = []
+            recorder.ondataavailable = (e) => {
+                if (e.data && e.data.size > 0) chunksRef.current.push(e.data)
+            }
+            recorder.start() // no timeslice
+            mediaRecorderRef.current = recorder
+
+            // VAD
+            const VAD_INTERVAL = 110
+            const CALIBRATION_MS = 500
+            const MIN_SPEECH_MS = 200
+            const HANGOVER_MS = 1800
+
+            const data = new Uint8Array(analyser.frequencyBinCount)
+            let noiseFloor = 0
+            let noiseSamples = 0
+            let lastVoiceTime = Date.now()
+            let seenVoice = false
+            let speechStartTime = 0
+            const calibrateUntil = Date.now() + CALIBRATION_MS
+
+            const computeLevel = () => {
+                analyser.getByteTimeDomainData(data)
+                let sum = 0
+                for (let i = 0; i < data.length; i++) {
+                    const v = data[i] - 128
+                    sum += v * v
+                }
+                return Math.sqrt(sum / data.length)
+            }
+
+            vadIntervalRef.current = window.setInterval(() => {
+                try {
+                    const level = computeLevel()
+
+                    if (Date.now() < calibrateUntil) {
+                        noiseFloor = (noiseFloor * noiseSamples + level) / (noiseSamples + 1)
+                        noiseSamples++
+                        return
+                    }
+
+                    const threshold = Math.max(6, noiseFloor * 1.8)
+                    const speaking = level > threshold
+
+                    // gate: reduce gain during silence
+                    if (speaking) {
+                        gateGain.gain.setTargetAtTime(1, ctx.currentTime, 0.05)
+                        lastVoiceTime = Date.now()
+                        if (!seenVoice) { seenVoice = true; speechStartTime = Date.now() }
+                    } else {
+                        gateGain.gain.setTargetAtTime(0.05, ctx.currentTime, 0.05)
+                    }
+
+                    // update waveform bars
+                    analyser.getByteFrequencyData(data)
+                    const newBars = Array(16).fill(0).map((_, i) => {
+                        const idx = Math.floor(i * data.length / 16)
+                        const norm = data[idx] / 255
+                        return speaking ? Math.max(3, norm * 24) : Math.max(2, Math.random() * 3)
+                    })
+                    setBars(newBars)
+
+                    const speechDuration = seenVoice ? Date.now() - speechStartTime : 0
+                    if (seenVoice && speechDuration >= MIN_SPEECH_MS && Date.now() - lastVoiceTime > HANGOVER_MS) {
+                        stop(true) // auto-stop after hangover
+                    }
+                } catch (e) { }
+            }, VAD_INTERVAL)
+
+            setState('recording')
+            onRecordingChange?.(true)
+            onStateChange?.('recording')
+
+        } catch (err) {
+            console.error('Mic error:', err)
+        }
+    }
+
     useEffect(() => () => {
-        stopAnimation()
+        if (vadIntervalRef.current) window.clearInterval(vadIntervalRef.current)
         streamRef.current?.getTracks().forEach(t => t.stop())
-        audioCtxRef.current?.close()
+        sourceRef.current?.getTracks().forEach(t => t.stop())
+        audioCtxRef.current?.close().catch(() => { })
     }, [])
 
+    // ── Idle ──
     if (state === 'idle') {
         return (
             <button
                 onClick={start}
                 disabled={disabled}
-                className='w-8 h-8 rounded-full flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50 cursor-pointer'
-                style={isLight ? {
-                    background: 'rgba(250,246,238,0.88)',
-                    backdropFilter: 'url(#palm-glass-light) blur(20px)',
-                    WebkitBackdropFilter: 'blur(20px)',
-                    border: '1px solid rgba(120,96,60,0.10)',
-                    boxShadow: [
-                        '0 0 0 0.5px rgba(100,76,40,0.08)',
-                        '0 2px 4px rgba(80,60,30,0.06)',
-                        '0 8px 20px rgba(80,60,30,0.09)',
-                        'inset 0 1px 0 rgba(255,255,255,0.90)',
-                        'inset 0 -1px 0 rgba(100,76,40,0.04)',
-                    ].join(', '),
-                } : {
-                    background: 'rgba(255,255,255,0.07)',
-                    backdropFilter: 'url(#palm-glass-light) blur(20px)',
-                    WebkitBackdropFilter: 'blur(20px)',
-                    border: '1px solid rgba(255,255,255,0.12)',
-                    boxShadow: [
-                        '0 0 0 0.5px rgba(255,255,255,0.04)',
-                        '0 2px 4px rgba(0,0,0,0.12)',
-                        '0 8px 20px rgba(0,0,0,0.24)',
-                        'inset 0 1px 0 rgba(255,255,255,0.08)',
-                        'inset 0 -1px 0 rgba(0,0,0,0.2)',
-                    ].join(', '),
+                style={{
+                    width: 30, height: 30, borderRadius: '50%', border: 'none',
+                    background: 'transparent',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    cursor: disabled ? 'default' : 'pointer',
+                    color: muted,
+                    transition: 'background 0.12s, color 0.12s',
+                    opacity: disabled ? 0.4 : 1,
+                    flexShrink: 0,
+                }}
+                onMouseEnter={e => {
+                    if (!disabled) {
+                        e.currentTarget.style.background = isLight ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.06)'
+                        e.currentTarget.style.color = text
+                    }
+                }}
+                onMouseLeave={e => {
+                    if (!disabled) {
+                        e.currentTarget.style.background = 'transparent'
+                        e.currentTarget.style.color = muted
+                    }
                 }}
             >
-                <Mic className='w-4 h-4' />
+                <Mic style={{ width: 14, height: 14 }} />
             </button>
         )
     }
 
+    // ── Recording / Processing ──
     return (
-        <div className='flex items-center gap-2'>
-            <div className='flex items-center gap-2 rounded-full border border-border/60 bg-muted/40 px-3 h-10'>
-                {/* Waveform */}
-                <div className='flex items-center gap-[2px]'>
-                    {bars.map((h, i) => (
-                        <div
-                            key={i}
-                            className='w-[2px] rounded-full bg-foreground/60 transition-all duration-75'
-                            style={{ height: `${h}px`, minHeight: '2px', maxHeight: '22px' }}
-                        />
-                    ))}
-                </div>
+        <div style={{
+            display: 'flex', alignItems: 'center', gap: 8,
+            padding: '0 10px 0 12px', height: 36, borderRadius: 18,
+            border: `1px solid ${state === 'recording' ? 'rgba(239,68,68,0.3)' : border}`,
+            background: state === 'recording'
+                ? (isLight ? 'rgba(239,68,68,0.05)' : 'rgba(239,68,68,0.08)')
+                : (isLight ? 'rgba(0,0,0,0.03)' : 'rgba(255,255,255,0.04)'),
+            transition: 'all 0.2s ease',
+            flexShrink: 0,
+        }}>
 
-                {/* Divider */}
-                <div className='w-px h-4 bg-border/60 mx-1' />
+            {/* Live dot */}
+            {state === 'recording' && (
+                <div style={{
+                    width: 6, height: 6, borderRadius: '50%',
+                    background: '#ef4444', flexShrink: 0,
+                    animation: 'pulse-dot 1.2s ease-in-out infinite',
+                }} />
+            )}
 
-                {/* X */}
-                <button
-                    onClick={() => stop(false)}
-                    className='text-muted-foreground hover:text-foreground transition-colors p-1 cursor-pointer'
-                >
-                    <X className='w-3.5 h-3.5' />
-                </button>
-
-                {/* Check */}
-                <button
-                    onClick={() => stop(true)}
-                    disabled={state === 'processing'}
-                    className='w-7 h-7 rounded-full bg-black dark:bg-white flex items-center justify-center flex-shrink-0 disabled:opacity-60 cursor-pointer'
-                >
-                    {state === 'processing'
-                        ? <div className='w-3 h-3 border-2 border-white dark:border-black border-t-transparent rounded-full animate-spin' />
-                        : <Check className='w-3.5 h-3.5 text-white dark:text-black' />
-                    }
-                </button>
+            {/* Waveform bars */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                {bars.map((h, i) => (
+                    <div key={i} style={{
+                        width: 2, borderRadius: 9999, flexShrink: 0,
+                        height: `${h}px`, minHeight: 2, maxHeight: 22,
+                        background: state === 'recording' ? '#ef4444' : muted,
+                        opacity: state === 'recording' ? 0.75 : 0.4,
+                        transition: 'height 0.075s ease',
+                    }} />
+                ))}
             </div>
+
+            {/* Divider */}
+            <div style={{ width: 1, height: 14, background: border, flexShrink: 0, marginLeft: 4 }} />
+
+            {/* Cancel */}
+            <button
+                onClick={() => stop(false)}
+                style={{
+                    background: 'none', border: 'none', cursor: 'pointer',
+                    color: muted, padding: 4, display: 'flex', borderRadius: 4,
+                    transition: 'color 0.12s',
+                }}
+                onMouseEnter={e => e.currentTarget.style.color = text}
+                onMouseLeave={e => e.currentTarget.style.color = muted}
+            >
+                <X style={{ width: 13, height: 13 }} />
+            </button>
+
+            {/* Confirm */}
+            <button
+                onClick={() => stop(true)}
+                disabled={state === 'processing'}
+                style={{
+                    width: 26, height: 26, borderRadius: '50%', border: 'none',
+                    background: text, flexShrink: 0,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    cursor: state === 'processing' ? 'default' : 'pointer',
+                    opacity: state === 'processing' ? 0.6 : 1,
+                    transition: 'opacity 0.15s',
+                }}
+            >
+                {state === 'processing'
+                    ? <div style={{
+                        width: 11, height: 11, borderRadius: '50%',
+                        border: `2px solid ${isLight ? '#fff' : '#000'}`,
+                        borderTopColor: 'transparent',
+                        animation: 'spin 0.6s linear infinite',
+                    }} />
+                    : <Check style={{ width: 12, height: 12, color: isLight ? '#fff' : '#000' }} />
+                }
+            </button>
         </div>
     )
 }

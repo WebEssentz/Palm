@@ -1,36 +1,36 @@
-import { NextRequest } from 'next/server'
+import fs from 'fs'
+import path from 'path'
+import os from 'os'
 import Groq from 'groq-sdk'
+import { NextRequest, NextResponse } from 'next/server'
 import { env } from '@/env'
-import { ValidationError, InternalServerError } from '@/lib/errors'
-import { apiHandlerFormData } from '@/lib/api-handler'
-import type { STTResponse } from '@/types/api'
+
+export const runtime = 'nodejs'
 
 export async function POST(req: NextRequest) {
-  return apiHandlerFormData(req, async (formData) => {
-    const audio = formData.get('audio') as File
-    if (!audio) {
-      throw new ValidationError('Audio file is required')
-    }
+  try {
+    const formData = await req.formData()
+    const file = formData.get('audio') as File | null
+    if (!file) return NextResponse.json({ error: 'No audio provided' }, { status: 400 })
 
-    try {
-      const groq = new Groq({ apiKey: env.GROQ_API_KEY })
+    // write to tmp
+    const tmpPath = path.join(os.tmpdir(), `palm-stt-${Date.now()}.webm`)
+    const buffer = Buffer.from(await file.arrayBuffer())
+    await fs.promises.writeFile(tmpPath, buffer)
 
-      const transcription = await groq.audio.transcriptions.create({
-        file: audio,
-        model: 'whisper-large-v3-turbo',
-        temperature: 0,
-        response_format: 'json',
-      })
+    const groq = new Groq({ apiKey: env.GROQ_API_KEY })
 
-      const response: STTResponse = {
-        text: transcription.text || '',
-        success: true,
-      }
+    const transcription = await groq.audio.transcriptions.create({
+      file: fs.createReadStream(tmpPath),
+      model: 'whisper-large-v3-turbo',
+      response_format: 'json',
+    })
 
-      return response
-    } catch (err) {
-      console.error('STT error:', err)
-      throw new InternalServerError('Transcription failed', { originalError: err })
-    }
-  })
+    await fs.promises.unlink(tmpPath).catch(() => {})
+
+    return NextResponse.json({ success: true, data: { text: transcription.text } })
+  } catch (err) {
+    console.error('STT error:', err)
+    return NextResponse.json({ error: 'Transcription failed' }, { status: 500 })
+  }
 }
