@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { useTheme } from 'next-themes'
 
 type TooltipSide = 'top' | 'bottom' | 'left' | 'right'
 
@@ -37,8 +36,6 @@ export function GlassTooltip({
 }: GlassTooltipProps) {
     const [visible, setVisible] = useState(false)
     const timerRef = useState<ReturnType<typeof setTimeout> | null>(null)
-    const { theme, systemTheme } = useTheme()
-    const isLight = (theme === 'system' ? systemTheme : theme) === 'light'
 
     const show = () => {
         timerRef[1](setTimeout(() => setVisible(true), delay))
@@ -56,32 +53,6 @@ export function GlassTooltip({
         timerRef[1](null)
         setVisible(false)
     }, [disabled])
-
-    const glassStyle: React.CSSProperties = isLight ? {
-        background: 'rgba(248,244,237,0.92)',
-        backdropFilter: 'blur(20px) saturate(1.6)',
-        WebkitBackdropFilter: 'blur(20px) saturate(1.6)',
-        border: '1px solid rgba(255,255,255,0.75)',
-        boxShadow: [
-            '0 0 0 0.5px rgba(100,76,40,0.10)',
-            '0 2px 8px rgba(80,60,30,0.10)',
-            '0 8px 20px rgba(80,60,30,0.08)',
-            'inset 0 1px 0 rgba(255,255,255,0.95)',
-            'inset 0 -1px 0 rgba(100,76,40,0.04)',
-        ].join(', '),
-    } : {
-        background: 'rgba(28,28,30,0.88)',
-        backdropFilter: 'blur(20px) saturate(1.8)',
-        WebkitBackdropFilter: 'blur(20px) saturate(1.8)',
-        border: '1px solid rgba(255,255,255,0.10)',
-        boxShadow: [
-            '0 0 0 0.5px rgba(255,255,255,0.06)',
-            '0 2px 8px rgba(0,0,0,0.20)',
-            '0 8px 20px rgba(0,0,0,0.28)',
-            'inset 0 1px 0 rgba(255,255,255,0.10)',
-            'inset 0 -1px 0 rgba(0,0,0,0.20)',
-        ].join(', '),
-    }
 
     // Don't wrap at all when disabled — zero overhead
     if (disabled) return <>{children}</>
@@ -104,14 +75,8 @@ export function GlassTooltip({
                         className={`absolute ${POSITION[side]} z-[300] pointer-events-none whitespace-nowrap`}
                     >
                         <div
-                            className='relative overflow-hidden rounded-full px-2.5 py-1'
-                            style={glassStyle}
+                            className='overflow-hidden rounded-full border border-black/10 bg-white px-2.5 py-1 shadow-sm dark:border-white/10 dark:bg-neutral-900'
                         >
-                            {/* Specular top highlight */}
-                            <div
-                                className='pointer-events-none absolute inset-x-0 top-0 h-[1px]'
-                                style={{ background: 'linear-gradient(90deg, transparent 5%, rgba(255,255,255,0.9) 50%, transparent 95%)' }}
-                            />
                             <span className='text-xs font-medium text-foreground select-none'>
                                 {content}
                             </span>

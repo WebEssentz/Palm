@@ -1,7 +1,7 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 
-const DEFAULT_GRANT = 10
+const DEFAULT_GRANT = 500
 const DEFAULT_ROLLOVER_LIMIT = 100
 const ENTITLED = new Set(['active', 'trialing'])
 

@@ -1,26 +1,62 @@
-"use client"
+'use client'
 
-import { Redo2, Undo2 } from "lucide-react"
-import React from "react"
+import { useDispatch } from "react-redux"
+import { useAppSelector } from "@/redux/store"
+import { undo, redo } from "@/redux/slice/shapes"
+import { Undo2, Redo2 } from "lucide-react"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 
-const HistoryPill = () => {
+export default function HistoryBar() {
+    const dispatch = useDispatch()
+    const past = useAppSelector((state) => (state.shapes as any).past ?? [])
+    const future = useAppSelector((state) => (state.shapes as any).future ?? [])
+
+    const canUndo = past.length > 0
+    const canRedo = future.length > 0
+
     return (
-        <div className="col-span-1 flex justify-start items-center">
-            <div
-              aria-hidden
-              className="inline-flex items-center rounded-full backdrop-blur-xl bg-muted border border-border dark:bg-white/[0.08] dark:border-white/[0.12] p-2 text-foreground saturate-150"
-            >
-              <span className="inline-grid h-9 w-9 place-items-center rounded-full hover:bg-accent dark:hover:bg-white/[0.12] transition-all cursor-pointer">
-                <Undo2 size={18} className="opacity-80 stroke-[1.75]" />
-              </span>
+        <div className="h-8 px-1 rounded-full flex items-center gap-0.5 border border-black/10 dark:border-white/10 bg-white dark:bg-neutral-900 text-black/70 dark:text-white/70 shadow-sm">
+            {/* Undo (curves left) */}
+            <Tooltip>
+                <TooltipTrigger asChild>
+                    <button
+                        type="button"
+                        onClick={() => canUndo && dispatch(undo())}
+                        disabled={!canUndo}
+                        className={`w-7 h-7 rounded-full flex items-center justify-center transition-colors ${
+                            canUndo
+                                ? "cursor-pointer hover:bg-neutral-100 dark:hover:bg-neutral-800 text-black/75 dark:text-white/75 hover:text-black dark:hover:text-white"
+                                : "opacity-25 cursor-not-allowed text-black/40 dark:text-white/40"
+                        }`}
+                    >
+                        <Undo2 className="w-3.5 h-3.5" />
+                    </button>
+                </TooltipTrigger>
+                <TooltipContent side="top" sideOffset={8}>
+                    Undo — Ctrl / ⌘ Z
+                </TooltipContent>
+            </Tooltip>
 
-              <span className="mx-1 h-5 w-px rounded bg-border"/>
-              <span className="inline-grid h-9 w-9 place-items-center rounded-full hover:bg-accent dark:hover:bg-white/[0.12] transition-all cursor-pointer">
-                <Redo2 size={18} className="opacity-80 stroke-[1.75]" />
-              </span>
-            </div>
+            {/* Redo (curves right) */}
+            <Tooltip>
+                <TooltipTrigger asChild>
+                    <button
+                        type="button"
+                        onClick={() => canRedo && dispatch(redo())}
+                        disabled={!canRedo}
+                        className={`w-7 h-7 rounded-full flex items-center justify-center transition-colors ${
+                            canRedo
+                                ? "cursor-pointer hover:bg-neutral-100 dark:hover:bg-neutral-800 text-black/75 dark:text-white/75 hover:text-black dark:hover:text-white"
+                                : "opacity-25 cursor-not-allowed text-black/40 dark:text-white/40"
+                        }`}
+                    >
+                        <Redo2 className="w-3.5 h-3.5" />
+                    </button>
+                </TooltipTrigger>
+                <TooltipContent side="top" sideOffset={8}>
+                    Redo — Ctrl / ⌘ ⇧ Z
+                </TooltipContent>
+            </Tooltip>
         </div>
     )
 }
-
-export default HistoryPill

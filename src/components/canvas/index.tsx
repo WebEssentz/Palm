@@ -1,17 +1,16 @@
 'use client'
 
-import React, { useEffect, useRef, useState } from 'react'
-import { useGlobalChat, useInfiniteCanvas } from '@/hooks/use-canvas'
-import Substrate from '@/components/home/substrate'
+import { useEffect, useState, useMemo, useRef } from 'react'
+import { useGlobalChat, useInfiniteCanvas, ChatTurn } from '@/hooks/use-canvas'
+import DotParticleBackground from './dot-particle-background'
 import TextSidebar from './text-sidebar'
 import { cn } from '@/lib/utils'
 import ShapeRenderer from './shapes'
-import { useSearchParams } from 'next/navigation'
-import { useDispatch } from 'react-redux'
+import { useSearchParams, useRouter, usePathname } from 'next/navigation'
+import { useTheme } from 'next-themes'
 import { useAppSelector } from '@/redux/store'
-import { useQuery } from 'convex/react'
+import { useQuery, useMutation } from 'convex/react'
 import { api } from '../../../convex/_generated/api'
-import { addGeneratedUI, updateShape } from '@/redux/slice/shapes'
 import { RectanglePreview } from './shapes/rectangle/preview'
 import { FramePreview } from './shapes/frame/preview'
 import { EllipsePreview } from './shapes/ellipse/preview'
@@ -22,13 +21,15 @@ import { SelectionOverlay } from './shapes/selection'
 import { HoverOverlay } from './hover-overlay'
 import { MarqueeOverlay } from './shapes/marquee'
 import { ChatPanel } from './chat-panel'
-import { PlanLog } from './plan-log'
 import { ChatInput } from './chat-input'
+import StyleGuideView from '@/components/style/style-guide-view'
 // import InspirationSidebar from './shapes/inspiration-sidebar'
 
 
 const InfiniteCanvas = () => {
   // Initialize ALL hooks at the top level in a consistent order
+  const { theme, systemTheme } = useTheme()
+  const pathname = usePathname()
   const searchParams = useSearchParams()
   const profile = useQuery(api.user.getCurrentUser)
 
@@ -72,9 +73,11 @@ const InfiniteCanvas = () => {
     ? shapes.find(s => s.id === hoveredShapeId)
     : null
   const isHoveringGeneratedUI = hoveredShape?.type === 'generatedui'
+  const isLight = (theme === 'system' ? systemTheme : theme) === 'light'
 
   const promptFromUrl = searchParams.get('prompt')
   const projectId = searchParams.get('project')
+  const urlChatId = searchParams.get('chat')
   const imagesParam = searchParams.get('images')
   const initialImageIds: string[] = imagesParam
     ? JSON.parse(decodeURIComponent(imagesParam))
@@ -83,34 +86,177 @@ const InfiniteCanvas = () => {
   // Check if shapes already exist from Convex load
   const existingShapes = useAppSelector((s) => s.shapes.shapes?.ids ?? [])
 
+  // Project chats query & mutations
+  const projectChats = useQuery(
+    api.chat.listChats,
+    projectId ? { projectId } : 'skip'
+  ) ?? []
+  const createChatMutation = useMutation(api.chat.createChat)
+  const deleteChatMutation = useMutation(api.chat.deleteChat)
+  const migrateInitialChatMutation = useMutation(api.chat.getOrMigrateInitialChat)
 
+  // Instant local activeChatId state (initialized from URL)
+  const [activeChatId, setActiveChatId] = useState<string | null>(urlChatId)
+  const pendingChatPromiseRef = useRef<Promise<string> | null>(null)
+  const knownEmptyChatIdsRef = useRef<Set<string>>(new Set())
 
-  // Sidebar open state (lifted from ChatPanel)
+  useEffect(() => {
+    setActiveChatId(urlChatId)
+  }, [urlChatId])
+
+  // Direct reactive Convex query for active chat turns (instant from memory cache)
+  const isOptimisticNewChat = !!activeChatId?.startsWith('new-')
+  const isKnownEmpty = activeChatId ? knownEmptyChatIdsRef.current.has(activeChatId) : false
+
+  const dbTurnsRaw = useQuery(
+    api.chat.getByChat,
+    activeChatId && !isOptimisticNewChat ? { chatId: activeChatId } : 'skip'
+  )
+
+  const isLoadingTurns = !!activeChatId && !isOptimisticNewChat && !isKnownEmpty && dbTurnsRaw === undefined
+
+  // Merged turns: reactive Convex turns + active streaming optimistic turns
+  const turns = useMemo<ChatTurn[]>(() => {
+    if (!activeChatId || isOptimisticNewChat) return []
+    const dbFormatted: ChatTurn[] = (dbTurnsRaw ?? []).map((t) => ({
+      id: t.turnId,
+      prompt: t.prompt,
+      response: t.response,
+      isLoading: false,
+      timestamp: t.timestamp,
+      urls: t.urls ?? [],
+      imageStorageIds: t.imageStorageIds ?? [],
+    }))
+
+    if (chat.chatTurns.length > 0) {
+      const activeIds = new Set(chat.chatTurns.map((t) => t.id))
+      return [
+        ...dbFormatted.filter((t) => !activeIds.has(t.id)),
+        ...chat.chatTurns,
+      ].sort((a, b) => (a.timestamp ?? 0) - (b.timestamp ?? 0))
+    }
+
+    return dbFormatted
+  }, [activeChatId, isOptimisticNewChat, dbTurnsRaw, chat.chatTurns])
+
+  // Auto-migrate any unassigned turns created before multi-chat
+  useEffect(() => {
+    if (projectId) {
+      migrateInitialChatMutation({ projectId }).catch(() => {})
+    }
+  }, [projectId, migrateInitialChatMutation])
+
+  // Active chat title derived from projectChats
+  const activeChatDoc = projectChats.find(c => c._id === activeChatId)
+  const activeChatTitle = activeChatDoc?.title || 'New chat'
+
+  // Sidebar open state
   const [sidebarOpen, setSidebarOpen] = useState(true)
-  const [agentPanelOpen, setAgentPanelOpen] = useState(false) // ← add this
-  const planLogRef = React.useRef<HTMLDivElement>(null)
-  const [planLogHeight, setPlanLogHeight] = useState(36) // collapsed default
-
-  // Measure PlanLog whenever it opens/closes
-  React.useEffect(() => {
-    if (!planLogRef.current) return
-    const observer = new ResizeObserver(entries => {
-      setPlanLogHeight(entries[0].contentRect.height)
-    })
-    observer.observe(planLogRef.current)
-    return () => observer.disconnect()
-  }, [])
 
   // Wire ChatInput to sendMessage
-  const handleSend = (msg: string, opts?: { urls?: string[]; imageStorageIds?: string[] }) => {
+  const handleSend = async (msg: string, opts?: { urls?: string[]; imageStorageIds?: string[] }) => {
     if (!projectId) return
-    chat.sendMessage(msg, projectId, opts)
+
+    let targetChatId = activeChatId
+    let isFirstMessage = false
+
+    // If activeChatId is an in-flight optimistic chat, await the creation promise
+    if (targetChatId?.startsWith('new-') && pendingChatPromiseRef.current) {
+      targetChatId = await pendingChatPromiseRef.current
+      isFirstMessage = true
+    } else if (!targetChatId) {
+      try {
+        targetChatId = await createChatMutation({ projectId, title: 'New chat' })
+        knownEmptyChatIdsRef.current.add(targetChatId)
+        setActiveChatId(targetChatId)
+        const params = new URLSearchParams(searchParams.toString())
+        params.set('chat', targetChatId)
+        window.history.pushState(null, '', `${pathname}?${params.toString()}`)
+        isFirstMessage = true
+      } catch (e) {
+        console.error('Failed to create chat on send', e)
+        return
+      }
+    } else {
+      if (turns.length === 0 && (!activeChatDoc?.title || activeChatDoc.title === 'New chat')) {
+        isFirstMessage = true
+      }
+    }
+
+    if (targetChatId) {
+      knownEmptyChatIdsRef.current.delete(targetChatId)
+    }
+
+    // Send message bound to targetChatId
+    chat.sendMessage(msg, projectId, { ...opts, chatId: targetChatId })
+
+    // Auto-generate title ONLY on first message in background
+    if (isFirstMessage && targetChatId) {
+      fetch('/api/chat/title', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chatId: targetChatId, prompt: msg }),
+      }).catch((err) => console.error('Auto-title generation failed', err))
+    }
   }
 
-  // Load chat history from Convex on mount
-  useEffect(() => {
-    if (projectId) loadHistory(projectId)
-  }, [projectId, loadHistory])
+  // Handle creating a new chat thread (Instant Optimistic 0ms UI)
+  const handleNewChat = () => {
+    if (!projectId) return
+
+    // 1. Set instant optimistic ID (0ms render)
+    const optimisticId = `new-${Date.now()}`
+    knownEmptyChatIdsRef.current.add(optimisticId)
+    setActiveChatId(optimisticId)
+    chat.setChatTurns([])
+
+    // 2. Run creation in background and resolve
+    const promise = createChatMutation({ projectId, title: 'New chat' })
+      .then((realId) => {
+        knownEmptyChatIdsRef.current.add(realId)
+        setActiveChatId((current) => (current === optimisticId ? realId : current))
+        const params = new URLSearchParams(searchParams.toString())
+        params.set('chat', realId)
+        window.history.pushState(null, '', `${pathname}?${params.toString()}`)
+        return realId
+      })
+      .catch((e) => {
+        console.error('Failed to create new chat', e)
+        return optimisticId
+      })
+
+    pendingChatPromiseRef.current = promise
+  }
+
+  // Handle selecting an existing chat thread (Instant 0ms UI)
+  const handleSelectChat = (chatId: string) => {
+    setActiveChatId(chatId)
+    chat.setChatTurns([])
+    const params = new URLSearchParams(searchParams.toString())
+    params.set('chat', chatId)
+    window.history.pushState(null, '', `${pathname}?${params.toString()}`)
+  }
+
+  // Handle returning back to chats list (Instant 0ms UI)
+  const handleBackToList = () => {
+    setActiveChatId(null)
+    chat.setChatTurns([])
+    const params = new URLSearchParams(searchParams.toString())
+    params.delete('chat')
+    window.history.pushState(null, '', `${pathname}?${params.toString()}`)
+  }
+
+  // Handle deleting a chat thread
+  const handleDeleteChat = async (chatId: string) => {
+    try {
+      await deleteChatMutation({ chatId: chatId as any })
+      if (activeChatId === chatId) {
+        handleBackToList()
+      }
+    } catch (e) {
+      console.error('Failed to delete chat', e)
+    }
+  }
 
   useEffect(() => {
     if (isLoadingHistory) return
@@ -145,51 +291,66 @@ const InfiniteCanvas = () => {
     return () => window.removeEventListener('frame-selected', handler)
   }, [chat.chatTurns, chat])
 
+  // Workspace tab state (Instant 0ms switching between Canvas and Style Guide)
+  const [workspaceTab, setWorkspaceTab] = useState<'canvas' | 'styles'>('canvas')
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      setWorkspaceTab(window.location.pathname.includes('style-guide') ? 'styles' : 'canvas')
+    }
+    const handleTabChange = (e: Event) => {
+      const customEvent = e as CustomEvent<{ tab: 'canvas' | 'styles' }>
+      if (customEvent.detail?.tab) {
+        setWorkspaceTab(customEvent.detail.tab)
+      }
+    }
+    const handlePopState = () => {
+      setWorkspaceTab(window.location.pathname.includes('style-guide') ? 'styles' : 'canvas')
+    }
+    window.addEventListener('workspace-tab-change', handleTabChange)
+    window.addEventListener('popstate', handlePopState)
+    return () => {
+      window.removeEventListener('workspace-tab-change', handleTabChange)
+      window.removeEventListener('popstate', handlePopState)
+    }
+  }, [])
+
   return (
     <div className='fixed inset-0 flex flex-col'>
-      <TextSidebar isOpen={isSidebarOpen && hasSelectedText} />
+      {/* ── Style Guide View (Instant toggle) ── */}
+      {workspaceTab === 'styles' && (
+        <div className="absolute inset-0 z-30 bg-background overflow-y-auto">
+          <StyleGuideView projectId={projectId} />
+        </div>
+      )}
 
-      {/* ── ChatPanel — stops above PlanLog dynamically ── */}
+      {/* ── Canvas View (kept mounted in memory) ── */}
+      <div className={cn('relative w-full h-full flex flex-col', workspaceTab === 'styles' && 'invisible pointer-events-none')}>
+        <TextSidebar isOpen={isSidebarOpen && hasSelectedText} />
+
+      {/* ── ChatPanel ── */}
       <div
-        className='fixed left-3 top-14 z-50 pointer-events-none'
+        className='fixed left-3 top-14 bottom-24 z-50 pointer-events-none'
         style={{
-          width: sidebarOpen ? 296 : 72,
-          bottom: planLogHeight + 28, // 20px bottom offset + 8px gap
+          width: sidebarOpen ? 296 : 40,
           transition: 'width 0.35s cubic-bezier(0.32, 0.72, 0, 1)',
         }}
       >
         <div className={`pointer-events-auto flex flex-col ${sidebarOpen ? 'h-full' : ''}`}>
           <ChatPanel
-            turns={chat.chatTurns}
-            expandedTurnId={chat.expandedTurnId}
-            onExpandTurn={chat.setExpandedTurnId}
+            turns={turns}
+            chats={projectChats}
+            activeChatId={activeChatId}
+            activeChatTitle={activeChatTitle}
+            isLoadingTurns={isLoadingTurns}
+            onSelectChat={handleSelectChat}
+            onNewChat={handleNewChat}
+            onDeleteChat={handleDeleteChat}
+            onBack={handleBackToList}
             profile={profile}
             isOpen={sidebarOpen}
             onToggle={() => setSidebarOpen(o => !o)}
             toolStatus={chat.toolStatus}
-          />
-        </div>
-      </div>
-
-      {/* ── PlanLog — fully independent, owns its own width ── */}
-      <div
-        ref={planLogRef}
-        className='fixed left-3 bottom-5 z-50 pointer-events-none'
-        style={{
-          width: agentPanelOpen ? 296 : 80,
-          transition: 'width 0.35s cubic-bezier(0.32, 0.72, 0, 1)',
-        }}
-      >
-        <div className='pointer-events-auto'>
-          <PlanLog
-            turns={chat.chatTurns}
-            selectedTurnId={chat.expandedTurnId}
-            onSelectTurn={(id) => {
-              chat.setExpandedTurnId(id)
-              setSidebarOpen(true)
-            }}
-            isOpen={agentPanelOpen}
-            onToggle={() => setAgentPanelOpen(o => !o)}
           />
         </div>
       </div>
@@ -226,7 +387,7 @@ const InfiniteCanvas = () => {
             onContextMenu={(e) => e.preventDefault()}
             draggable={false}
           >
-            <Substrate />
+            <DotParticleBackground isLight={isLight} />
 
             <div
               className='absolute origin-top-left pointer-events-none z-10'
@@ -242,9 +403,6 @@ const InfiniteCanvas = () => {
                   shape={shape}
                   selectedShapes={selectedShapes}
                   toggleInspiration={() => { }}
-                  // toggleChat={toogleChat}
-                  generateWorkflow={generateWorkflow}
-                // exportDesign={exportDesign}
                 />
               ))}
 
@@ -345,17 +503,18 @@ const InfiniteCanvas = () => {
         </div>
       </div>
 
-      {/* ── ChatInput wired to sendMessage ── */}
-      <div className='fixed bottom-5 left-1/2 -translate-x-1/2 z-50 pointer-events-none'>
-        <div className='pointer-events-auto'>
-          <ChatInput
-            onSend={handleSend}
-            isLoading={chat.isSending}
-            attachedFrameId={activeGeneratedUIId}
-            attachedFrameName={chat.attachedFrameName}
-            attachedThumbnailUrl={chat.attachedThumbnailUrl}
-            onDetachFrame={() => setActiveGeneratedUIId(null)}
-          />
+        {/* ── ChatInput wired to sendMessage ── */}
+        <div className='fixed bottom-5 left-1/2 -translate-x-1/2 z-50 pointer-events-none'>
+          <div className='pointer-events-auto'>
+            <ChatInput
+              onSend={handleSend}
+              isLoading={chat.isSending}
+              attachedFrameId={activeGeneratedUIId}
+              attachedFrameName={chat.attachedFrameName}
+              attachedThumbnailUrl={chat.attachedThumbnailUrl}
+              onDetachFrame={() => setActiveGeneratedUIId(null)}
+            />
+          </div>
         </div>
       </div>
     </div>

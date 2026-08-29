@@ -9,7 +9,7 @@
     "lint": "eslint"
   },
   "dependencies": {
-    "@ai-sdk/google": "^4.0.45",
+    "@ai-sdk/google": "^4.0.54",
     "@auth/core": "0.41.3",
     "@convex-dev/auth": "^0.0.95",
     "@hookform/resolvers": "^5.9.1",
@@ -43,7 +43,8 @@
     "@radix-ui/react-toggle-group": "^1.1.19",
     "@radix-ui/react-tooltip": "^1.2.16",
     "@reduxjs/toolkit": "^2.12.0",
-    "ai": "^7.0.68",
+    "@types/jsdom": "^30.0.0",
+    "ai": "^7.0.83",
     "class-variance-authority": "^0.7.1",
     "cloudflared": "^0.7.3",
     "clsx": "^2.1.1",

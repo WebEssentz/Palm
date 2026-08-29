@@ -126,6 +126,8 @@ interface ShapesState {
   shapes: EntityState<Shape, string>;
   selected: SelectionMap;
   frameCounter: number;
+  past: Array<EntityState<Shape, string>>;
+  future: Array<EntityState<Shape, string>>;
 }
 
 const initialState: ShapesState = {
@@ -133,7 +135,23 @@ const initialState: ShapesState = {
   shapes: shapesAdapter.getInitialState(),
   selected: {},
   frameCounter: 0,
+  past: [],
+  future: [],
 };
+
+const MAX_HISTORY = 40;
+
+function recordHistory(state: ShapesState) {
+  if (!state.past) state.past = [];
+  state.past.push({
+    ids: [...state.shapes.ids],
+    entities: { ...state.shapes.entities },
+  });
+  if (state.past.length > MAX_HISTORY) {
+    state.past.shift();
+  }
+  state.future = [];
+}
 
 const DEFAULTS = { stroke: "#888888", strokeWidth: 2 as const };
 
@@ -301,6 +319,7 @@ const makeGeneratedUI = (p: {
   strokeWidth?: number;
   fill?: string | null;
   isWorkflowPage?: boolean; // Flag to identify workflow pages
+  prompt?: string;
 }): GeneratedUIShape => ({
   id: p.id ?? nanoid(),
   type: "generatedui",
@@ -311,6 +330,7 @@ const makeGeneratedUI = (p: {
   uiSpecData: p.uiSpecData,
   sourceFrameId: p.sourceFrameId,
   isWorkflowPage: p.isWorkflowPage,
+  prompt: p.prompt,
   stroke: "transparent", // No border for generated UI
   strokeWidth: 0,
   fill: p.fill ?? null,
@@ -331,6 +351,7 @@ const shapesSlice = createSlice({
         Omit<Parameters<typeof makeFrame>[0], "frameNumber">
       >
     ) {
+      recordHistory(state);
       state.frameCounter = (state.frameCounter ?? 0) + 1;
       const frameWithNumber = {
         ...action.payload,
@@ -339,12 +360,14 @@ const shapesSlice = createSlice({
       shapesAdapter.addOne(state.shapes, makeFrame(frameWithNumber));
     },
     addRect(state, action: PayloadAction<Parameters<typeof makeRect>[0]>) {
+      recordHistory(state);
       shapesAdapter.addOne(state.shapes, makeRect(action.payload));
     },
     addEllipse(
       state,
       action: PayloadAction<Parameters<typeof makeEllipse>[0]>
     ) {
+      recordHistory(state);
       shapesAdapter.addOne(state.shapes, makeEllipse(action.payload));
     },
     addFreeDrawShape(
@@ -353,21 +376,26 @@ const shapesSlice = createSlice({
     ) {
       const { points } = action.payload;
       if (!points || points.length === 0) return;
+      recordHistory(state);
       shapesAdapter.addOne(state.shapes, makeFree(action.payload));
     },
     addArrow(state, action: PayloadAction<Parameters<typeof makeArrow>[0]>) {
+      recordHistory(state);
       shapesAdapter.addOne(state.shapes, makeArrow(action.payload));
     },
     addLine(state, action: PayloadAction<Parameters<typeof makeLine>[0]>) {
+      recordHistory(state);
       shapesAdapter.addOne(state.shapes, makeLine(action.payload));
     },
     addText(state, action: PayloadAction<Parameters<typeof makeText>[0]>) {
+      recordHistory(state);
       shapesAdapter.addOne(state.shapes, makeText(action.payload));
     },
     addGeneratedUI(
       state,
       action: PayloadAction<Parameters<typeof makeGeneratedUI>[0]>
     ) {
+      recordHistory(state);
       shapesAdapter.addOne(state.shapes, makeGeneratedUI(action.payload));
     },
 
@@ -375,11 +403,13 @@ const shapesSlice = createSlice({
       state,
       action: PayloadAction<{ id: string; patch: Partial<Shape> }>
     ) {
+      recordHistory(state);
       const { id, patch } = action.payload;
       shapesAdapter.updateOne(state.shapes, { id, changes: patch });
     },
 
     removeShape(state, action: PayloadAction<string>) {
+      recordHistory(state);
       const id = action.payload;
       const shape = state.shapes.entities[id];
       if (shape?.type === "frame") {
@@ -390,9 +420,34 @@ const shapesSlice = createSlice({
     },
 
     clearAll(state) {
+      recordHistory(state);
       shapesAdapter.removeAll(state.shapes);
       state.selected = {};
       state.frameCounter = 0;
+    },
+
+    undo(state) {
+      if (!state.past || state.past.length === 0) return;
+      const previous = state.past.pop()!;
+      if (!state.future) state.future = [];
+      state.future.push({
+        ids: [...state.shapes.ids],
+        entities: { ...state.shapes.entities },
+      });
+      state.shapes = previous;
+      state.selected = {};
+    },
+
+    redo(state) {
+      if (!state.future || state.future.length === 0) return;
+      const next = state.future.pop()!;
+      if (!state.past) state.past = [];
+      state.past.push({
+        ids: [...state.shapes.ids],
+        entities: { ...state.shapes.entities },
+      });
+      state.shapes = next;
+      state.selected = {};
     },
 
     selectShape(state, action: PayloadAction<string>) {
@@ -411,6 +466,7 @@ const shapesSlice = createSlice({
     deleteSelected(state) {
       const ids = Object.keys(state.selected);
       if (ids.length) {
+        recordHistory(state);
         ids.forEach(id => {
           const shape = state.shapes.entities[id];
           if (shape?.type === "frame") {
@@ -424,6 +480,7 @@ const shapesSlice = createSlice({
     groupSelected(state) {
       const ids = Object.keys(state.selected);
       if (ids.length < 2) return;
+      recordHistory(state);
 
       // Compute bounding box of all selected shapes
       let minX = Infinity,
@@ -471,6 +528,8 @@ const shapesSlice = createSlice({
     },
     ungroupSelected(state) {
       const ids = Object.keys(state.selected);
+      if (ids.length === 0) return;
+      recordHistory(state);
       ids.forEach((id) => {
         const shape = state.shapes.entities[id];
         if (shape?.type !== "group") return;
@@ -485,6 +544,7 @@ const shapesSlice = createSlice({
     duplicateSelected(state) {
       const ids = Object.keys(state.selected);
       if (ids.length === 0) return;
+      recordHistory(state);
 
       const OFFSET = 20; // nudge so duplicate is visibly offset
       const newIds: string[] = [];
@@ -597,6 +657,8 @@ const shapesSlice = createSlice({
         state.tool = action.payload.tool ?? 'select'
         state.selected = action.payload.selected ?? {}
         state.frameCounter = action.payload.frameCounter ?? 0
+        state.past = []
+        state.future = []
         return
       }
 
@@ -604,6 +666,8 @@ const shapesSlice = createSlice({
       state.tool = action.payload.tool
       state.selected = action.payload.selected
       state.frameCounter = action.payload.frameCounter ?? 0
+      state.past = []
+      state.future = []
 
       // Heal any existing NaN frameNumbers
       let maxFrameNumber = state.frameCounter;
@@ -635,6 +699,8 @@ export const {
   updateShape,
   removeShape,
   clearAll,
+  undo,
+  redo,
   selectShape,
   deselectShape,
   clearSelection,

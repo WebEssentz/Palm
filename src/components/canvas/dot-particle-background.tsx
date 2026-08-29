@@ -2,10 +2,10 @@
 
 import { useEffect, useRef } from 'react'
 
-export default function ParticleBackground({ isLight }: { isLight: boolean }) {
-  const canvasRef   = useRef<HTMLCanvasElement>(null)
-  const rafRef      = useRef<number>(0)
-  const mouse       = useRef({ x: -9999, y: -9999 })
+export default function DotParticleBackground({ isLight }: { isLight: boolean }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const rafRef = useRef<number>(0)
+  const mouse = useRef({ x: -9999, y: -9999 })
   const smoothMouse = useRef({ x: -9999, y: -9999 })
 
   useEffect(() => {
@@ -14,8 +14,7 @@ export default function ParticleBackground({ isLight }: { isLight: boolean }) {
     const ctx = canvas.getContext('2d')!
 
     const SPACING = 28
-    const RADIUS  = 140
-    const PUSH    = 140
+    const RADIUS = 140
 
     const isMobile = window.matchMedia('(pointer: coarse)').matches
 
@@ -23,9 +22,9 @@ export default function ParticleBackground({ isLight }: { isLight: boolean }) {
 
     const init = () => {
       cancelAnimationFrame(rafRef.current)
-      canvas.width  = canvas.offsetWidth
+      canvas.width = canvas.offsetWidth
       canvas.height = canvas.offsetHeight
-      cols = Math.ceil(canvas.width  / SPACING) + 2
+      cols = Math.ceil(canvas.width / SPACING) + 2
       rows = Math.ceil(canvas.height / SPACING) + 2
       rafRef.current = requestAnimationFrame(draw)
     }
@@ -42,40 +41,25 @@ export default function ParticleBackground({ isLight }: { isLight: boolean }) {
 
       for (let row = 0; row < rows; row++) {
         for (let col = 0; col < cols; col++) {
-          const ox = col * SPACING - SPACING
-          const oy = row * SPACING - SPACING
-          const dx   = ox - mx
-          const dy   = oy - my
+          const x = col * SPACING - SPACING
+          const y = row * SPACING - SPACING
+          const dx = x - mx
+          const dy = y - my
           const dist = Math.sqrt(dx * dx + dy * dy)
+          const alpha = dist < RADIUS
+            ? 0.25 + 0.55 * (1 - dist / RADIUS)
+            : 0.25
 
-          let wx = ox, wy = oy, alpha = 0.25
-
-          if (dist < RADIUS && dist > 0) {
-            const t     = 1 - dist / RADIUS
-            const shove = t * t * PUSH
-            const nx    = dx / dist
-            const ny    = dy / dist
-            wx = ox + nx * shove
-            wy = oy + ny * shove
-            alpha = dist < RADIUS * 0.3
-              ? 0
-              : 0.55 * ((dist - RADIUS * 0.3) / (RADIUS * 0.7))
-          }
-
-          ctx.globalAlpha      = alpha
-          ctx.fillStyle        = dotColor
-          ctx.font             = '10px monospace'
-          ctx.textAlign        = 'center'
-          ctx.textBaseline     = 'middle'
-          ctx.fillText(
-            (Math.floor(col * 31 + row * 17) % 2 === 0) ? '1' : '0',
-            wx, wy
-          )
+          ctx.globalAlpha = alpha
+          ctx.fillStyle = dotColor
+          ctx.beginPath()
+          ctx.arc(x, y, 1.4, 0, Math.PI * 2)
+          ctx.fill()
         }
       }
 
       ctx.globalAlpha = 1
-      rafRef.current  = requestAnimationFrame(draw)
+      rafRef.current = requestAnimationFrame(draw)
     }
 
     const onMove = (e: MouseEvent) => {
@@ -83,7 +67,7 @@ export default function ParticleBackground({ isLight }: { isLight: boolean }) {
       mouse.current = { x: e.clientX - rect.left, y: e.clientY - rect.top }
     }
     const onLeave = () => {
-      mouse.current       = { x: -9999, y: -9999 }
+      mouse.current = { x: -9999, y: -9999 }
       smoothMouse.current = { x: -9999, y: -9999 }
     }
 

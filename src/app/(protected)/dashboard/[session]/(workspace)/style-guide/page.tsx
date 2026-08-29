@@ -1,72 +1,35 @@
-import { ThemeContent } from "@/components/style/theme"
-import StyleGuideTypography from "@/components/style/typography"
-import MoodBoard from "@/components/style/mood-board"
-import { TabsContent } from "@/components/ui/tabs"
-import { MoodBoardImagesQuery, StyleGuideQuery } from "@/convex/query.config"
-import { MoodBoardImage } from "@/hooks/use-styles"
-import { StyleGuide } from "@/redux/api/style-guide"
-import { Palette } from "lucide-react"
-import { redirect } from "next/navigation"
+'use client'
 
-type Props = {
-    searchParams: Promise<{
-        project?: string
-    }>
-}
+import InfiniteCanvas from "@/components/canvas"
+import ProjectProvider from "@/components/projects/provider"
+import { useQuery } from "convex/react"
+import { api } from "../../../../../../../convex/_generated/api"
+import { Id } from "../../../../../../../convex/_generated/dataModel"
+import { useSearchParams } from "next/navigation"
 
-const Page = async ({ searchParams }: Props) => {
-    const projectId = (await searchParams).project
-    
-    // Validate that projectId is provided and not the string "null"
-    if (!projectId || projectId === "null" || projectId === "undefined") {
-        redirect("/dashboard")
+export default function Page() {
+    const params = useSearchParams()
+    const rawProjectId = params.get('project')
+    const projectId = Array.isArray(rawProjectId) ? rawProjectId[0] : rawProjectId
+
+    const project = useQuery(
+        api.projects.getProject,
+        projectId && projectId.length === 32
+            ? { projectId: projectId as Id<'projects'> }
+            : 'skip'
+    )
+
+    if (!projectId || projectId.length !== 32) {
+        return (
+            <div className="w-full h-screen flex items-center justify-center">
+                <p className="text-muted-foreground">No valid project selected</p>
+            </div>
+        )
     }
-    
-    const existingStyleGuide = await StyleGuideQuery(projectId)
-
-    const guide = existingStyleGuide.styleGuide?._valueJSON as unknown as StyleGuide
-
-    const colorGuide = guide?.colorSections || []
-    const typographyGuide = guide?.typographySections || []
-
-    const exisitingMoodBoardImages = await MoodBoardImagesQuery(projectId)
-
-    const guideImages = exisitingMoodBoardImages.images._valueJSON as unknown as MoodBoardImage[]
 
     return (
-        <div>
-            <TabsContent
-                value="colours"
-                className="space-y-6"
-            >
-                {!guideImages.length ? (
-                    <div className="space-y-8">
-                        <div className="text-center py-20">
-                            <div className="w-16 h-16 mx-auto mb-4 rounded-lg bg-muted flex items-center justify-center">
-                                <Palette className="w-8 h-8 text-muted-foreground" />
-                            </div>
-                            <h3 className="text-lg font-medium text-foreground mb-2">
-                                No colors added yet
-                            </h3>
-                            <p className="text-sm text-muted-foreground max-w-md mx-auto mb-6">
-                                Upload images to your mood board and let Palm generate style guides with colors and typography.
-                            </p>
-                        </div>
-                    </div>
-                ) : (
-                    <ThemeContent colorGuide={colorGuide} />
-                )}
-            </TabsContent>
-
-            <TabsContent value="typography">
-                <StyleGuideTypography typographyGuide={typographyGuide} />
-            </TabsContent>
-
-            <TabsContent value="moodboard">
-                <MoodBoard guideImages={guideImages} />
-            </TabsContent>
-        </div>
+        <ProjectProvider initialProject={project}>
+            <InfiniteCanvas />
+        </ProjectProvider>
     )
 }
-
-export default Page

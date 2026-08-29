@@ -1,4 +1,3 @@
-// components/autosave.tsx
 'use client'
 
 import React from 'react'
@@ -72,53 +71,23 @@ const AutoSave = () => {
 
     if (!isReady) return null
 
-    const liquidGlass: React.CSSProperties = isLight ? {
-        background: 'rgba(250,246,238,0.92)',
-        backdropFilter: 'blur(32px) saturate(1.8)',
-        WebkitBackdropFilter: 'blur(32px) saturate(1.8)',
-        border: '1px solid rgba(120,96,60,0.14)',
-        boxShadow: [
-            '0 0 0 0.5px rgba(100,76,40,0.08)',
-            '0 4px 24px rgba(80,60,30,0.14)',
-            '0 8px 32px rgba(80,60,30,0.10)',
-            'inset 0 1px 0 rgba(255,255,255,0.95)',
-            'inset 0 -1px 0 rgba(100,76,40,0.04)',
-        ].join(', '),
-    } : {
-        background: 'rgba(18,18,18,0.85)',
-        backdropFilter: 'blur(32px) saturate(1.8)',
-        WebkitBackdropFilter: 'blur(32px) saturate(1.8)',
-        border: '1px solid rgba(255,255,255,0.08)',
-        boxShadow: [
-            '0 0 0 0.5px rgba(255,255,255,0.04)',
-            '0 4px 24px rgba(0,0,0,0.45)',
-            '0 8px 32px rgba(0,0,0,0.35)',
-            'inset 0 1px 0 rgba(255,255,255,0.08)',
-            'inset 0 -1px 0 rgba(0,0,0,0.2)',
-        ].join(', '),
-    }
-
-    const iconColor = isLight ? 'rgba(0,0,0,0.5)' : 'rgba(255,255,255,0.5)'
-    const savedColor = isLight ? 'rgba(34,197,94,0.9)' : 'rgba(74,222,128,0.9)'
-    const errorColor = isLight ? 'rgba(239,68,68,0.9)' : 'rgba(248,113,113,0.9)'
+    const iconColor = isLight ? 'rgba(0,0,0,0.45)' : 'rgba(255,255,255,0.45)'
+    const savedColor = isLight ? '#16a34a' : '#4ade80'
+    const errorColor = isLight ? '#dc2626' : '#f87171'
 
     const content = () => {
         if (saveStatus === 'saving' || isSaving) {
             return (
                 <motion.div
                     key="saving"
-                    initial={{ opacity: 0, scale: 0.8 }}
+                    initial={{ opacity: 0, scale: 0.85 }}
                     animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0, scale: 0.8 }}
+                    exit={{ opacity: 0, scale: 0.85 }}
+                    transition={{ duration: 0.15 }}
                     className="flex items-center gap-1.5"
                 >
-                    <CloudUpload
-                        className="w-3.5 h-3.5 animate-pulse"
-                        style={{ color: iconColor }}
-                    />
-                    <span className="text-xs font-medium" style={{ color: iconColor }}>
-                        Saving
-                    </span>
+                    <CloudUpload className="w-3.5 h-3.5 animate-pulse" style={{ color: iconColor }} />
+                    <span className="text-xs font-medium" style={{ color: iconColor }}>Saving</span>
                 </motion.div>
             )
         }
@@ -126,22 +95,17 @@ const AutoSave = () => {
             return (
                 <motion.div
                     key="saved"
-                    initial={{ opacity: 0, scale: 0.8 }}
+                    initial={{ opacity: 0, scale: 0.85 }}
                     animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0, scale: 0.8 }}
+                    exit={{ opacity: 0, scale: 0.85 }}
+                    transition={{ duration: 0.15 }}
                     className="flex items-center gap-1.5"
                 >
                     <div className="relative">
                         <Cloud className="w-3.5 h-3.5" style={{ color: savedColor }} />
-                        <Check
-                            className="w-2 h-2 absolute -bottom-0.5 -right-0.5"
-                            style={{ color: savedColor }}
-                            strokeWidth={3}
-                        />
+                        <Check className="w-2 h-2 absolute -bottom-0.5 -right-0.5" style={{ color: savedColor }} strokeWidth={3} />
                     </div>
-                    <span className="text-xs font-medium" style={{ color: savedColor }}>
-                        Saved
-                    </span>
+                    <span className="text-xs font-medium" style={{ color: savedColor }}>Saved</span>
                 </motion.div>
             )
         }
@@ -149,25 +113,24 @@ const AutoSave = () => {
             return (
                 <motion.div
                     key="error"
-                    initial={{ opacity: 0, scale: 0.8 }}
+                    initial={{ opacity: 0, scale: 0.85 }}
                     animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0, scale: 0.8 }}
+                    exit={{ opacity: 0, scale: 0.85 }}
+                    transition={{ duration: 0.15 }}
                     className="flex items-center gap-1.5"
                 >
                     <CloudOff className="w-3.5 h-3.5" style={{ color: errorColor }} />
-                    <span className="text-xs font-medium" style={{ color: errorColor }}>
-                        Error
-                    </span>
+                    <span className="text-xs font-medium" style={{ color: errorColor }}>Error</span>
                 </motion.div>
             )
         }
-        // idle
         return (
             <motion.div
                 key="idle"
-                initial={{ opacity: 0, scale: 0.8 }}
+                initial={{ opacity: 0, scale: 0.85 }}
                 animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.8 }}
+                exit={{ opacity: 0, scale: 0.85 }}
+                transition={{ duration: 0.15 }}
             >
                 <Cloud className="w-3.5 h-3.5" style={{ color: iconColor }} />
             </motion.div>
@@ -176,14 +139,8 @@ const AutoSave = () => {
 
     return (
         <div
-            className="h-8 px-3 rounded-full flex items-center justify-center relative"
-            style={liquidGlass}
+            className="h-8 px-3 rounded-full flex items-center justify-center relative border border-black/10 dark:border-white/10 bg-white dark:bg-neutral-900"
         >
-            {/* specular rim */}
-            <div
-                className="pointer-events-none absolute inset-x-0 top-0 h-[1px] rounded-full"
-                style={{ background: 'linear-gradient(90deg, transparent 10%, rgba(255,255,255,0.90) 50%, transparent 90%)' }}
-            />
             <AnimatePresence mode="wait">
                 {content()}
             </AnimatePresence>

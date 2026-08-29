@@ -115,6 +115,15 @@ export default function HomeShell({ profile, view = 'home' }: Props) {
     const uploadAbortControllers = useRef<Map<string, AbortController>>(new Map())
     const uploadedImagesRef = useRef<ImageItem[]>([])
 
+    // Auto-resize textarea when persisted prompt loads
+    React.useEffect(() => {
+        const el = textareaRef.current
+        if (!el) return
+        el.style.height = 'auto'
+        if (!prompt) return
+        el.style.height = Math.min(el.scrollHeight, 300) + 'px'
+    }, [prompt])
+
     React.useEffect(() => { uploadedImagesRef.current = uploadedImages }, [uploadedImages])
     React.useEffect(() => {
         if (view !== 'home') dispatch(setSidebarOpen(true))
@@ -204,7 +213,15 @@ export default function HomeShell({ profile, view = 'home' }: Props) {
     // ── Submit ────────────────────────────────────────────────────────────────
     const handleSubmit = async () => {
         if (!prompt.trim() || isLoading) return
-        const currentImages = uploadedImagesRef.current
+        // Drop orphaned uploads left over from a previous session.
+        const cleaned = uploadedImagesRef.current.filter(
+            img => img.storageId !== null || img.error || uploadAbortControllers.current.has(img.id)
+        )
+        if (cleaned.length !== uploadedImagesRef.current.length) {
+            setUploadedImages(cleaned)
+            uploadedImagesRef.current = cleaned
+        }
+        const currentImages = cleaned
         if (currentImages.some(img => img.storageId === null && !img.error)) { pendingSendRef.current = true; setPendingSend(true); return }
         setIsLoading(true)
         try {
@@ -330,68 +347,82 @@ export default function HomeShell({ profile, view = 'home' }: Props) {
                                 })}
                             </div>
 
-                            {/* ── Divider + Recent label ── */}
-                            {projects.length > 0 && (
-                                <div style={{ padding: '28px 18px 10px', flexShrink: 0 }}>
-                                    <div style={{ height: 1, background: border, marginBottom: 16 }} />
+                            {/* ── Divider + Recent label / Empty state ── */}
+                            {projects.length > 0 ? (
+                                <>
+                                    <div style={{ padding: '28px 18px 10px', flexShrink: 0 }}>
+                                        <div style={{ height: 1, background: border, marginBottom: 16 }} />
+                                        <p style={{
+                                            fontSize: 10, letterSpacing: '0.12em', textTransform: 'uppercase',
+                                            color: muted, margin: 0,
+                                        }}>
+                                            Recent
+                                        </p>
+                                    </div>
+
+                                    {/* ── Project list ── */}
+                                    <div style={{ flex: 1, overflowY: 'auto', padding: '0 10px 20px', scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch' }}>
+                                        {projects.map(p => {
+                                            const src = thumbnailToSrc(p.thumbnail)
+                                            return (
+                                                <Link
+                                                    key={p._id}
+                                                    href={`/dashboard/${userSlug}/canvas?project=${p._id}`}
+                                                    style={{
+                                                        display: 'flex', alignItems: 'center', gap: 10,
+                                                        padding: '7px 10px', borderRadius: 8,
+                                                        textDecoration: 'none',
+                                                        transition: 'background 0.12s',
+                                                        marginBottom: 1,
+                                                    }}
+                                                    onMouseEnter={e => e.currentTarget.style.background = isLight ? 'rgba(0,0,0,0.04)' : 'rgba(255,255,255,0.04)'}
+                                                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                                                >
+                                                    {/* Thumbnail */}
+                                                    <div style={{
+                                                        width: 30, height: 30, borderRadius: 7, overflow: 'hidden',
+                                                        flexShrink: 0, border: `1px solid ${border}`,
+                                                    }}>
+                                                        {src
+                                                            ? <img src={src} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="" />
+                                                            : <div style={{ width: '100%', height: '100%', background: p.thumbnail || '#888' }} />
+                                                        }
+                                                    </div>
+
+                                                    {/* Text */}
+                                                    <div style={{ minWidth: 0 }}>
+                                                        <p style={{
+                                                            fontSize: 12, fontWeight: 400, margin: 0, color: text,
+                                                            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                                                            letterSpacing: '-0.01em', lineHeight: 1.35,
+                                                        }}>
+                                                            {p.name}
+                                                        </p>
+                                                        <p style={{
+                                                            fontSize: 10, margin: '2px 0 0', color: muted,
+                                                            opacity: 0.55, letterSpacing: '0em',
+                                                        }}>
+                                                            {formatDistanceToNow(new Date(p.lastModified), { addSuffix: true })}
+                                                        </p>
+                                                    </div>
+                                                </Link>
+                                            )
+                                        })}
+                                    </div>
+                                </>
+                            ) : (
+                                <div style={{ padding: '24px 18px', flexShrink: 0 }}>
+                                    <div style={{ height: 1, background: border, marginBottom: 14 }} />
                                     <p style={{
-                                        fontSize: 10, letterSpacing: '0.12em', textTransform: 'uppercase',
-                                        color: muted, margin: 0,
+                                        fontSize: 12,
+                                        color: muted,
+                                        margin: 0,
+                                        letterSpacing: '-0.01em',
                                     }}>
-                                        Recent
+                                        No projects yet
                                     </p>
                                 </div>
                             )}
-
-                            {/* ── Project list ── */}
-                            <div style={{ flex: 1, overflowY: 'auto', padding: '0 10px 20px', scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch' }}>
-                                {projects.map(p => {
-                                    const src = thumbnailToSrc(p.thumbnail)
-                                    return (
-                                        <Link
-                                            key={p._id}
-                                            href={`/dashboard/${userSlug}/canvas?project=${p._id}`}
-                                            style={{
-                                                display: 'flex', alignItems: 'center', gap: 10,
-                                                padding: '7px 10px', borderRadius: 8,
-                                                textDecoration: 'none',
-                                                transition: 'background 0.12s',
-                                                marginBottom: 1,
-                                            }}
-                                            onMouseEnter={e => e.currentTarget.style.background = isLight ? 'rgba(0,0,0,0.04)' : 'rgba(255,255,255,0.04)'}
-                                            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                                        >
-                                            {/* Thumbnail */}
-                                            <div style={{
-                                                width: 30, height: 30, borderRadius: 7, overflow: 'hidden',
-                                                flexShrink: 0, border: `1px solid ${border}`,
-                                            }}>
-                                                {src
-                                                    ? <img src={src} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="" />
-                                                    : <div style={{ width: '100%', height: '100%', background: p.thumbnail || '#888' }} />
-                                                }
-                                            </div>
-
-                                            {/* Text */}
-                                            <div style={{ minWidth: 0 }}>
-                                                <p style={{
-                                                    fontSize: 12, fontWeight: 400, margin: 0, color: text,
-                                                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                                                    letterSpacing: '-0.01em', lineHeight: 1.35,
-                                                }}>
-                                                    {p.name}
-                                                </p>
-                                                <p style={{
-                                                    fontSize: 10, margin: '2px 0 0', color: muted,
-                                                    opacity: 0.55, letterSpacing: '0em',
-                                                }}>
-                                                    {formatDistanceToNow(new Date(p.lastModified), { addSuffix: true })}
-                                                </p>
-                                            </div>
-                                        </Link>
-                                    )
-                                })}
-                            </div>
                         </motion.aside>
                     )}
                 </AnimatePresence>
@@ -433,12 +464,55 @@ export default function HomeShell({ profile, view = 'home' }: Props) {
                         </div>
 
                         {/* Right */}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                             {creditBalance !== undefined && (
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '4px 10px', borderRadius: 9999, border: `1px solid ${border}`, background: isLight ? 'rgba(0,0,0,0.03)' : 'rgba(255,255,255,0.04)' }}>
-                                    <PalmLeafIcon color={muted} />
-                                    <span style={{ fontSize: 12, color: muted, fontVariantNumeric: 'tabular-nums' }}>{creditBalance}</span>
-                                </div>
+                                <Link
+                                    href={`/billing/${userSlug}`}
+                                    title="View credits & billing"
+                                    style={{
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: 6,
+                                        height: 30,
+                                        padding: '0 10px 0 9px',
+                                        borderRadius: 9999,
+                                        border: `1px solid ${isLight ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.09)'}`,
+                                        background: isLight ? 'rgba(0,0,0,0.035)' : 'rgba(255,255,255,0.05)',
+                                        boxShadow: isLight ? '0 1px 2px rgba(0,0,0,0.02)' : '0 1px 2px rgba(0,0,0,0.2)',
+                                        textDecoration: 'none',
+                                        cursor: 'pointer',
+                                        transition: 'all 0.15s ease',
+                                    }}
+                                    onMouseEnter={e => {
+                                        e.currentTarget.style.background = isLight ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.08)'
+                                        e.currentTarget.style.borderColor = isLight ? 'rgba(0,0,0,0.15)' : 'rgba(255,255,255,0.18)'
+                                        e.currentTarget.style.transform = 'translateY(-0.5px)'
+                                    }}
+                                    onMouseLeave={e => {
+                                        e.currentTarget.style.background = isLight ? 'rgba(0,0,0,0.035)' : 'rgba(255,255,255,0.05)'
+                                        e.currentTarget.style.borderColor = isLight ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.09)'
+                                        e.currentTarget.style.transform = 'translateY(0)'
+                                    }}
+                                >
+                                    <PalmLeafIcon color={isLight ? '#0a0a0a' : '#ffffff'} />
+                                    <span style={{
+                                        fontSize: 12,
+                                        fontWeight: 600,
+                                        color: text,
+                                        fontVariantNumeric: 'tabular-nums',
+                                        letterSpacing: '-0.01em',
+                                    }}>
+                                        {creditBalance}
+                                    </span>
+                                    <span style={{
+                                        fontSize: 11,
+                                        fontWeight: 450,
+                                        color: isLight ? 'rgba(0,0,0,0.45)' : 'rgba(255,255,255,0.45)',
+                                        letterSpacing: '-0.01em',
+                                    }}>
+                                        credits
+                                    </span>
+                                </Link>
                             )}
                             <AvatarDropdown creditBalance={creditBalance ?? 0} />
                         </div>
@@ -458,7 +532,7 @@ export default function HomeShell({ profile, view = 'home' }: Props) {
                                 initial={{ opacity: 0, y: 16 }}
                                 animate={{ opacity: 1, y: 0 }}
                                 transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
-                                style={{ width: '100%', maxWidth: 700, display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}
+                                style={{ width: '100%', maxWidth: 640, display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}
                             >
                                 {/* Greeting */}
                                 <p style={{ fontSize: 13, color: muted, margin: '0 0 4px', letterSpacing: '-0.01em' }}>
@@ -470,7 +544,7 @@ export default function HomeShell({ profile, view = 'home' }: Props) {
 
                                 {/* Jump back in — recent projects row */}
                                 {projects.length > 0 && (
-                                    <div style={{ width: '100%', marginBottom: 14 }}>
+                                    <div style={{ width: '100%', maxWidth: 640, marginBottom: 14 }}>
                                         <p style={{
                                             fontSize: 11, color: muted, letterSpacing: '0.08em',
                                             textTransform: 'uppercase', margin: '0 0 8px',
@@ -534,7 +608,7 @@ export default function HomeShell({ profile, view = 'home' }: Props) {
                                 )}
 
                                 {/* ── Input Card ── */}
-                                <div className={`palm-input-wrapper${isLight ? ' is-light' : ''}`} style={{ width: '100%' }}>
+                                <div className={`palm-input-wrapper${isLight ? ' is-light' : ''}`} style={{ width: '100%', maxWidth: 640 }}>
                                     <motion.div
                                         layout
                                         transition={{ layout: { duration: 0.28, ease: [0.16, 1, 0.3, 1] } }}
@@ -650,7 +724,7 @@ export default function HomeShell({ profile, view = 'home' }: Props) {
                                             />
 
                                             {/* Toolbar */}
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 10 }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10 }}>
 
                                                 {/* Attachment */}
                                                 <AttachmentMenu
@@ -698,13 +772,9 @@ export default function HomeShell({ profile, view = 'home' }: Props) {
                                                         <motion.div
                                                             key="actions"
                                                             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                                                            style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 6 }}
+                                                            style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8 }}
                                                         >
-                                                            {/* Spacer */}
-                                                            <div style={{ flex: 1 }} />
-
                                                             {/* Mic */}
-
                                                             <MicButton
                                                                 onTranscript={t => {
                                                                     console.log('[STT] received:', t)
@@ -715,22 +785,23 @@ export default function HomeShell({ profile, view = 'home' }: Props) {
                                                                 disabled={isLoading}
                                                             />
 
-
                                                             {/* Send — always visible */}
                                                             <button
                                                                 onClick={handleSubmit}
                                                                 disabled={!prompt.trim() || isLoading}
+                                                                type="button"
+                                                                aria-label="Send prompt"
                                                                 style={{
-                                                                    width: 34, height: 34, borderRadius: '50%', border: 'none',
-                                                                    background: prompt.trim() ? text : (isLight ? 'rgba(0,0,0,0.10)' : 'rgba(255,255,255,0.10)'),
+                                                                    width: 32, height: 32, borderRadius: '50%', border: 'none',
+                                                                    background: prompt.trim() ? text : (isLight ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.08)'),
                                                                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                                                                     cursor: prompt.trim() ? 'pointer' : 'default',
-                                                                    transition: 'background 0.15s', flexShrink: 0,
+                                                                    transition: 'all 0.15s ease', flexShrink: 0,
                                                                 }}
                                                             >
                                                                 {(isLoading || pendingSend)
-                                                                    ? <div style={{ width: 13, height: 13, border: `2px solid ${isLight ? (prompt.trim() ? '#fff' : 'rgba(0,0,0,0.3)') : (prompt.trim() ? '#000' : 'rgba(255,255,255,0.3)')}`, borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.6s linear infinite' }} />
-                                                                    : <ArrowUp style={{ width: 15, height: 15, color: prompt.trim() ? (isLight ? '#fff' : '#000') : (isLight ? 'rgba(0,0,0,0.3)' : 'rgba(255,255,255,0.3)') }} />
+                                                                    ? <div style={{ width: 13, height: 13, borderTop: '2px solid transparent', borderRight: `2px solid ${isLight ? (prompt.trim() ? '#fff' : 'rgba(0,0,0,0.3)') : (prompt.trim() ? '#000' : 'rgba(255,255,255,0.3)')}`, borderBottom: `2px solid ${isLight ? (prompt.trim() ? '#fff' : 'rgba(0,0,0,0.3)') : (prompt.trim() ? '#000' : 'rgba(255,255,255,0.3)')}`, borderLeft: `2px solid ${isLight ? (prompt.trim() ? '#fff' : 'rgba(0,0,0,0.3)') : (prompt.trim() ? '#000' : 'rgba(255,255,255,0.3)')}`, borderRadius: '50%', animation: 'spin 0.6s linear infinite' }} />
+                                                                    : <ArrowUp style={{ width: 15, height: 15, strokeWidth: 2, color: prompt.trim() ? (isLight ? '#fff' : '#000') : (isLight ? 'rgba(0,0,0,0.28)' : 'rgba(255,255,255,0.28)') }} />
                                                                 }
                                                             </button>
                                                         </motion.div>
@@ -743,7 +814,7 @@ export default function HomeShell({ profile, view = 'home' }: Props) {
 
                                 {/* Category chips */}
                                 <div style={{
-                                    position: 'relative', width: '100%', marginTop: 14,
+                                    position: 'relative', width: '100%', maxWidth: 640, marginTop: 14,
                                 }}>
                                     <div style={{
                                         display: 'flex', gap: 6, overflowX: 'auto',
@@ -865,15 +936,15 @@ export default function HomeShell({ profile, view = 'home' }: Props) {
     )
 }
 
-function PalmLeafIcon({ color }: { color: string }) {
+function PalmLeafIcon({ color, size = 13 }: { color: string; size?: number }) {
     return (
-        <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
-            <path d="M8 14V8" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
-            <path d="M8 8C8 8 4 7 3 4C5.5 3.5 8 5 8 8Z" fill={color} opacity="0.8" />
-            <path d="M8 8C8 8 12 7 13 4C10.5 3.5 8 5 8 8Z" fill={color} opacity="0.8" />
-            <path d="M8 8C8 8 7 4 9 2C10.5 3.5 10 6 8 8Z" fill={color} opacity="0.9" />
-            <path d="M8 9C8 9 5 9.5 4 7.5C6 6.5 8 8 8 9Z" fill={color} opacity="0.6" />
-            <path d="M8 9C8 9 11 9.5 12 7.5C10 6.5 8 8 8 9Z" fill={color} opacity="0.6" />
+        <svg width={size} height={size} viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0, opacity: 0.9 }}>
+            <path d="M8 14.5V7.5" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+            <path d="M8 7.5C8 7.5 3.8 6.5 2.8 3.5C5.3 3 8 4.8 8 7.5Z" fill={color} fillOpacity="0.85" />
+            <path d="M8 7.5C8 7.5 12.2 6.5 13.2 3.5C10.7 3 8 4.8 8 7.5Z" fill={color} fillOpacity="0.85" />
+            <path d="M8 7.5C8 7.5 6.8 3.5 9 1.5C10.5 3 10 5.5 8 7.5Z" fill={color} fillOpacity="0.95" />
+            <path d="M8 8.8C8 8.8 4.8 9.3 3.8 7.2C5.8 6.2 8 7.8 8 8.8Z" fill={color} fillOpacity="0.7" />
+            <path d="M8 8.8C8 8.8 11.2 9.3 12.2 7.2C10.2 6.2 8 7.8 8 8.8Z" fill={color} fillOpacity="0.7" />
         </svg>
     )
 }

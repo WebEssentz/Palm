@@ -22,10 +22,12 @@ export default function ParticleBackground({ isLight }: { isLight: boolean }) {
     let cols = 0, rows = 0
 
     const init = () => {
+      cancelAnimationFrame(rafRef.current)
       canvas.width  = canvas.offsetWidth
       canvas.height = canvas.offsetHeight
       cols = Math.ceil(canvas.width  / SPACING) + 2
       rows = Math.ceil(canvas.height / SPACING) + 2
+      rafRef.current = requestAnimationFrame(draw)
     }
 
     const draw = () => {
@@ -88,7 +90,7 @@ export default function ParticleBackground({ isLight }: { isLight: boolean }) {
 
     const ro = new ResizeObserver(init)
     ro.observe(canvas)
-    init(); draw()
+    init()
 
     return () => {
       cancelAnimationFrame(rafRef.current)

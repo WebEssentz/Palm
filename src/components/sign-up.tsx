@@ -158,12 +158,12 @@ export default function LoginPage() {
       }}>
 
         {/* Logo */}
-        <div style={{ position: 'absolute', top: 36, left: 48, display: 'flex', alignItems: 'center', gap: 8 }}>
+        <Link href="/" style={{ position: 'absolute', top: 36, left: 48, display: 'flex', alignItems: 'center', gap: 8, textDecoration: 'none' }}>
           <div style={{ width: 22, height: 22, borderRadius: 5, background: text, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <div style={{ width: 8, height: 8, borderRadius: '50%', background: bg }} />
           </div>
           <span style={{ fontSize: 13, fontWeight: 600, color: text, letterSpacing: '-0.01em' }}>Palm</span>
-        </div>
+        </Link>
 
         {/* Editorial headline */}
         <motion.div
@@ -220,18 +220,18 @@ export default function LoginPage() {
         }}
       >
         {/* Mobile logo */}
-        <div className="flex md:hidden" style={{ alignItems: 'center', gap: 8, marginBottom: 48 }}>
+        <Link href="/" className="flex md:hidden" style={{ alignItems: 'center', gap: 8, marginBottom: 48, textDecoration: 'none' }}>
           <div style={{ width: 22, height: 22, borderRadius: 5, background: text, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <div style={{ width: 8, height: 8, borderRadius: '50%', background: bg }} />
           </div>
           <span style={{ fontSize: 13, fontWeight: 600, color: text }}>Palm</span>
-        </div>
+        </Link>
 
         <h2 style={{ fontSize: '1.55rem', fontWeight: 700, letterSpacing: '-0.028em', color: text, margin: '0 0 6px' }}>
           {flow === 'signUp' ? 'Create account' : 'Sign in'}
         </h2>
         <p style={{ fontSize: 13, color: muted, margin: '0 0 40px', letterSpacing: '-0.01em' }}>
-          {flow === 'signUp' ? 'No credit card. Free forever.' : 'Good to have you back.'}
+          {flow === 'signUp' ? 'No credit card required.' : 'Good to have you back.'}
         </p>
 
         {/* Google */}

@@ -25,7 +25,10 @@ import {
     duplicateSelected,
     deleteSelected,
     FrameShape,
-    addGeneratedUI
+    GeneratedUIShape,
+    addGeneratedUI,
+    undo,
+    redo
 } from "@/redux/slice/shapes"
 import { handToolDisable, handToolEnable, panEnd, panMove, panStart, Point, screenToWorld, wheelPan, wheelZoom } from "@/redux/slice/viewport"
 import { AppDispatch, useAppDispatch, useAppSelector } from "@/redux/store"
@@ -36,6 +39,11 @@ import { toast } from "sonner"
 
 
 const RAF_INTERNAL_MS = 8
+
+type BoundedShape = Shape & { x: number; y: number; w?: number; h?: number }
+
+const hasBounds = (shape: Shape): shape is BoundedShape =>
+    'x' in shape && 'y' in shape
 
 // Module-level handlers to prevent StrictMode listener stacking
 let _keydownHandler: ((e: KeyboardEvent) => void) | null = null
@@ -527,7 +535,7 @@ export const useInfiniteCanvas = () => {
                             }
                             // Capture all shapes inside this frame
                             shapeList.forEach(s => {
-                                if (s.type === 'frame') return
+                                if (s.type === 'frame' || !hasBounds(s)) return
                                 const insideFrame =
                                     s.x >= hitShape.x &&
                                     s.x + (s.w || 0) <= hitShape.x + hitShape.w &&
@@ -1047,6 +1055,24 @@ export const useInfiniteCanvas = () => {
             }
             // ──────────────────────────────────────────────────────────
 
+            if (isModKey && (e.key === 'z' || e.key === 'Z')) {
+                if (isEditingTextRef.current) return
+                e.preventDefault()
+                if (e.shiftKey) {
+                    dispatch(redo())
+                } else {
+                    dispatch(undo())
+                }
+                return
+            }
+
+            if (isModKey && (e.key === 'y' || e.key === 'Y')) {
+                if (isEditingTextRef.current) return
+                e.preventDefault()
+                dispatch(redo())
+                return
+            }
+
             if (isModKey && e.key === 'd') {
                 e.preventDefault()
                 dispatch(duplicateSelected())
@@ -1463,6 +1489,7 @@ export const useFrame = (shape: FrameShape) => {
             const shapesInsideFrame = allShapes.filter(s =>
                 s.id !== shape.id &&
                 s.type !== 'frame' &&
+                hasBounds(s) &&
                 s.x >= shape.x && s.x + (s.w || 0) <= shape.x + shape.w &&
                 s.y >= shape.y && s.y + (s.h || 0) <= shape.y + shape.h
             )
@@ -1745,6 +1772,7 @@ interface ChatStreamEvent {
     type: 'text' | 'html' | 'error' | 'styleguide' | 'done' | 'tool-status'
     text?: string
     tokens?: StyleTokens
+    designMD?: string
     label?: string
     state?: 'running' | 'done'
 }
@@ -1759,7 +1787,7 @@ async function consumeChatStream(
     onHTML: (chunk: string) => void,
     onError: (msg: string) => void,
     onDone: () => void,
-    onStyleGuide?: (tokens: StyleTokens) => void,
+    onStyleGuide?: (tokens: StyleTokens, designMD?: string) => void,
     onToolStatus?: (label: string, state: 'running' | 'done') => void,
 ) {
     const reader = res.body!.getReader()
@@ -1776,6 +1804,24 @@ async function consumeChatStream(
     while (true) {
         const { done, value } = await reader.read()
         if (done) {
+            const trimmed = buffer.trim()
+            if (trimmed.startsWith('data: ')) {
+                try {
+                    const event = JSON.parse(trimmed.slice(6)) as ChatStreamEvent
+                    if (event.type === 'text') onText(event.text ?? '')
+                    else if (event.type === 'html') onHTML(event.text ?? '')
+                    else if (event.type === 'error') onError(event.text ?? '')
+                    else if (event.type === 'styleguide' && event.tokens && onStyleGuide) {
+                        onStyleGuide(event.tokens, event.designMD)
+                    }
+                    else if (event.type === 'tool-status' && event.label && onToolStatus) {
+                        onToolStatus(event.label, event.state ?? 'running')
+                    }
+                    else if (event.type === 'done') callDone()
+                } catch {
+                    // Ignore an incomplete or malformed final event.
+                }
+            }
             // ✅ Fallback: server closed stream without sending `done` event
             callDone()
             break
@@ -1797,7 +1843,7 @@ async function consumeChatStream(
                 else if (event.type === 'html') onHTML(event.text ?? '')
                 else if (event.type === 'error') onError(event.text ?? '')
                 else if (event.type === 'styleguide' && event.tokens && onStyleGuide) {
-                    onStyleGuide(event.tokens)
+                    onStyleGuide(event.tokens, event.designMD)
                 }
                 else if (event.type === 'tool-status' && event.label && onToolStatus) {
                     onToolStatus(event.label, event.state ?? 'running')
@@ -2045,8 +2091,44 @@ export const useGlobalChat = () => {
         }))
     }, [])
 
+    const [activeChatId, setActiveChatId] = React.useState<string | null>(null)
+    const [activeChatTitle, setActiveChatTitle] = React.useState<string>('New chat')
+    const activeChatIdRef = React.useRef<string | null>(null)
+    React.useEffect(() => {
+        activeChatIdRef.current = activeChatId
+    }, [activeChatId])
+
     /**
-     * Load chat history from Convex on mount
+     * Load chat turns for a specific chat thread
+     */
+    const loadChatTurns = React.useCallback(async (chatId: string) => {
+        setChatTurns([])
+        setIsLoadingHistory(true)
+        try {
+            const res = await fetch(`/api/chat/turns?chatId=${chatId}`)
+            if (!res.ok) return
+            const saved = await res.json()
+            setChatTurns(
+                saved.map((t: any) => ({
+                    id: t.turnId,
+                    prompt: t.prompt,
+                    response: t.response,
+                    isLoading: false,
+                    timestamp: t.timestamp,
+                    urls: t.urls ?? [],
+                    imageStorageIds: t.imageStorageIds ?? [],
+                }))
+            )
+            setActiveChatId(chatId)
+        } catch (e) {
+            console.error('Failed to load chat turns', e)
+        } finally {
+            setIsLoadingHistory(false)
+        }
+    }, [])
+
+    /**
+     * Load project chat history from Convex on mount (fallback)
      */
     const loadHistory = React.useCallback(async (projectId: string) => {
         try {
@@ -2060,7 +2142,7 @@ export const useGlobalChat = () => {
                         prompt: t.prompt,
                         response: t.response,
                         isLoading: false,
-                    timestamp: t.timestamp,
+                        timestamp: t.timestamp,
                         urls: t.urls ?? [],
                     }))
                 )
@@ -2077,13 +2159,14 @@ export const useGlobalChat = () => {
      * Save a completed turn to Convex
      */
     const saveTurn = React.useCallback(
-        async (projectId: string, turn: ChatTurn) => {
+        async (projectId: string, turn: ChatTurn, chatId?: string) => {
             try {
                 await fetch('/api/chat/turns', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         projectId,
+                        chatId: chatId ?? activeChatIdRef.current ?? undefined,
                         turnId: turn.id,
                         prompt: turn.prompt,
                         response: turn.response,
@@ -2106,7 +2189,7 @@ export const useGlobalChat = () => {
         async (
             prompt: string,
             projectId: string,
-            opts?: { urls?: string[]; targetShapeId?: string; isInit?: boolean; imageStorageIds?: string[] }
+            opts?: { urls?: string[]; targetShapeId?: string; isInit?: boolean; imageStorageIds?: string[]; chatId?: string }
         ) => {
             if (isSendingRef.current) return
             isSendingRef.current = true
@@ -2160,8 +2243,8 @@ export const useGlobalChat = () => {
 
             try {
                 // Get HTML from attached frame if one is selected
-                const attachedShape = activeGeneratedUIId
-                    ? allShapesRef.current.find(s => s.id === activeGeneratedUIId && s.type === 'generatedui')
+                const attachedShape = targetId
+                    ? allShapesRef.current.find((s): s is GeneratedUIShape => s.id === targetId && s.type === 'generatedui')
                     : null
                 const currentHTML = attachedShape?.uiSpecData ?? undefined
 
@@ -2188,6 +2271,7 @@ export const useGlobalChat = () => {
                     body: JSON.stringify({
                         prompt: finalPrompt,
                         projectId,
+                        chatId: opts?.chatId ?? activeChatIdRef.current ?? undefined,
                         currentHTML,
                         frameSnapshot: attachedFrameSnapshot ?? undefined,  // ← send image
                         history: chatTurns
@@ -2227,7 +2311,7 @@ export const useGlobalChat = () => {
                                     h: 900,
                                     id: newId,
                                     uiSpecData: null,
-                                    sourceFrameId: null,
+                                    sourceFrameId: '',
                                     prompt,
                                 })
                             )
@@ -2261,7 +2345,7 @@ export const useGlobalChat = () => {
                                 if (t.id === turnId) {
                                     const completed = { ...t, isLoading: false }
                                     // Persist to Convex
-                                    saveTurn(projectId, completed)
+                                    saveTurn(projectId, completed, opts?.chatId ?? activeChatIdRef.current ?? undefined)
                                     return completed
                                 }
                                 return t
@@ -2281,7 +2365,7 @@ export const useGlobalChat = () => {
                         }
                     },
                     // onStyleGuide — render style guide frame to the left of the generated UI
-                    (tokens) => {
+                    (tokens, designMD) => {
                         const sgId = nanoid()
                         const sgHTML = buildStyleGuideHTML(tokens)
                         dispatch(
@@ -2292,7 +2376,7 @@ export const useGlobalChat = () => {
                                 w: 380,
                                 h: 520,
                                 uiSpecData: sgHTML,
-                                sourceFrameId: null,
+                                sourceFrameId: '',
                             })
                         )
                     },
@@ -2366,6 +2450,12 @@ export const useGlobalChat = () => {
         initFromUrlPrompt,
         sendMessage,
         generateWorkflow,
+        activeChatId,
+        setActiveChatId,
+        activeChatTitle,
+        setActiveChatTitle,
+        loadChatTurns,
+        setChatTurns,
         attachedFrameName,
         attachedThumbnailUrl,
         attachedFrameSnapshot,

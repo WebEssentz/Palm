@@ -12,16 +12,10 @@ const ShapeRenderer = ({
     shape,
     selectedShapes,
     toggleInspiration,
-    toggleChat,
-    generateWorkflow,
-    exportDesign,
 }: {
     shape: Shape
     selectedShapes: Record<string, boolean>
     toggleInspiration: () => void
-    toggleChat: (generatedUIId: string) => void
-    generateWorkflow: (generatedUIId: string) => void
-    exportDesign: (generatedUIId: string, element: HTMLElement | null) => void
 }) => {
     switch (shape.type) {
         case 'frame':
@@ -39,7 +33,7 @@ const ShapeRenderer = ({
         case 'ellipse':
             return <Ellipse shape={shape}/>
         case 'generatedui':
-            return <GeneratedUI shape={shape} toggleInspiration={toggleInspiration} toggleChat={toggleChat} generateWorkflow={generateWorkflow} exportDesign={exportDesign}/>
+            return <GeneratedUI shape={shape}/>
         default:
             break;
     }

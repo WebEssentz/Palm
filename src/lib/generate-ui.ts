@@ -4,6 +4,7 @@ import { readFileSync } from 'fs'
 import { join } from 'path'
 import { StyleGuideQuery } from '@/convex/query.config'
 import { prompts } from '@/prompts'
+import { serializeToDesignMD, generateDesignMDFromPrompt, parseDesignMD } from './design-md'
 
 const uiSkill = readFileSync(
     join(process.cwd(), 'skills/ui-generation/SKILL.md'), 'utf-8'
@@ -28,43 +29,16 @@ export interface StyleTokens {
     radius: string
 }
 
-export async function inferStyleTokensFromPrompt(prompt: string): Promise<StyleTokens> {
-    const { text } = await generateText({
-        model: google('gemini-3.5-flash'),
-        system: 'You extract design tokens from a description. Return ONLY valid JSON, no markdown, no explanation.',
-        prompt: [
-            'From this UI description, infer a complete design system as JSON:',
-            '',
-            '"' + prompt + '"',
-            '',
-            'Return exactly this shape:',
-            '{',
-            '  "colors": {',
-            '    "background": "#hex",',
-            '    "foreground": "#hex",',
-            '    "primary": "#hex",',
-            '    "primaryForeground": "#hex",',
-            '    "card": "#hex",',
-            '    "muted": "#hex",',
-            '    "mutedForeground": "#hex",',
-            '    "accent": "#hex",',
-            '    "border": "#hex"',
-            '  },',
-            '  "fonts": { "sans": "font name e.g. Inter, Geist, Helvetica Neue" },',
-            '  "radius": "e.g. 0.5rem"',
-            '}',
-            '',
-            'Rules:',
-            '- Dark/luxury/premium prompts: dark backgrounds (#0a0a0a, #111, #1a1a1a), white foreground',
-            '- Light/minimal/clean prompts: white or near-white backgrounds, dark foreground',
-            '- Match the aesthetic precisely. Return ONLY the JSON object.',
-        ].join('\n'),
-    })
-
+export async function inferStyleTokensFromPrompt(prompt: string): Promise<StyleTokens & { designMD?: string }> {
     try {
-        return JSON.parse(text.replace(/```json|```/g, '').trim())
-    } catch {
+        const designData = await generateDesignMDFromPrompt(prompt)
         return {
+            ...designData.tokens,
+            designMD: designData.rawMarkdown,
+        }
+    } catch (e) {
+        console.warn('DESIGN.md generation fallback:', e)
+        const defaultTokens: StyleTokens = {
             colors: {
                 background: '#0a0a0a',
                 foreground: '#ffffff',
@@ -78,6 +52,10 @@ export async function inferStyleTokensFromPrompt(prompt: string): Promise<StyleT
             },
             fonts: { sans: 'Inter' },
             radius: '0.75rem',
+        }
+        return {
+            ...defaultTokens,
+            designMD: serializeToDesignMD({ name: 'Default System', tokens: defaultTokens }),
         }
     }
 }
@@ -127,8 +105,8 @@ export interface GenerateUIOptions {
     styleTokens?: StyleTokens
 }
 
-// Model used for actual UI generation — heavier reasoning than the lite token-inference model
-const UI_GENERATION_MODEL = 'gemini-3.5-flash'
+// Model used for actual UI generation
+const UI_GENERATION_MODEL = 'gemini-3.5-flash-lite'
 
 export async function* generateUIStream(opts: GenerateUIOptions): AsyncGenerator<string> {
     const { prompt, projectId, currentHTML } = opts
@@ -157,6 +135,11 @@ export async function* generateUIStream(opts: GenerateUIOptions): AsyncGenerator
         })
         .join('; ')
 
+    const designMDContent = (styleTokens as any).designMD || serializeToDesignMD({
+        name: 'Project Theme',
+        tokens: styleTokens,
+    })
+
     // Build prompt parts as array to avoid backtick conflicts
     const parts: string[] = []
 
@@ -175,10 +158,8 @@ export async function* generateUIStream(opts: GenerateUIOptions): AsyncGenerator
         parts.push('')
     }
 
-    parts.push('## DESIGN TOKENS')
-    parts.push('```json')
-    parts.push(JSON.stringify(styleTokens, null, 2))
-    parts.push('```')
+    parts.push('## DESIGN SYSTEM MANIFEST (Google Stitch DESIGN.md Standard)')
+    parts.push(designMDContent)
     parts.push('')
     parts.push('## RULES')
     parts.push('- Generate a complete, production-quality HTML page')
@@ -365,7 +346,7 @@ export async function classifyEditIntent(prompt: string, currentHTML?: string): 
     if (!currentHTML) return 'full'
 
     const { text } = await generateText({
-        model: google('gemini-3.5-flash'),
+        model: google('gemini-3.5-flash-lite'),
         system: 'You are classifying UI design intents. Return ONLY "surgical" or "full".\n\nSurgical: small tweaks, color changes, button edits, spacing fixes, text updates\nFull: complete redesign, new layout, different aesthetic, major restructuring',
         prompt: `User request: "${prompt}"\n\nCurrent HTML: ${currentHTML.slice(0, 2000)}\n\nClassify this intent as "surgical" or "full".`,
     })

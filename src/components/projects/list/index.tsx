@@ -317,6 +317,7 @@ const ProjectsList = ({ onProjectDelete }: { onProjectDelete?: () => void }) => 
                                                 selectMode={false}
                                                 isSelected={false}
                                                 onRename={() => handleRenameStart(project._id)}
+                                                onSelect={() => { setSelectMode(true); setSelectedIds(new Set([project._id])) }}
                                                 onDelete={() => handleDeleteClick(project._id)}
                                             />
                                             <CardMeta project={project} />
@@ -447,9 +448,10 @@ interface CardThumbnailProps {
     isSelected: boolean
     onRename?: () => void
     onDelete?: () => void
+    onSelect?: () => void
 }
 
-function CardThumbnail({ project, isLightMode, selectMode, isSelected, onRename, onDelete }: CardThumbnailProps) {
+function CardThumbnail({ project, isLightMode, selectMode, isSelected, onRename, onDelete, onSelect }: CardThumbnailProps) {
     return (
         <div className='aspect-[4/3] rounded-lg overflow-hidden bg-muted relative'>
             <div
@@ -532,6 +534,15 @@ function CardThumbnail({ project, isLightMode, selectMode, isSelected, onRename,
                             >
                                 <Pencil className='w-4 h-4 mr-2' />
                                 Rename
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                                onClick={onSelect}
+                                className='cursor-pointer'
+                                onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = isLightMode ? '#EFE7DD' : '#141414' }}
+                                onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent' }}
+                            >
+                                <CheckSquare className='w-4 h-4 mr-2' />
+                                Select
                             </DropdownMenuItem>
                             <DropdownMenuItem
                                 className='text-destructive focus:text-destructive focus:bg-destructive/10 cursor-pointer'

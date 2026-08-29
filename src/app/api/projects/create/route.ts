@@ -73,19 +73,34 @@ export async function POST(req: NextRequest) {
             : prompt
 
         // Generate project name from the original prompt (not the enriched one)
-        const { text: projectName } = await generateText({
-            model: google('gemini-3.5-flash'),
-            prompt: `Generate a short 2-4 word project name for this UI prompt. 
-            Return ONLY the name, no quotes, no punctuation: "${prompt}"`,
-            providerOptions: {
-                google: {
-                    thinkingConfig: {
-                        thinkingLevel: 'low',
-                        includeThoughts: false,
+        let projectName = prompt.split(' ').slice(0, 4).join(' ')
+        try {
+            const generatePromise = generateText({
+                model: google('gemini-3.5-flash-lite'),
+                prompt: `Generate a short 2-4 word project name for this UI prompt. 
+                Return ONLY the name, no quotes, no punctuation: "${prompt}"`,
+                providerOptions: {
+                    google: {
+                        thinkingConfig: {
+                            thinkingLevel: 'low',
+                            includeThoughts: false,
+                        }
                     }
                 }
-            }
-        })
+            })
+
+            const timeoutPromise = new Promise<never>((_, reject) =>
+                setTimeout(() => reject(new Error('timeout')), 8000)
+            )
+
+            const result = await Promise.race([
+                generatePromise,
+                timeoutPromise
+            ])
+            if (result.text) projectName = result.text.trim()
+        } catch (e) {
+            console.warn('[create] Project name generation skipped:', e)
+        }
 
         const token = await convexAuthNextjsToken()
 

@@ -14,10 +14,12 @@ const ProjectProvider = ({ children, initialProject }: Props) => {
     React.useEffect(() => {
         // Always load shapes and viewport from the project
         // The URL prompt (if present) is for context, not for skipping the load
-        if (initialProject?._valueJSON) {
-            const projectData = initialProject._valueJSON
+        if (initialProject) {
+            const projectData = initialProject._valueJSON || initialProject
 
-            dispatch(loadProject(projectData.sketchesData))
+            if (projectData.sketchesData) {
+                dispatch(loadProject(projectData.sketchesData))
+            }
 
             if (projectData.viewportData) {
                 dispatch(restoreViewport(projectData.viewportData))

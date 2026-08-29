@@ -157,12 +157,12 @@ export default function LoginPage() {
       }}>
 
         {/* Logo */}
-        <div style={{ position: 'absolute', top: 36, left: 48, display: 'flex', alignItems: 'center', gap: 8 }}>
+        <Link href="/" style={{ position: 'absolute', top: 36, left: 48, display: 'flex', alignItems: 'center', gap: 8, textDecoration: 'none' }}>
           <div style={{ width: 22, height: 22, borderRadius: 5, background: text, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <div style={{ width: 8, height: 8, borderRadius: '50%', background: bg }} />
           </div>
           <span style={{ fontSize: 13, fontWeight: 600, color: text, letterSpacing: '-0.01em' }}>Palm</span>
-        </div>
+        </Link>
 
         {/* Headline */}
         <motion.div

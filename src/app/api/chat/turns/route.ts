@@ -3,19 +3,31 @@ import { api } from '../../../../../convex/_generated/api'
 import { NextRequest } from 'next/server'
 
 export async function GET(req: NextRequest) {
-    const projectId = req.nextUrl.searchParams.get('projectId')
-    if (!projectId) return new Response('Missing projectId', { status: 400 })
+    const chatId = req.nextUrl.searchParams.get('chatId')
 
-    const turns = await fetchQuery(api.chat.getByProject, { projectId })
-    return Response.json(turns)
+    if (chatId && chatId !== 'undefined' && chatId !== 'null') {
+        const turns = await fetchQuery(api.chat.getByChat, { chatId })
+        return Response.json(turns)
+    }
+
+    return Response.json([])
 }
 
 export async function POST(req: NextRequest) {
     const body = await req.json()
-    const { projectId, turnId, prompt, response, timestamp, urls, imageStorageIds } = body
+    const { projectId, chatId, turnId, prompt, response, timestamp, urls, imageStorageIds } = body
 
     if (!projectId || !turnId) return new Response('Missing fields', { status: 400 })
 
-    await fetchMutation(api.chat.saveTurn, { projectId, turnId, prompt, response, timestamp, urls, imageStorageIds })
+    await fetchMutation(api.chat.saveTurn, {
+        projectId,
+        chatId: chatId || undefined,
+        turnId,
+        prompt,
+        response,
+        timestamp,
+        urls,
+        imageStorageIds,
+    })
     return Response.json({ success: true })
 }

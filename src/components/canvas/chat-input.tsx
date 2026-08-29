@@ -2,8 +2,8 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { useTheme } from 'next-themes'
-import { ArrowUp, Globe, X } from 'lucide-react'
-import { motion } from 'framer-motion'
+import { ArrowUp, Globe, X, Plus } from 'lucide-react'
+import { motion, AnimatePresence } from 'framer-motion'
 import { cn } from '@/lib/utils'
 import { AttachmentMenu } from '@/components/home/attachment-menu'
 import { ImagePreview, type ImageItem } from '@/components/home/image-preview'
@@ -31,7 +31,6 @@ export function ChatInput({ onSend, isLoading, attachedFrameId, attachedFrameNam
     const { theme, systemTheme } = useTheme()
     const isLight = (theme === 'system' ? systemTheme : theme) === 'light'
 
-    // Auto-expand when a frame is attached
     useEffect(() => {
         if (attachedFrameId) {
             setIsExpanded(true)
@@ -75,44 +74,23 @@ export function ChatInput({ onSend, isLoading, attachedFrameId, attachedFrameNam
             const img = prev.find(i => i.id === id)
             if (img) {
                 URL.revokeObjectURL(img.previewUrl)
-                if (img.storageId) {
-                    fetch('/api/files/delete', {
-                        method: 'DELETE',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ storageId: img.storageId }),
-                    }).catch(console.error)
-                }
+                if (img.storageId) fetch('/api/files/delete', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ storageId: img.storageId }) }).catch(console.error)
             }
             return prev.filter(i => i.id !== id)
         })
     }
 
-    const handleUrl = () => {
-        setIsExpanded(true)
-        setUrlMode(true)
-        setTimeout(() => expandedRef.current?.focus(), 50)
-    }
-
-    const handleEnhance = async () => {
-        if (!message.trim()) return
-        // wire up to your /api/enhance if needed — no-op for now
-    }
+    const handleUrl = () => { setIsExpanded(true); setUrlMode(true); setTimeout(() => expandedRef.current?.focus(), 50) }
+    const handleEnhance = async () => {}
 
     const handleSend = () => {
         if (!message.trim() || isLoading) return
-        const imageStorageIds = uploadedImages
-            .filter(img => img.storageId !== null && !img.error)
-            .map(img => img.storageId as string)
+        const imageStorageIds = uploadedImages.filter(img => img.storageId !== null && !img.error).map(img => img.storageId as string)
         onSend(message.trim(), {
             urls: urlTags.length > 0 ? urlTags : undefined,
             imageStorageIds: imageStorageIds.length > 0 ? imageStorageIds : undefined,
         })
-        setMessage('')
-        setIsExpanded(false)
-        setUploadedImages([])
-        setUrlTags([])
-        setUrlMode(false)
-        setUrlInputValue('')
+        setMessage(''); setIsExpanded(false); setUploadedImages([]); setUrlTags([]); setUrlMode(false); setUrlInputValue('')
     }
 
     const handleCollapsedChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -126,273 +104,193 @@ export function ChatInput({ onSend, isLoading, attachedFrameId, attachedFrameNam
     }
 
     const handleCollapsedKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-        if (e.key === 'Enter') {
-            e.preventDefault()
-            if (e.shiftKey) setIsExpanded(true)
-            else if (message.trim()) handleSend()
-        }
+        if (e.key === 'Enter') { e.preventDefault(); if (e.shiftKey) setIsExpanded(true); else if (message.trim()) handleSend() }
     }
 
     const handleExpandedChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-        const val = e.target.value
-        setMessage(val)
-        const el = e.target
-        el.style.height = 'auto'
-        el.style.height = Math.min(el.scrollHeight, 140) + 'px'
+        const val = e.target.value; setMessage(val)
+        const el = e.target; el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 140) + 'px'
         if (!val && !attachedFrameId) setIsExpanded(false)
     }
 
     const handleExpandedKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault()
-            handleSend()
-        }
-        if (e.key === 'Backspace' && message === '' && !attachedFrameId) {
-            setIsExpanded(false)
-        }
+        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() }
+        if (e.key === 'Backspace' && message === '' && !attachedFrameId) setIsExpanded(false)
     }
 
     const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
-        const imageItems = Array.from(e.clipboardData.items)
-            .filter(item => item.type.startsWith('image/'))
-        if (imageItems.length > 0) {
-            e.preventDefault()
-            imageItems.forEach(item => {
-                const file = item.getAsFile()
-                if (file) handleUpload(file)
-            })
-        }
+        const imageItems = Array.from(e.clipboardData.items).filter(item => item.type.startsWith('image/'))
+        if (imageItems.length > 0) { e.preventDefault(); imageItems.forEach(item => { const file = item.getAsFile(); if (file) handleUpload(file) }) }
     }
 
-    const handleDragEnter = (e: React.DragEvent) => {
-        e.preventDefault()
-        dragCounter.current++
-        if (e.dataTransfer.types.includes('Files')) setIsDragging(true)
-    }
-
-    const handleDragLeave = (e: React.DragEvent) => {
-        e.preventDefault()
-        dragCounter.current--
-        if (dragCounter.current === 0) setIsDragging(false)
-    }
-
-    const handleDragOver = (e: React.DragEvent) => {
-        e.preventDefault()
-    }
-
+    const handleDragEnter = (e: React.DragEvent) => { e.preventDefault(); dragCounter.current++; if (e.dataTransfer.types.includes('Files')) setIsDragging(true) }
+    const handleDragLeave = (e: React.DragEvent) => { e.preventDefault(); dragCounter.current--; if (dragCounter.current === 0) setIsDragging(false) }
+    const handleDragOver = (e: React.DragEvent) => e.preventDefault()
     const handleDrop = (e: React.DragEvent) => {
-        e.preventDefault()
-        dragCounter.current = 0
-        setIsDragging(false)
-        Array.from(e.dataTransfer.files)
-            .filter(f => f.type.startsWith('image/'))
-            .forEach(handleUpload)
+        e.preventDefault(); dragCounter.current = 0; setIsDragging(false)
+        Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/')).forEach(handleUpload)
     }
 
-    const containerStyle: React.CSSProperties = isLight ? {
-        background: 'rgba(250,246,238,0.92)',
-        backdropFilter: 'blur(32px)',
-        WebkitBackdropFilter: 'blur(32px)',
-        border: '1px solid rgba(120,96,60,0.18)',
-        boxShadow: [
-            '0 0 0 0.5px rgba(100,76,40,0.08)',
-            '0 4px 24px rgba(80,60,30,0.12)',
-            'inset 0 1px 0 rgba(255,255,255,0.90)',
-        ].join(', '),
-    } : {
-        background: 'rgba(18,18,18,0.85)',
-        backdropFilter: 'blur(32px) saturate(1.8)',
-        WebkitBackdropFilter: 'blur(32px) saturate(1.8)',
-        border: '1px solid rgba(255,255,255,0.08)',
-        boxShadow: [
-            '0 0 0 0.5px rgba(255,255,255,0.04)',
-            '0 4px 24px rgba(0,0,0,0.45)',
-            '0 8px 32px rgba(0,0,0,0.35)',
-            'inset 0 1px 0 rgba(255,255,255,0.08)',
-            'inset 0 -1px 0 rgba(0,0,0,0.2)',
-        ].join(', '),
-    }
+    const t = isLight ? 'rgba(0,0,0' : 'rgba(255,255,255'
 
-    const chipStyle: React.CSSProperties = isLight ? {
-        background: 'rgba(120,96,60,0.07)',
-        border: '1px solid rgba(120,96,60,0.20)',
-        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.70)',
-    } : {
-        background: 'rgba(255,255,255,0.08)',
-        border: '1px solid rgba(255,255,255,0.14)',
-        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.05)',
-    }
-
-    const sendButton = (
+    const sendBtn = (
         <button
             onClick={handleSend}
             disabled={!message.trim() || isLoading}
             className={cn(
-                'w-7 h-7 rounded-full flex items-center justify-center transition-all flex-shrink-0',
+                "w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 transition-colors",
                 message.trim() && !isLoading
-                    ? 'bg-foreground text-background'
-                    : 'opacity-30 bg-foreground/10 text-foreground'
+                    ? "bg-neutral-950 dark:bg-white text-white dark:text-neutral-950 cursor-pointer"
+                    : "bg-black/[0.07] dark:bg-white/[0.07] text-black/25 dark:text-white/25 cursor-default"
             )}
         >
             {isLoading
-                ? <div className='w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin' />
-                : <ArrowUp className='w-3.5 h-3.5' />
+                ? <div className="w-3 h-3 rounded-full border-[1.5px] border-t-transparent border-current animate-spin" />
+                : <ArrowUp className="w-3.5 h-3.5" strokeWidth={2.5} />
             }
         </button>
     )
 
-    const attachmentsBlock = isExpanded ? (
-        <div className='px-3 pt-2.5 flex flex-col gap-2'>
-            {/* Images */}
-            {uploadedImages.length > 0 && (
-                <ImagePreview images={uploadedImages} onRemove={handleRemoveImage} />
-            )}
-
-            {/* URL tags */}
-            {urlTags.length > 0 && (
-                <div className='flex flex-wrap gap-1.5'>
-                    {urlTags.map((tag, i) => (
-                        <div
-                            key={tag + i}
-                            className='flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium'
-                            style={chipStyle}
-                        >
-                            <Globe className='w-3 h-3 opacity-60 flex-shrink-0' />
-                            <span className='max-w-[140px] truncate'>{tag.replace(/^https?:\/\//, '')}</span>
-                            <button
-                                onClick={() => setUrlTags(prev => prev.filter((_, idx) => idx !== i))}
-                                className='opacity-50 hover:opacity-100 transition-opacity ml-0.5'
-                            >
-                                <X className='w-3 h-3' />
-                            </button>
-                        </div>
-                    ))}
-                </div>
-            )}
-
-            {/* URL input row */}
-            {urlMode && (
-                <div
-                    className='flex items-center gap-2 rounded-full px-3 py-1.5'
-                    style={chipStyle}
-                >
-                    <Globe className='w-3.5 h-3.5 opacity-50 flex-shrink-0' />
-                    <input
-                        autoFocus
-                        value={urlInputValue}
-                        onChange={e => setUrlInputValue(e.target.value)}
-                        onKeyDown={e => {
-                            if ((e.key === ' ' || e.key === 'Enter') && urlInputValue.trim()) {
-                                e.preventDefault()
-                                const raw = urlInputValue.trim().toLowerCase()
-                                const normalized = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`
-                                setUrlTags(prev => [...prev, normalized])
-                                setUrlInputValue('')
-                            }
-                            if (e.key === 'Escape') { setUrlMode(false); setUrlInputValue('') }
-                        }}
-                        placeholder={urlTags.length > 0 ? 'Add another URL…' : 'Paste a URL, press Enter…'}
-                        className='flex-1 text-xs outline-none bg-transparent text-foreground placeholder:text-muted-foreground/50'
-                    />
-                    <button onClick={() => { setUrlMode(false); setUrlInputValue('') }} className='opacity-50 hover:opacity-100 transition-opacity'>
-                        <X className='w-3 h-3' />
-                    </button>
-                </div>
-            )}
-
-            {/* Frame chip */}
-            {attachedFrameId && (
-                <div
-                    className='flex items-center gap-2 pl-1.5 pr-2.5 py-1 rounded-xl text-xs w-fit'
-                    style={chipStyle}
-                >
-                    <div style={{ width: 48, height: 36, borderRadius: 6, overflow: 'hidden', flexShrink: 0, background: isLight ? 'rgba(120,96,60,0.08)' : 'rgba(255,255,255,0.08)' }}>
-                        {attachedThumbnailUrl
-                            ? <img src={attachedThumbnailUrl} alt='Frame' style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                            : <div className='w-full h-full flex items-center justify-center opacity-30'><div className='w-5 h-4 rounded bg-foreground' /></div>
-                        }
-                    </div>
-                    <span className='text-foreground/70 font-medium' style={{ maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {attachedFrameName ?? 'Frame'}
-                    </span>
-                    <button onClick={onDetachFrame} className='text-foreground/35 hover:text-foreground/65 transition-colors ml-0.5 leading-none' style={{ fontSize: 15 }}>×</button>
-                </div>
-            )}
-        </div>
-    ) : null
-
     return (
-        <motion.div
-            layout
-            transition={{ type: 'spring', damping: 30, stiffness: 340 }}
-            onDragEnter={handleDragEnter}
-            onDragLeave={handleDragLeave}
-            onDragOver={handleDragOver}
-            onDrop={handleDrop}
-            className='relative w-[540px] overflow-hidden'
-            style={{
-                ...containerStyle,
-                borderRadius: isExpanded ? '20px' : '9999px',
-                outline: isDragging ? '2px solid rgba(160,120,60,0.45)' : 'none',
-            }}
-        >
-            {/* Specular rim */}
-            <div
-                className='pointer-events-none absolute inset-x-0 top-0 h-[1px]'
-                style={{ background: 'linear-gradient(90deg, transparent 5%, rgba(255,255,255,0.75) 50%, transparent 95%)' }}
-            />
-
-            {/* COLLAPSED */}
-            {!isExpanded && (
-                <div className='flex items-center gap-2 px-4 py-3'>
-                    <AttachmentMenu
-                        onUpload={handleUpload}
-                        onUrl={handleUrl}
-                        onEnhance={handleEnhance}
-                        hasInput={message.trim().length > 0}
-                    />
-                    <textarea
-                        ref={collapsedRef}
-                        value={message}
-                        rows={1}
-                        onChange={handleCollapsedChange}
-                        onKeyDown={handleCollapsedKeyDown}
-                        onPaste={handlePaste}
-                        placeholder='What would you like to change or create?'
-                        className='flex-1 resize-none text-sm outline-none bg-transparent text-foreground placeholder:text-muted-foreground/40 leading-relaxed min-w-0'
-                        style={{ height: '20px', minHeight: '20px', maxHeight: '20px', overflow: 'hidden' }}
-                    />
-                    {sendButton}
-                </div>
-            )}
-
-            {/* EXPANDED */}
-            {isExpanded && (
-                <div className='flex flex-col gap-1'>
-                    {/* All attachments: images, URLs, frame chip */}
-                    {attachmentsBlock}
-
-                    <textarea
-                        ref={expandedRef}
-                        onChange={handleExpandedChange}
-                        onKeyDown={handleExpandedKeyDown}
-                        onPaste={handlePaste}
-                        placeholder='What would you like to change or create?'
-                        className='w-full resize-none text-sm outline-none bg-transparent text-foreground placeholder:text-muted-foreground/40 leading-relaxed px-4 pt-2'
-                        style={{ minHeight: '52px', maxHeight: '140px', overflow: 'hidden' }}
-                    />
-                    <div className='flex items-center gap-2 px-4 pb-1'>
-                        <AttachmentMenu
-                            onUpload={handleUpload}
-                            onUrl={handleUrl}
-                            onEnhance={handleEnhance}
-                            hasInput={message.trim().length > 0}
+        <>
+            <motion.div
+                layout
+                transition={{ type: 'spring', damping: 30, stiffness: 340 }}
+                onDragEnter={handleDragEnter}
+                onDragLeave={handleDragLeave}
+                onDragOver={handleDragOver}
+                onDrop={handleDrop}
+                className={cn(
+                    "w-[540px] relative overflow-hidden bg-white dark:bg-[#111111] shadow-sm dark:shadow-2xl transition-[border-color,border-radius] duration-200",
+                    isExpanded ? "rounded-[18px]" : "rounded-full",
+                    isDragging ? "border-[1.5px] border-black/40 dark:border-white/40" : "border border-black/10 dark:border-white/10"
+                )}
+            >
+                {/* COLLAPSED */}
+                {!isExpanded && (
+                    <div className="flex items-center gap-2 py-2.5 pl-3.5 pr-3">
+                        <AttachmentMenu onUpload={handleUpload} onUrl={handleUrl} onEnhance={handleEnhance} hasInput={message.trim().length > 0} />
+                        <textarea
+                            ref={collapsedRef}
+                            value={message}
+                            rows={1}
+                            onChange={handleCollapsedChange}
+                            onKeyDown={handleCollapsedKeyDown}
+                            onPaste={handlePaste}
+                            placeholder="What would you like to change or create?"
+                            className="flex-1 resize-none outline-none border-none bg-transparent text-[13px] text-neutral-900 dark:text-neutral-100 h-5 min-h-[20px] max-h-[20px] overflow-hidden font-sans tracking-tight leading-5 placeholder:text-neutral-400 dark:placeholder:text-neutral-500"
                         />
-                        <div className='flex-1' />
-                        {sendButton}
+                        {sendBtn}
                     </div>
-                </div>
-            )}
-        </motion.div>
+                )}
+
+                {/* EXPANDED */}
+                {isExpanded && (
+                    <div style={{ display: 'flex', flexDirection: 'column' }}>
+                        {/* Attachments area */}
+                        {(uploadedImages.length > 0 || urlTags.length > 0 || urlMode || attachedFrameId) && (
+                            <div style={{ padding: '12px 14px 0', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                {uploadedImages.length > 0 && <ImagePreview images={uploadedImages} onRemove={handleRemoveImage} isLight={isLight} />}
+
+                                {urlTags.length > 0 && (
+                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                                        {urlTags.map((tag, i) => (
+                                            <div key={tag + i} style={{
+                                                display: 'inline-flex', alignItems: 'center', gap: 5,
+                                                padding: '3px 8px', borderRadius: 6,
+                                                border: `1px solid ${isLight ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.1)'}`,
+                                                background: isLight ? 'rgba(0,0,0,0.04)' : 'rgba(255,255,255,0.05)',
+                                                fontSize: 11, color: isLight ? 'rgba(0,0,0,0.5)' : 'rgba(255,255,255,0.5)',
+                                            }}>
+                                                <Globe style={{ width: 10, height: 10 }} />
+                                                <span style={{ maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                    {tag.replace(/^https?:\/\//, '')}
+                                                </span>
+                                                <button onClick={() => setUrlTags(prev => prev.filter((_, idx) => idx !== i))}
+                                                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', padding: 0, lineHeight: 0, opacity: 0.6 }}>
+                                                    <X style={{ width: 9, height: 9 }} />
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+
+                                {urlMode && (
+                                    <div style={{
+                                        display: 'flex', alignItems: 'center', gap: 7, padding: '6px 10px', borderRadius: 8,
+                                        border: `1px solid ${isLight ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.1)'}`,
+                                        background: isLight ? 'rgba(0,0,0,0.03)' : 'rgba(255,255,255,0.04)',
+                                    }}>
+                                        <Globe style={{ width: 12, height: 12, color: isLight ? 'rgba(0,0,0,0.35)' : 'rgba(255,255,255,0.35)', flexShrink: 0 }} />
+                                        <input
+                                            autoFocus value={urlInputValue} onChange={e => setUrlInputValue(e.target.value)}
+                                            onKeyDown={e => {
+                                                if ((e.key === ' ' || e.key === 'Enter') && urlInputValue.trim()) {
+                                                    e.preventDefault()
+                                                    const raw = urlInputValue.trim()
+                                                    const normalized = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`
+                                                    setUrlTags(prev => [...prev, normalized]); setUrlInputValue('')
+                                                }
+                                                if (e.key === 'Escape') { setUrlMode(false); setUrlInputValue('') }
+                                            }}
+                                            placeholder="Paste a URL, press Enter…"
+                                            style={{ flex: 1, background: 'none', border: 'none', outline: 'none', fontSize: 12, color: isLight ? '#0a0a0a' : '#f0f0f0', fontFamily: 'inherit' }}
+                                        />
+                                        <button onClick={() => { setUrlMode(false); setUrlInputValue('') }}
+                                            style={{ background: 'none', border: 'none', cursor: 'pointer', color: isLight ? 'rgba(0,0,0,0.35)' : 'rgba(255,255,255,0.35)', padding: 0, lineHeight: 0 }}>
+                                            <X style={{ width: 12, height: 12 }} />
+                                        </button>
+                                    </div>
+                                )}
+
+                                {attachedFrameId && (
+                                    <div style={{
+                                        display: 'inline-flex', alignItems: 'center', gap: 8,
+                                        padding: '4px 10px 4px 5px', borderRadius: 8, width: 'fit-content',
+                                        border: `1px solid ${isLight ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.1)'}`,
+                                        background: isLight ? 'rgba(0,0,0,0.03)' : 'rgba(255,255,255,0.04)',
+                                    }}>
+                                        <div style={{ width: 40, height: 30, borderRadius: 5, overflow: 'hidden', flexShrink: 0, background: isLight ? '#f0f0f0' : '#222' }}>
+                                            {attachedThumbnailUrl
+                                                ? <img src={attachedThumbnailUrl} alt="Frame" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                                : <div style={{ width: '100%', height: '100%' }} />
+                                            }
+                                        </div>
+                                        <span style={{ fontSize: 12, color: isLight ? 'rgba(0,0,0,0.6)' : 'rgba(255,255,255,0.6)', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', letterSpacing: '-0.01em' }}>
+                                            {attachedFrameName ?? 'Frame'}
+                                        </span>
+                                        <button onClick={onDetachFrame} style={{ background: 'none', border: 'none', cursor: 'pointer', color: isLight ? 'rgba(0,0,0,0.3)' : 'rgba(255,255,255,0.3)', padding: 0, lineHeight: 0 }}>
+                                            <X style={{ width: 12, height: 12 }} />
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        <textarea
+                            ref={expandedRef}
+                            onChange={handleExpandedChange}
+                            onKeyDown={handleExpandedKeyDown}
+                            onPaste={handlePaste}
+                            placeholder="What would you like to change or create?"
+                            style={{
+                                width: '100%', resize: 'none', outline: 'none', border: 'none', background: 'transparent',
+                                fontSize: 13, color: isLight ? '#0a0a0a' : '#f0f0f0',
+                                minHeight: 52, maxHeight: 140, overflow: 'hidden',
+                                padding: '14px 14px 0', fontFamily: 'inherit',
+                                letterSpacing: '-0.01em', lineHeight: 1.6,
+                                boxSizing: 'border-box',
+                            }}
+                        />
+
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px 12px 14px' }}>
+                            <AttachmentMenu onUpload={handleUpload} onUrl={handleUrl} onEnhance={handleEnhance} hasInput={message.trim().length > 0} />
+                            <div style={{ flex: 1 }} />
+                            {sendBtn}
+                        </div>
+                    </div>
+                )}
+            </motion.div>
+        </>
     )
 }

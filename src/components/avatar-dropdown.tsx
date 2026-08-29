@@ -121,8 +121,8 @@ export function AvatarDropdown({ creditBalance }: { creditBalance?: number }) {
           {/* Actions */}
           <div style={{ padding: '6px' }}>
             {row('Profile',  () => { router.push(`/dashboard/${userSlug}/settings`); setOpen(false) })}
-            {row('Credits',  () => { router.push(`/dashboard/${userSlug}/credits`);  setOpen(false) }, creditBalance ?? 0)}
-            {row('Billing',  () => { router.push(`/dashboard/${userSlug}/billing`);  setOpen(false) })}
+            {row('Credits',  () => { router.push(`/billing/${userSlug}`);  setOpen(false) }, creditBalance ?? 0)}
+            {row('Billing',  () => { router.push(`/billing/${userSlug}`);  setOpen(false) })}
           </div>
 
           {/* Divider */}

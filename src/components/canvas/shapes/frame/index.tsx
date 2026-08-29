@@ -1,7 +1,8 @@
 import { FrameShape } from "@/redux/slice/shapes";
 import { LiquidGlassButton } from "@/components/buttons/liquid-glass";
-import { Brush, Palette } from "lucide-react";
+import { Brush, Monitor } from "lucide-react";
 import { useFrame } from "@/hooks/use-canvas";
+import { useAppSelector } from "@/redux/store";
 
 export const Frame = ({
   shape,
@@ -10,7 +11,9 @@ export const Frame = ({
   shape: FrameShape;
   toggleInspiration: () => void;
 }) => {
-
+  const viewportScale = useAppSelector((state) => state.viewport.scale);
+  const labelScale = Math.min(Math.max(1, 1 / (viewportScale || 1)), 4);
+  const maxTitleWidth = Math.max(60, (shape.w - 20) / labelScale);
   const { isGenerating, handleGenerateDesign } = useFrame(shape);
 
   return (
@@ -26,14 +29,29 @@ export const Frame = ({
         }}
       />
       <div
-        className="absolute pointer-events-none whitespace-nowrap text-xs font-medium text-foreground/60 select-none"
+        className="absolute pointer-events-none font-semibold text-foreground/80 select-none flex items-center gap-1.5"
         style={{
           left: shape.x,
-          top: shape.y - 24, // Position above the frame
-          fontSize: "11px",
+          bottom: `calc(100% - ${shape.y}px)`,
+          marginBottom: 8 * labelScale,
+          maxWidth: maxTitleWidth,
+          transformOrigin: "bottom left",
+          transform: `scale(${labelScale})`,
+          fontSize: "14px",
           lineHeight: "1.2",
+          transition: "transform 0.05s ease-out, margin-bottom 0.05s ease-out",
         }}>
-        Frame {Number.isFinite(shape.frameNumber) ? shape.frameNumber : '—'}
+        <Monitor size={15} className="opacity-75 flex-shrink-0" />
+        <span
+          style={{
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+            display: "block",
+          }}
+        >
+          Frame {Number.isFinite(shape.frameNumber) ? shape.frameNumber : '—'}
+        </span>
       </div>
       <div
         className="absolute pointer-events-auto flex gap-4"

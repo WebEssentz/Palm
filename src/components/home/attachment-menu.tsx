@@ -3,7 +3,9 @@
 import { useState, useRef, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
+import { useTheme } from 'next-themes'
 import { ImageIcon, Globe, Sparkles, Plus } from 'lucide-react'
+import { cn } from '@/lib/utils'
 
 interface Props {
   onUpload: (file: File) => void
@@ -11,10 +13,13 @@ interface Props {
   onEnhance: () => void
   enhancing?: boolean
   hasInput?: boolean
-  isLight: boolean
+  isLight?: boolean
 }
 
-export function AttachmentMenu({ onUpload, onUrl, onEnhance, enhancing, hasInput, isLight }: Props) {
+export function AttachmentMenu({ onUpload, onUrl, onEnhance, enhancing, hasInput, isLight: isLightProp }: Props) {
+  const { theme, systemTheme } = useTheme()
+  const isLight = isLightProp !== undefined ? isLightProp : (theme === 'system' ? systemTheme : theme) === 'light'
+
   const [open, setOpen]       = useState(false)
   const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null)
   const fileRef       = useRef<HTMLInputElement>(null)
@@ -49,23 +54,22 @@ export function AttachmentMenu({ onUpload, onUrl, onEnhance, enhancing, hasInput
   const itemTxt = isLight ? 'rgba(0,0,0,0.7)'   : 'rgba(255,255,255,0.7)'
 
   return (
-    <div ref={menuRef} style={{ position: 'relative' }}>
-      <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleFile} />
+    <div ref={menuRef} className="relative flex items-center">
+      <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleFile} />
 
       <button
         ref={triggerRef}
         onClick={toggle}
-        style={{
-          width: 30, height: 30, borderRadius: '50%', border: 'none',
-          background: 'transparent',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          cursor: 'pointer', color: isLight ? 'rgba(0,0,0,0.5)' : 'rgba(255,255,255,0.5)',
-          transition: 'background 0.12s',
-        }}
-        onMouseEnter={e => e.currentTarget.style.background = isLight ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.06)'}
-        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+        type="button"
+        aria-label="Add attachment or action"
+        className={cn(
+          "w-8 h-8 rounded-full flex items-center justify-center cursor-pointer flex-shrink-0 transition-colors",
+          open
+            ? "border border-black/20 dark:border-white/20 bg-black/10 dark:bg-white/10 text-neutral-950 dark:text-white"
+            : "border border-black/[0.08] dark:border-white/[0.08] bg-black/[0.03] dark:bg-white/[0.04] text-neutral-600 dark:text-neutral-400 hover:bg-black/[0.06] dark:hover:bg-white/[0.08] hover:text-neutral-950 dark:hover:text-white"
+        )}
       >
-        <Plus style={{ width: 14, height: 14 }} />
+        <Plus className="w-4 h-4" strokeWidth={2} />
       </button>
 
       {typeof window !== 'undefined' && open && menuPos && createPortal(

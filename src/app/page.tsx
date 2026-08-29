@@ -14,7 +14,7 @@ const EX = [0.16, 1, 0.3, 1] as const
 const WORDS = ['instantly.', 'effortlessly.', 'beautifully.', 'magically.']
 
 const GLOBAL_CSS = `
-  @import url('https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600;14..32,700;14..32,800;14..32,900&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600;14..32,700;14..32,800;14..32,900&family=Gloria+Hallelujah&display=swap');
   html, body, *, *::before, *::after {
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   }
@@ -22,6 +22,10 @@ const GLOBAL_CSS = `
   ::-webkit-scrollbar { width: 5px; }
   ::-webkit-scrollbar-thumb { background: rgba(128,128,128,0.24); border-radius: 9999px; }
   @keyframes blink { 0%,100% { opacity:1 } 50% { opacity:0 } }
+  .annotation-text {
+    font-family: 'Gloria Hallelujah', cursive;
+    line-height: 1.2;
+  }
 `
 
 // ─── Hooks ────────────────────────────────────────────────────────────────────
@@ -74,6 +78,37 @@ function useStaticTypewriter(full: string, onDone: () => void) {
   return text
 }
 
+// ─── Annotation SVG (curly arrow, same as HomeShell) ─────────────────────────
+function CurlyArrow({ style }: { style?: React.CSSProperties }) {
+  return (
+    <svg
+      style={style}
+      viewBox="0 0 120 90"
+      fill="none"
+      preserveAspectRatio="none"
+      aria-hidden="true"
+    >
+      <path d="M78 7C93 31 71 57 55 42C43 31 51 9 66 14C81 20 74 48 53 58C42 64 30 67 17 72" stroke="currentColor" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M18 72C28 71 38 72 46 76M18 72C28 64 35 56 39 47" stroke="currentColor" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+function WideArrow({ style }: { style?: React.CSSProperties }) {
+  return (
+    <svg
+      style={style}
+      viewBox="0 0 260 92"
+      fill="none"
+      preserveAspectRatio="none"
+      aria-hidden="true"
+    >
+      <path d="M4 60C42 28 76 74 110 48C132 31 98 5 84 26C67 52 112 72 160 38C190 20 223 30 254 22" stroke="currentColor" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M226 10C239 12 249 17 254 22M254 22C243 31 232 44 226 56" stroke="currentColor" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
 // ─── FadeIn ───────────────────────────────────────────────────────────────────
 function FadeIn({
   children, delay = 0, style = {},
@@ -92,7 +127,7 @@ function FadeIn({
 }
 
 // ─── Nav ──────────────────────────────────────────────────────────────────────
-function Nav({ isLight }: { isLight: boolean }) {
+export function Nav({ isLight }: { isLight: boolean }) {
   const [scrolled, setScrolled] = useState(false)
   const isMobile = useIsMobile()
 
@@ -136,17 +171,17 @@ function Nav({ isLight }: { isLight: boolean }) {
         }}
       >
         {/* Logo */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <Link href="/" style={{ display: 'flex', alignItems: 'center', gap: 8, textDecoration: 'none' }}>
           <div style={{ width: 24, height: 24, borderRadius: 6, background: text, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <div style={{ width: 9, height: 9, borderRadius: '50%', background: isLight ? '#fff' : '#0a0a0a' }} />
           </div>
           <span style={{ fontSize: 14, fontWeight: 600, letterSpacing: '-0.01em', color: text }}>Palm</span>
-        </div>
+        </Link>
 
         {/* Right */}
         <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 12 : 32 }}>
           {!isMobile && (['Features', 'Pricing', 'Docs'] as const).map(label => (
-            <a key={label} href="#" style={{ fontSize: 13, fontWeight: 500, letterSpacing: '-0.01em', color: muted, textDecoration: 'none', transition: 'color 0.15s' }}
+            <a key={label} href={label === 'Pricing' ? '/pricing' : '#'} style={{ fontSize: 13, fontWeight: 500, letterSpacing: '-0.01em', color: muted, textDecoration: 'none', transition: 'color 0.15s' }}
               onMouseEnter={e => (e.currentTarget.style.color = text)}
               onMouseLeave={e => (e.currentTarget.style.color = muted)}
             >{label}</a>
@@ -166,16 +201,15 @@ function Nav({ isLight }: { isLight: boolean }) {
 // ─── Hero ─────────────────────────────────────────────────────────────────────
 function Hero({ isLight }: { isLight: boolean }) {
   const isMobile = useIsMobile()
-  const ref      = useRef<HTMLElement>(null)
+  const ref = useRef<HTMLElement>(null)
 
   const [staticDone, setStaticDone] = useState(false)
-  const [showRest, setShowRest]     = useState(false)
+  const [showRest, setShowRest] = useState(false)
 
   const onStaticDone = useRef(() => setStaticDone(true))
-  const staticText   = useStaticTypewriter('Turn ideas into interfaces,', onStaticDone.current)
-  const typed        = useTypewriter()
+  const staticText = useStaticTypewriter('Turn ideas into interfaces,', onStaticDone.current)
+  const typed = useTypewriter()
 
-  // Wait for first word to finish typing + small breath, then fade in smoothly
   useEffect(() => {
     if (!staticDone) return
     const t = setTimeout(() => setShowRest(true), 1100)
@@ -183,11 +217,12 @@ function Hero({ isLight }: { isLight: boolean }) {
   }, [staticDone])
 
   const { scrollYProgress } = useScroll({ target: ref, offset: ['start start', 'end start'] })
-  const y       = useTransform(scrollYProgress, [0, 1], [0, -90])
+  const y = useTransform(scrollYProgress, [0, 1], [0, -90])
   const opacity = useTransform(scrollYProgress, [0, 0.5], [1, 0])
 
-  const text  = isLight ? '#0a0a0a' : '#ffffff'
+  const text = isLight ? '#0a0a0a' : '#ffffff'
   const muted = isLight ? 'rgba(0,0,0,0.44)' : 'rgba(255,255,255,0.44)'
+  const inkColor = isLight ? 'rgba(0,0,0,0.68)' : 'rgba(255,255,255,0.82)'
 
   const headSize = isMobile ? 'clamp(2.2rem, 9vw, 3rem)' : 'clamp(2.8rem, 5.5vw, 5rem)'
 
@@ -202,7 +237,7 @@ function Hero({ isLight }: { isLight: boolean }) {
       <motion.div style={{ y, opacity, position: 'relative', zIndex: 10, width: '100%' }}>
         <div style={{ textAlign: 'center', padding: '0 48px', maxWidth: 1100, margin: '0 auto' }}>
 
-          {/* Static heading — types out on load */}
+          {/* Static heading */}
           <h1 style={{ fontSize: headSize, fontWeight: 600, lineHeight: 1.12, letterSpacing: '-0.03em', color: text, margin: 0, minHeight: '1.2em' }}>
             {staticText}
             {!staticDone && (
@@ -210,7 +245,7 @@ function Hero({ isLight }: { isLight: boolean }) {
             )}
           </h1>
 
-          {/* Typewriter line — starts after static is done */}
+          {/* Typewriter line */}
           {staticDone && (
             <div style={{
               fontSize: headSize, fontWeight: 600, lineHeight: 1.12, letterSpacing: '-0.03em',
@@ -222,18 +257,67 @@ function Hero({ isLight }: { isLight: boolean }) {
             </div>
           )}
 
-          {/* Subtitle + buttons — fade in once first word is fully typed */}
+          {/* Subtitle — with annotation beside it on desktop */}
           <motion.div
             initial={{ opacity: 0, y: 10 }}
             animate={showRest ? { opacity: 1, y: 0 } : { opacity: 0, y: 10 }}
             transition={{ duration: 1.4, ease: [0.16, 1, 0.3, 1] }}
+            style={{ position: 'relative', display: 'inline-block' }}
           >
             <p style={{
               fontSize: isMobile ? '0.95rem' : '1rem', color: muted,
               lineHeight: 1.72, maxWidth: 460, margin: `${isMobile ? 20 : 28}px auto 0`,
             }}>
-              The fastest way from idea to something you can actually show people.
+              Describe any UI. Watch it appear. Iterate in seconds.
             </p>
+
+            {/* Annotation: right of subtitle, pointing left toward the text */}
+            {!isMobile && (
+              <div
+                style={{
+                  pointerEvents: 'none',
+                  position: 'absolute',
+                  left: 'calc(100% + 24px)',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  display: 'flex',
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  color: inkColor,
+                  gap: 8,
+                }}
+              >
+                {/* Arrow: tail right, head left */}
+                <svg width="72" height="40" viewBox="0 0 72 40" fill="none" aria-hidden="true">
+                  <motion.path
+                    d="M68 12 C 52 8, 28 18, 10 26"
+                    stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"
+                    initial={{ pathLength: 0, opacity: 0 }}
+                    animate={showRest ? { pathLength: 1, opacity: 1 } : { pathLength: 0, opacity: 0 }}
+                    transition={{ delay: 0.4, duration: 0.7, ease: 'easeInOut' }}
+                  />
+                  <motion.path
+                    d="M10 26 L20 18 M10 26 L22 32"
+                    stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"
+                    initial={{ pathLength: 0, opacity: 0 }}
+                    animate={showRest ? { pathLength: 1, opacity: 1 } : { pathLength: 0, opacity: 0 }}
+                    transition={{ delay: 1.0, duration: 0.3, ease: 'easeInOut' }}
+                  />
+                </svg>
+                <p
+                  className="annotation-text"
+                  style={{
+                    whiteSpace: 'nowrap',
+                    fontSize: '0.82rem',
+                    transform: 'rotate(-3deg)',
+                    color: inkColor,
+                    margin: 0,
+                  }}
+                >
+                  no designer needed.
+                </p>
+              </div>
+            )}
           </motion.div>
 
         </div>
@@ -269,17 +353,17 @@ const PROMPTS = [
 ]
 
 function PromptStage() {
-  const ref    = useRef<HTMLDivElement>(null)
+  const ref = useRef<HTMLDivElement>(null)
   const inView = useInView(ref, { once: false, margin: '-20%' })
 
   const { scrollYProgress } = useScroll({ target: ref, offset: ['start end', 'end start'] })
   const spotOpacity = useTransform(scrollYProgress, [0.05, 0.25, 0.75, 0.95], [0, 1, 1, 0])
-  const boxY        = useTransform(scrollYProgress, [0.05, 0.3],  [40, 0])
-  const boxOpacity  = useTransform(scrollYProgress, [0.05, 0.3],  [0, 1])
+  const boxY = useTransform(scrollYProgress, [0.05, 0.3], [40, 0])
+  const boxOpacity = useTransform(scrollYProgress, [0.05, 0.3], [0, 1])
 
   const [promptIdx, setPromptIdx] = useState(0)
-  const [typed,     setTyped]     = useState('')
-  const [deleting,  setDeleting]  = useState(false)
+  const [typed, setTyped] = useState('')
+  const [deleting, setDeleting] = useState(false)
 
   useEffect(() => {
     if (!inView) return
@@ -308,7 +392,7 @@ function PromptStage() {
       overflow: 'hidden',
     }}>
 
-      {/* Spotlight cone from top */}
+      {/* Spotlight cone */}
       <motion.div style={{
         position: 'absolute', top: 0, left: '50%',
         transform: 'translateX(-50%)',
@@ -318,7 +402,6 @@ function PromptStage() {
         pointerEvents: 'none',
       }} />
 
-      {/* Soft pool of light behind the box */}
       <motion.div style={{
         position: 'absolute',
         width: 700, height: 400,
@@ -328,7 +411,6 @@ function PromptStage() {
         pointerEvents: 'none',
       }} />
 
-      {/* Dotted grid — same treatment as hero but dark */}
       <div style={{
         position: 'absolute', inset: 0,
         backgroundImage: 'radial-gradient(circle, rgba(255,255,255,0.12) 1px, transparent 1px)',
@@ -343,7 +425,6 @@ function PromptStage() {
         y: boxY, opacity: boxOpacity,
       }}>
 
-        {/* Label */}
         <p style={{
           fontSize: 11, letterSpacing: '0.16em', textTransform: 'uppercase',
           color: 'rgba(255,255,255,0.28)', margin: '0 0 22px', textAlign: 'center',
@@ -367,13 +448,11 @@ function PromptStage() {
           position: 'relative',
         }}>
 
-          {/* Specular rim */}
           <div style={{
             position: 'absolute', top: 0, left: '8%', right: '8%', height: 1,
             background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.22), transparent)',
           }} />
 
-          {/* Typed prompt */}
           <p style={{
             fontSize: '1.08rem', lineHeight: 1.72,
             color: 'rgba(255,255,255,0.82)',
@@ -390,7 +469,6 @@ function PromptStage() {
             }} />
           </p>
 
-          {/* Bottom row */}
           <div style={{
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
             marginTop: 20, paddingTop: 16,
@@ -399,7 +477,6 @@ function PromptStage() {
             <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.2)', letterSpacing: '-0.01em' }}>
               Palm · UI Generator
             </span>
-            {/* Send button */}
             <div style={{
               width: 34, height: 34, borderRadius: '50%',
               background: 'rgba(255,255,255,0.88)',
@@ -407,25 +484,40 @@ function PromptStage() {
               boxShadow: '0 2px 12px rgba(255,255,255,0.15)',
             }}>
               <svg width="13" height="13" viewBox="0 0 14 14" fill="none">
-                <path d="M7 11V3M3 7l4-4 4 4" stroke="#000" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                <path d="M7 11V3M3 7l4-4 4 4" stroke="#000" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
             </div>
           </div>
         </div>
 
-        <p style={{
-          textAlign: 'center', fontSize: 12,
-          color: 'rgba(255,255,255,0.18)',
-          margin: '22px 0 0', letterSpacing: '-0.01em',
+        {/* Annotation below the box */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'flex-end',
+          gap: 12,
+          marginTop: 20,
+          paddingLeft: 8,
+          color: 'rgba(255,255,255,0.55)',
         }}>
-          No design skills. No templates. Just describe.
-        </p>
+          <p
+            className="annotation-text"
+            style={{
+              fontSize: '0.8rem',
+              transform: 'rotate(-2deg)',
+              margin: '0 0 4px',
+              flexShrink: 0,
+            }}
+          >
+            plain words. real results.
+          </p>
+          <WideArrow style={{ height: 40, flex: 1, minWidth: 0, marginBottom: -2 }} />
+        </div>
       </motion.div>
     </section>
   )
 }
 
-// ─── Statement — inverted section, word-by-word scroll reveal ─────────────────
+// ─── Statement ────────────────────────────────────────────────────────────────
 function Statement({ isLight }: { isLight: boolean }) {
   const isMobile = useIsMobile()
   const ref = useRef<HTMLDivElement>(null)
@@ -433,7 +525,7 @@ function Statement({ isLight }: { isLight: boolean }) {
 
   const bg = isLight ? '#0a0a0a' : '#f4f4f4'
   const text = isLight ? '#ffffff' : '#0a0a0a'
-  const words = 'Palm is your AI design partner, built for founders who move fast and ship without compromise.'.split(' ')
+  const words = 'Palm is your AI design co-pilot — built for founders who move fast and ship without compromise.'.split(' ')
 
   return (
     <section style={{ background: bg, padding: isMobile ? '100px 28px' : '160px 64px' }}>
@@ -467,34 +559,96 @@ function Statement({ isLight }: { isLight: boolean }) {
 const STEPS = [
   {
     n: '01', title: 'Describe your idea',
-    body: 'Type anything in plain language — "dark dashboard for crypto analytics" or "mobile onboarding for a fitness app". No syntax, no templates.',
+    body: 'Type anything in plain language — "dark dashboard for crypto analytics" or "mobile onboarding for a fitness app". No syntax, no templates, no drag-and-drop.',
   },
   {
-    n: '02', title: 'Palm materializes it',
-    body: 'Watch your interface appear in real time. Every layout, color, and component generated with production intent.',
+    n: '02', title: 'Palm builds it live',
+    body: 'Watch your interface appear in real time. Every layout, color, and component generated with production intent — not placeholder wireframes.',
   },
   {
-    n: '03', title: 'Refine and ship',
-    body: 'Iterate with follow-up prompts. Export clean React, copy the code, or push to Figma. Zero friction, start to finish.',
+    n: '03', title: 'Iterate and export',
+    body: 'Refine with follow-up prompts. Export clean React, copy the HTML, or push to Figma. Zero friction from concept to code.',
   },
 ]
 
 function HowItWorks({ isLight }: { isLight: boolean }) {
   const isMobile = useIsMobile()
+  const annotationRef = useRef<HTMLDivElement>(null)
+  const annotationInView = useInView(annotationRef, { once: true, margin: '-10%' })
   const text = isLight ? '#0a0a0a' : '#ffffff'
   const muted = isLight ? 'rgba(0,0,0,0.44)' : 'rgba(255,255,255,0.44)'
   const line = isLight ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.07)'
   const num = isLight ? 'rgba(0,0,0,0.09)' : 'rgba(255,255,255,0.09)'
+  const inkColor = isLight ? 'rgba(0,0,0,0.68)' : 'rgba(255,255,255,0.82)'
 
   return (
     <section id="how" style={{ background: isLight ? '#ffffff' : '#0a0a0a', padding: isMobile ? '80px 24px' : '140px 48px' }}>
       <div style={{ maxWidth: 1100, margin: '0 auto' }}>
         <FadeIn>
-          <p style={{ fontSize: 11, letterSpacing: '0.15em', textTransform: 'uppercase', color: muted, margin: '0 0 12px' }}>How it works</p>
-          <h2 style={{
-            fontSize: isMobile ? 'clamp(1.8rem, 7vw, 2.4rem)' : 'clamp(2rem, 4vw, 3.2rem)',
-            fontWeight: 700, letterSpacing: '-0.035em', color: text, margin: '0 0 80px', maxWidth: 460,
-          }}>Three steps from idea to interface.</h2>
+          {/* Header with annotation on desktop */}
+          <div style={{ position: 'relative', display: 'inline-block', marginBottom: 80 }}>
+            <p style={{ fontSize: 11, letterSpacing: '0.15em', textTransform: 'uppercase', color: muted, margin: '0 0 12px' }}>How it works</p>
+            <h2 style={{
+              fontSize: isMobile ? 'clamp(1.8rem, 7vw, 2.4rem)' : 'clamp(2rem, 4vw, 3.2rem)',
+              fontWeight: 700, letterSpacing: '-0.035em', color: text, margin: 0, maxWidth: 460,
+            }}>From prompt to shipped, in seconds.</h2>
+
+            {/* Annotation: top-right, pointing down at the steps */}
+            {!isMobile && (
+              <div
+                ref={annotationRef}
+                style={{
+                  pointerEvents: 'none',
+                  position: 'absolute',
+                  right: -160,
+                  top: 0,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'flex-end',
+                  color: inkColor,
+                }}
+              >
+                <motion.p
+                  className="annotation-text"
+                  initial={{ opacity: 0 }}
+                  animate={annotationInView ? { opacity: 1 } : { opacity: 0 }}
+                  transition={{ delay: 0.2, duration: 0.5, ease: 'easeInOut' }}
+                  style={{
+                    transform: 'rotate(5deg)',
+                    textAlign: 'right',
+                    fontSize: '0.82rem',
+                    color: inkColor,
+                    margin: 0,
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  seriously, it's this simple
+                </motion.p>
+                <svg
+                  style={{ marginRight: 16, marginTop: -4, height: 48, width: 64, transform: 'rotate(-10deg)' }}
+                  viewBox="0 0 120 90"
+                  fill="none"
+                  preserveAspectRatio="none"
+                  aria-hidden="true"
+                >
+                  <motion.path
+                    d="M78 7C93 31 71 57 55 42C43 31 51 9 66 14C81 20 74 48 53 58C42 64 30 67 17 72"
+                    stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"
+                    initial={{ pathLength: 0, opacity: 0 }}
+                    animate={annotationInView ? { pathLength: 1, opacity: 1 } : { pathLength: 0, opacity: 0 }}
+                    transition={{ delay: 0.6, duration: 0.8, ease: 'easeInOut' }}
+                  />
+                  <motion.path
+                    d="M18 72C28 71 38 72 46 76M18 72C28 64 35 56 39 47"
+                    stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"
+                    initial={{ pathLength: 0, opacity: 0 }}
+                    animate={annotationInView ? { pathLength: 1, opacity: 1 } : { pathLength: 0, opacity: 0 }}
+                    transition={{ delay: 1.3, duration: 0.3, ease: 'easeInOut' }}
+                  />
+                </svg>
+              </div>
+            )}
+          </div>
         </FadeIn>
 
         {STEPS.map((s, i) => (
@@ -526,11 +680,11 @@ function HowItWorks({ isLight }: { isLight: boolean }) {
 
 // ─── Features ─────────────────────────────────────────────────────────────────
 const FEATS = [
-  { title: 'Describe once, ship forever', body: 'Plain language in, production-ready UI out. Palm interprets intent — every output looks like a designer spent weeks on it.', span: 2 },
+  { title: 'Plain language in, production UI out', body: 'Describe once in plain English. Palm interprets intent — every output looks like a designer spent a week on it.', span: 2 },
   { title: 'Export-ready code', body: 'Clean React, HTML, or Figma. Copy, paste, ship.', span: 1 },
-  { title: 'Liquid glass design system', body: 'Every output inherits a refined aesthetic. Dark, light, and everything in between.', span: 1 },
-  { title: 'Any platform', body: 'Web, mobile, tablet — Palm designs for the canvas you give it. Responsive by default.', span: 2 },
-  { title: 'Real-time refinement', body: 'Iterate with follow-up prompts. Palm remembers context and improves every iteration.', span: 2 },
+  { title: 'A design system with taste', body: 'Every output inherits a refined aesthetic. Dark, light, and everything between.', span: 1 },
+  { title: 'Any screen, any platform', body: 'Web, mobile, tablet — Palm designs for the canvas you give it. Responsive by default, always.', span: 2 },
+  { title: 'Real-time iteration', body: 'Follow-up prompts refine in context. Palm remembers what you built and improves every pass.', span: 2 },
 ]
 
 function Features({ isLight }: { isLight: boolean }) {
@@ -546,7 +700,7 @@ function Features({ isLight }: { isLight: boolean }) {
         <FadeIn style={{ textAlign: 'center', marginBottom: isMobile ? 48 : 72 }}>
           <p style={{ fontSize: 11, letterSpacing: '0.15em', textTransform: 'uppercase', color: muted, margin: '0 0 12px' }}>Why Palm</p>
           <h2 style={{ fontSize: isMobile ? 'clamp(1.8rem, 7vw, 2.4rem)' : 'clamp(2rem, 4vw, 3.2rem)', fontWeight: 700, letterSpacing: '-0.035em', color: text, margin: 0 }}>
-            Every detail. No friction.
+            Every detail. Zero friction.
           </h2>
         </FadeIn>
 
@@ -574,16 +728,18 @@ function Features({ isLight }: { isLight: boolean }) {
 
 // ─── FAQ ──────────────────────────────────────────────────────────────────────
 const FAQS = [
-  { q: 'What exactly is Palm?', a: 'Palm is an AI UI generator with a design point of view. Describe what you want in plain English and watch a polished, production-ready interface appear. No drag-and-drop, no templates.' },
+  { q: 'What exactly is Palm?', a: 'Palm is an AI UI generator with a design point of view. Describe what you want in plain English and watch a polished, production-ready interface appear. No drag-and-drop, no templates, no ceremony.' },
   { q: 'Is it free to start?', a: 'Yes — early access is completely free, no credit card required. Early users get priority access and preferential pricing, permanently.' },
   { q: 'What can I export?', a: 'Clean React (TypeScript), raw HTML/CSS, or Figma-ready components. Everything Palm generates is production-intent — shippable, not just pretty.' },
-  { q: 'Does it handle responsive UI?', a: "Absolutely. Whether you're describing a 375px mobile flow or a 1440px dashboard, the output is responsive and intentional by default." },
-  { q: 'How is Palm different from v0 or other AI design tools?', a: "Palm has a point of view. It's built around a specific aesthetic — refined motion, typographic craft — that makes every output feel considered, not computed." },
+  { q: 'Does it handle responsive design?', a: "Absolutely. Whether you're describing a 375px mobile flow or a 1440px dashboard, the output is responsive and intentional by default." },
+  { q: 'How is Palm different from v0 or other AI design tools?', a: 'Palm has a point of view. It\'s built around a specific aesthetic — refined motion, typographic craft, real component logic — that makes every output feel considered, not computed.' },
 ]
 
 function FAQ({ isLight }: { isLight: boolean }) {
   const [open, setOpen] = useState<number | null>(null)
   const isMobile = useIsMobile()
+  const annotationRef = useRef<HTMLDivElement>(null)
+  const annotationInView = useInView(annotationRef, { once: true, margin: '-10%' })
   const text = isLight ? '#0a0a0a' : '#ffffff'
   const muted = isLight ? 'rgba(0,0,0,0.45)' : 'rgba(255,255,255,0.42)'
   const line = isLight ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.07)'
@@ -593,9 +749,59 @@ function FAQ({ isLight }: { isLight: boolean }) {
       <div style={{ maxWidth: 720, margin: '0 auto' }}>
         <FadeIn style={{ marginBottom: 60 }}>
           <p style={{ fontSize: 11, letterSpacing: '0.15em', textTransform: 'uppercase', color: muted, margin: '0 0 12px' }}>FAQ</p>
-          <h2 style={{ fontSize: isMobile ? '2rem' : '2.8rem', fontWeight: 700, letterSpacing: '-0.035em', color: text, margin: 0 }}>
-            Questions?
-          </h2>
+          <div style={{ position: 'relative', display: 'inline-block' }}>
+            <h2 style={{ fontSize: isMobile ? '2rem' : '2.8rem', fontWeight: 700, letterSpacing: '-0.035em', color: text, margin: 0 }}>
+              Curious?
+            </h2>
+            {!isMobile && (
+              <div
+                ref={annotationRef}
+                style={{
+                  pointerEvents: 'none',
+                  position: 'absolute',
+                  left: 'calc(100% + 20px)',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  display: 'flex',
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  color: isLight ? 'rgba(0,0,0,0.55)' : 'rgba(255,255,255,0.65)',
+                  gap: 8,
+                }}
+              >
+                <svg width="72" height="40" viewBox="0 0 72 40" fill="none" aria-hidden="true">
+                  <motion.path
+                    d="M68 12 C 52 8, 28 18, 10 26"
+                    stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"
+                    initial={{ pathLength: 0, opacity: 0 }}
+                    animate={annotationInView ? { pathLength: 1, opacity: 1 } : { pathLength: 0, opacity: 0 }}
+                    transition={{ delay: 0.3, duration: 0.7, ease: 'easeInOut' }}
+                  />
+                  <motion.path
+                    d="M10 26 L20 18 M10 26 L22 32"
+                    stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"
+                    initial={{ pathLength: 0, opacity: 0 }}
+                    animate={annotationInView ? { pathLength: 1, opacity: 1 } : { pathLength: 0, opacity: 0 }}
+                    transition={{ delay: 0.9, duration: 0.3, ease: 'easeInOut' }}
+                  />
+                </svg>
+                <motion.p
+                  className="annotation-text"
+                  initial={{ opacity: 0 }}
+                  animate={annotationInView ? { opacity: 1 } : { opacity: 0 }}
+                  transition={{ delay: 1.1, duration: 0.5, ease: 'easeInOut' }}
+                  style={{
+                    whiteSpace: 'nowrap',
+                    fontSize: '0.82rem',
+                    transform: 'rotate(-3deg)',
+                    margin: 0,
+                  }}
+                >
+                  we don't bite.
+                </motion.p>
+              </div>
+            )}
+          </div>
         </FadeIn>
 
         {FAQS.map((item, i) => (
@@ -654,11 +860,14 @@ function FAQ({ isLight }: { isLight: boolean }) {
 // ─── CTA Banner ───────────────────────────────────────────────────────────────
 function CTABanner({ isLight }: { isLight: boolean }) {
   const isMobile = useIsMobile()
+  const annotationRef = useRef<HTMLDivElement>(null)
+  const annotationInView = useInView(annotationRef, { once: true, margin: '-10%' })
   const bg = isLight ? '#0a0a0a' : '#f4f4f4'
   const text = isLight ? '#ffffff' : '#0a0a0a'
   const muted = isLight ? 'rgba(255,255,255,0.44)' : 'rgba(0,0,0,0.44)'
   const btnBg = isLight ? '#ffffff' : '#0a0a0a'
   const btnTx = isLight ? '#0a0a0a' : '#ffffff'
+  const inkColor = isLight ? 'rgba(255,255,255,0.75)' : 'rgba(0,0,0,0.65)'
 
   return (
     <section style={{ background: bg, padding: isMobile ? '80px 24px 100px' : '140px 48px 160px' }}>
@@ -672,19 +881,79 @@ function CTABanner({ isLight }: { isLight: boolean }) {
             fontWeight: 700, letterSpacing: '-0.038em', color: text, margin: '0 0 14px',
           }}>Build something beautiful today.</h2>
           <p style={{ fontSize: isMobile ? '0.95rem' : '1.04rem', color: muted, margin: '0 0 40px', lineHeight: 1.65 }}>
-            No design skills needed. No waiting. No compromise.
+            No design background. No waiting. No compromise.
           </p>
-          <Link href="/auth/sign-up" style={{
-            padding: '14px 32px', borderRadius: 9999,
-            background: btnBg, color: btnTx,
-            fontSize: 15, fontWeight: 600, letterSpacing: '-0.015em',
-            textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 8,
-          }}>
-            Start for free
-            <svg width="13" height="13" viewBox="0 0 14 14" fill="none">
-              <path d="M2 7h10M8 3l4 4-4 4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </Link>
+
+          {/* CTA with annotation beside it */}
+          <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', gap: 0 }}>
+            <Link href="/auth/sign-up" style={{
+              padding: '14px 32px', borderRadius: 9999,
+              background: btnBg, color: btnTx,
+              fontSize: 15, fontWeight: 600, letterSpacing: '-0.015em',
+              textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 8,
+            }}>
+              Start for free
+              <svg width="13" height="13" viewBox="0 0 14 14" fill="none">
+                <path d="M2 7h10M8 3l4 4-4 4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </Link>
+
+            {/* Annotation to the right of the button */}
+            {!isMobile && (
+              <div
+                ref={annotationRef}
+                style={{
+                  pointerEvents: 'none',
+                  position: 'absolute',
+                  left: 'calc(100% + 16px)',
+                  top: '50%',
+                  transform: 'translateY(-60%)',
+                  display: 'flex',
+                  alignItems: 'flex-end',
+                  gap: 6,
+                  color: inkColor,
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                <svg
+                  style={{ height: 40, width: 56, transform: 'scaleX(-1) rotate(8deg)', marginBottom: 2 }}
+                  viewBox="0 0 120 90"
+                  fill="none"
+                  preserveAspectRatio="none"
+                  aria-hidden="true"
+                >
+                  <motion.path
+                    d="M78 7C93 31 71 57 55 42C43 31 51 9 66 14C81 20 74 48 53 58C42 64 30 67 17 72"
+                    stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"
+                    initial={{ pathLength: 0, opacity: 0 }}
+                    animate={annotationInView ? { pathLength: 1, opacity: 1 } : { pathLength: 0, opacity: 0 }}
+                    transition={{ delay: 0.2, duration: 0.8, ease: 'easeInOut' }}
+                  />
+                  <motion.path
+                    d="M18 72C28 71 38 72 46 76M18 72C28 64 35 56 39 47"
+                    stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"
+                    initial={{ pathLength: 0, opacity: 0 }}
+                    animate={annotationInView ? { pathLength: 1, opacity: 1 } : { pathLength: 0, opacity: 0 }}
+                    transition={{ delay: 0.9, duration: 0.3, ease: 'easeInOut' }}
+                  />
+                </svg>
+                <motion.p
+                  className="annotation-text"
+                  initial={{ opacity: 0 }}
+                  animate={annotationInView ? { opacity: 1 } : { opacity: 0 }}
+                  transition={{ delay: 1.1, duration: 0.5, ease: 'easeInOut' }}
+                  style={{
+                    fontSize: '0.82rem',
+                    transform: 'rotate(-3deg)',
+                    color: inkColor,
+                    margin: '0 0 6px',
+                  }}
+                >
+                  no card needed
+                </motion.p>
+              </div>
+            )}
+          </div>
         </FadeIn>
       </div>
     </section>
@@ -697,10 +966,9 @@ function PalmWordmark({ color }: { color: string }) {
 
   const { scrollYProgress } = useScroll({
     target: ref,
-    offset: ['start end', 'end end'], // tighter window = more noticeable
+    offset: ['start end', 'end end'],
   })
 
-  // P and A: start raised to match M, then drop hard to 0
   const paY = useTransform(scrollYProgress, [0, 0.45, 1], ['0.22em', '0.22em', '0em'])
 
   return (
@@ -716,24 +984,19 @@ function PalmWordmark({ color }: { color: string }) {
       justifyContent: 'space-between',
       alignItems: 'flex-end',
     }}>
-      {/* P — starts level with M, drops down */}
       <motion.span style={{ display: 'inline-block', marginBottom: paY }}>P</motion.span>
-
-      {/* A — starts level with M, drops down */}
       <motion.span style={{ display: 'inline-block', marginBottom: paY }}>A</motion.span>
-
-      {/* L — permanently raised, never moves */}
       <span style={{ display: 'inline-block', marginBottom: '0.18em' }}>L</span>
-
-      {/* M — permanently raised, never moves */}
       <span style={{ display: 'inline-block', marginBottom: '0.22em' }}>M</span>
     </div>
   )
 }
 
 // ─── Footer ───────────────────────────────────────────────────────────────────
-function Footer({ isLight }: { isLight: boolean }) {
+export function Footer({ isLight }: { isLight: boolean }) {
   const isMobile = useIsMobile()
+  const annotationRef = useRef<HTMLDivElement>(null)
+  const annotationInView = useInView(annotationRef, { once: true, margin: '-5%' })
   const bg = isLight ? '#ffffff' : '#0a0a0a'
   const text = isLight ? '#0a0a0a' : '#ffffff'
   const textMuted = isLight ? 'rgba(0,0,0,0.44)' : 'rgba(255,255,255,0.44)'
@@ -743,15 +1006,11 @@ function Footer({ isLight }: { isLight: boolean }) {
   return (
     <footer style={{ background: bg, borderTop: `1px solid ${border}`, padding: isMobile ? '48px 24px 0' : '64px 48px 0', position: 'relative', overflow: 'hidden' }}>
 
-      {/* Top row: tagline left, columns right */}
       <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', justifyContent: 'space-between', gap: isMobile ? 40 : 48, marginBottom: isMobile ? 56 : 80 }}>
-
-        {/* Tagline */}
         <p style={{ fontSize: isMobile ? '1.3rem' : '1.5rem', fontWeight: 500, letterSpacing: '-0.02em', color: text, margin: 0, maxWidth: 340 }}>
           Turn ideas into interfaces, instantly.
         </p>
 
-        {/* Link columns */}
         <div style={{ display: 'flex', gap: isMobile ? 40 : 80, flexWrap: 'wrap' }}>
           {[
             { label: 'Product', links: ['Features', 'Pricing', 'Changelog', 'Roadmap'] },
@@ -772,7 +1031,56 @@ function Footer({ isLight }: { isLight: boolean }) {
           ))}
         </div>
       </div>
-      <PalmWordmark color={text} />
+      <div style={{ position: 'relative' }}>
+        {!isMobile && (
+          <div
+            ref={annotationRef}
+            style={{
+              position: 'absolute',
+              bottom: '100%',
+              left: '38%',
+              marginBottom: 12,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'flex-start',
+              color: isLight ? 'rgba(0,0,0,0.4)' : 'rgba(255,255,255,0.4)',
+              pointerEvents: 'none',
+            }}
+          >
+            <motion.p
+              className="annotation-text"
+              initial={{ opacity: 0 }}
+              animate={annotationInView ? { opacity: 1 } : { opacity: 0 }}
+              transition={{ delay: 0.2, duration: 0.5, ease: 'easeInOut' }}
+              style={{
+                whiteSpace: 'nowrap',
+                fontSize: '0.82rem',
+                transform: 'rotate(-2deg)',
+                margin: '0 0 2px 8px',
+              }}
+            >
+              just the beginning.
+            </motion.p>
+            <svg width="48" height="56" viewBox="0 0 48 56" fill="none" aria-hidden="true">
+              <motion.path
+                d="M20 4 C 18 20, 14 36, 10 50"
+                stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"
+                initial={{ pathLength: 0, opacity: 0 }}
+                animate={annotationInView ? { pathLength: 1, opacity: 1 } : { pathLength: 0, opacity: 0 }}
+                transition={{ delay: 0.6, duration: 0.7, ease: 'easeInOut' }}
+              />
+              <motion.path
+                d="M10 50 L4 38 M10 50 L22 42"
+                stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"
+                initial={{ pathLength: 0, opacity: 0 }}
+                animate={annotationInView ? { pathLength: 1, opacity: 1 } : { pathLength: 0, opacity: 0 }}
+                transition={{ delay: 1.2, duration: 0.3, ease: 'easeInOut' }}
+              />
+            </svg>
+          </div>
+        )}
+        <PalmWordmark color={text} />
+      </div>
     </footer>
   )
 }

@@ -5,7 +5,6 @@ import { generateText, streamText } from "ai"
 import { google } from "@ai-sdk/google"
 import { readFileSync } from "fs"
 import { join } from "path"
-import { prompts } from "@/prompts"
 import sharp from "sharp"
 import { compileToPalmIR, compileVisionToPalmIR } from '@/lib/palm-compiler'
 
@@ -178,7 +177,7 @@ export async function POST(req: NextRequest) {
             const { full, crops } = await recursiveCrop(inspirationBuffer.buffer as ArrayBuffer)
 
             const structurePass = await generateText({
-                model: google('gemini-3.5-flash'),
+                model: google('gemini-3.5-flash-lite'),
                 messages: [{
                     role: 'user',
                     content: [
@@ -287,7 +286,7 @@ ${layoutTokens}
             : []
 
         const result = streamText({
-            model: google('gemini-3.5-flash'),
+            model: google('gemini-3.5-flash-lite'),
             system: uiSkill,
             messages: [{
                 role: 'user',

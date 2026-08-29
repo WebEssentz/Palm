@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server'
-import { streamText, tool, stepCountIs } from 'ai'
+import { streamText, tool, isStepCount } from 'ai'
 import { google } from '@ai-sdk/google'
 import { z } from 'zod'
 import {
@@ -30,7 +30,7 @@ export type ChatStreamEvent =
     | { type: 'text'; text: string }
     | { type: 'html'; text: string }
     | { type: 'error'; text: string }
-    | { type: 'styleguide'; tokens: StyleTokens }
+    | { type: 'styleguide'; tokens: StyleTokens; designMD?: string }
     | { type: 'tool-status'; label: string; state: 'running' | 'done' }  // ← NEW
     | { type: 'done' }
 
@@ -132,12 +132,12 @@ export async function POST(req: NextRequest) {
     const { prompt, projectId, history = [], currentHTML, frameSnapshot, imageStorageIds = [] } = await req.json()
 
     const { ok, balance } = await CreditsBalanceQuery()
-    if (!ok || balance === 0) {
-        return new Response(
-            'data: ' + JSON.stringify({ type: 'error', text: 'No credits available.' }) + '\n\n',
-            { status: 402, headers: { 'Content-Type': 'text/event-stream' } }
-        )
-    }
+    const userBalance = (ok && typeof balance === 'number') ? balance : 0
+
+    const editType = classifyIntent(prompt, currentHTML)
+    const creditCost = editType === 'surgical' ? 1 : 5
+    const hasEnoughCredits = userBalance >= creditCost
+    console.log(`[route] Edit: ${editType}, Cost: ${creditCost}, Balance: ${userBalance}, HasEnough: ${hasEnoughCredits}`)
 
     let imageDNAContext = ''
     let referenceImageBytes: { type: 'image'; image: Uint8Array }[] = []
@@ -183,9 +183,6 @@ export async function POST(req: NextRequest) {
         }
     }
 
-    const editType = classifyIntent(prompt, currentHTML)
-    console.log(`[route] Edit classified as: ${editType}`)
-
     // ── Status event channel ────────────────────────────────
     // Tool execute() pushes status labels into this controller.
     // It merges into the same response stream as text + HTML.
@@ -200,19 +197,29 @@ export async function POST(req: NextRequest) {
 
     // ── LLM call ────────────────────────────────────────────
     const result = streamText({
-        model: google('gemini-3.5-flash'),
-system: `You are Palm by Rhinestone, a helpful UI design assistant.
+        model: google('gemini-3.5-flash-lite'),
+        maxOutputTokens: !hasEnoughCredits ? 120 : undefined,
+system: `You are Palm by Rhinestone, a helpful and intelligent UI design assistant.
 
-CRITICAL: Before calling generateUI, you MUST always write 1-2 short sentences first. Never call a tool as your first action. Always narrate what you're about to do.
+USER CREDITS & ACCOUNT STATUS:
+- Current credit balance: ${userBalance} credits.
+- Required cost for this request: ${creditCost} credit${creditCost > 1 ? 's' : ''} (${editType === 'surgical' ? 'surgical edit' : 'full UI generation'}).
+- Has sufficient credits: ${hasEnoughCredits ? 'YES' : 'NO'}.
 
-Good examples:
-- "Sure! I'll update the button color while keeping everything else intact."
-- "Got it, I'll give the hero section a fresh new look."
-- "On it — redesigning the layout now."
+CRITICAL ANTI-EXPLOIT & CREDIT ENFORCEMENT RULES:
+${!hasEnoughCredits ? `1. INSUFFICIENT CREDITS (STRICT ENFORCEMENT):
+   - The user has ${userBalance} credit${userBalance === 1 ? '' : 's'}, but this action requires ${creditCost} credits.
+   - DO NOT CALL the generateUI tool under any circumstances.
+   - STRICTLY FORBIDDEN: NEVER write HTML, CSS, Tailwind, JavaScript, or any code blocks in chat. Do NOT offer to write code in chat as a free loophole or workaround.
+   - Keep your entire response concise and under 2–3 sentences.
+   - Inform the user that they need ${creditCost} credits (current balance: ${userBalance}) and direct them to the Billing page to top up or upgrade.` : `1. SUFFICIENT CREDITS:
+   - Before calling generateUI, you MUST always write 1-2 short sentences first narrating what you're about to do. Never call a tool as your first action without a short narration.
+   - Only call generateUI when the user explicitly asks to create or modify a UI.
+   - Do NOT dump full HTML code into the chat text — all UI code belongs on the canvas via the generateUI tool.`}
 
-If the user sends a greeting or question with no design intent, respond conversationally only. Do NOT call generateUI.
+2. General conversations:
+   - If the user sends a greeting or asks a general question with no design generation intent, respond conversationally and concisely. Do NOT write code blocks and do NOT call generateUI.
 
-Only call generateUI when the user explicitly asks to create or modify a UI.
 ${currentHTML
     ? `A design frame is currently attached. Edit type: ${editType.toUpperCase()}.
 ${editType === 'surgical'
@@ -258,11 +265,18 @@ ${editType === 'surgical'
                     prompt: z.string().describe('Full generation prompt enriched with design intent'),
                 }),
                 execute: async ({ prompt: uiPrompt }) => {
+                    const creditCost = editType === 'surgical' ? 1 : 5
                     try {
                         pushStatus(TOOL_LABELS[0], 'running')
 
-                        const consumeResult = await ConsumeCreditsQuery({ amount: 1 })
-                        if (!consumeResult.ok) throw new Error('Failed to consume credits')
+                        const consumeResult = await ConsumeCreditsQuery({ amount: creditCost })
+                        if (!consumeResult.ok) {
+                            pushStatus('No Credits', 'done')
+                            return {
+                                success: false,
+                                error: `Insufficient credits. You have ${userBalance} credit${userBalance === 1 ? '' : 's'}, but this action requires ${creditCost} credits. Please top up in Billing to proceed.`,
+                            }
+                        }
 
                         pushStatus(TOOL_LABELS[1], 'running')
 
@@ -321,13 +335,13 @@ ${editType === 'surgical'
                                 pushStatus('Done', 'done')
                                 return { success: true, html, styleTokens: null }
                             } catch (fallbackErr) {
-                                await RefundCreditsQuery({ amount: 1 }).catch(() => {})
+                                await RefundCreditsQuery({ amount: creditCost }).catch(() => {})
                                 pushStatus('Failed', 'done')
                                 return { success: false, error: fallbackErr instanceof Error ? fallbackErr.message : 'Fallback failed' }
                             }
                         }
 
-                        await RefundCreditsQuery({ amount: 1 }).catch(() => {})
+                        await RefundCreditsQuery({ amount: creditCost }).catch(() => {})
                         pushStatus('Failed', 'done')
                         return { success: false, error: err instanceof Error ? err.message : 'Failed' }
                     }
@@ -335,7 +349,7 @@ ${editType === 'surgical'
             }),
         },
 
-        stopWhen: stepCountIs(3),
+        stopWhen: isStepCount(3),
     })
 
     // ── Merge LLM stream + status stream concurrently ───────
@@ -345,7 +359,7 @@ ${editType === 'surgical'
             let statusDone = false
 
             const statusReader = statusStream.getReader()
-            const llmReader = result.fullStream.getReader()
+            const llmReader = result.stream.getReader()
 
             const enqueue = (v: Uint8Array) => { try { controller.enqueue(v) } catch {} }
             const tryClose = () => { if (llmDone && statusDone) { try { controller.close() } catch {} } }
@@ -382,7 +396,11 @@ ${editType === 'surgical'
                             }
                             if (output.success && output.html) {
                                 if (output.styleTokens) {
-                                    enqueue(encode({ type: 'styleguide', tokens: output.styleTokens }))
+                                    enqueue(encode({
+                                        type: 'styleguide',
+                                        tokens: output.styleTokens,
+                                        designMD: (output.styleTokens as any).designMD,
+                                    }))
                                 }
                                 for (const htmlChunk of chunkHTML(output.html)) {
                                     enqueue(htmlChunk)
@@ -390,12 +408,19 @@ ${editType === 'surgical'
                             } else if (!output.success && output.error) {
                                 enqueue(encode({ type: 'error', text: output.error }))
                             }
+                        } else if (chunk.type === 'tool-error') {
+                            enqueue(encode({ type: 'error', text: String(chunk.error ?? 'Tool execution error') }))
+                        } else if (chunk.type === 'error') {
+                            enqueue(encode({ type: 'error', text: String(chunk.error ?? 'LLM stream error') }))
                         }
                     }
 
                     // ✅ Emit `done` here — controller is still open, status stream still pumping
                     enqueue(encode({ type: 'done' }))
 
+                } catch (streamErr) {
+                    console.error('[route] Stream error in pumpLLM:', streamErr)
+                    enqueue(encode({ type: 'error', text: streamErr instanceof Error ? streamErr.message : 'Stream failed' }))
                 } finally {
                     // Close status stream so pumpStatus can finish
                     try { statusController?.close() } catch {}

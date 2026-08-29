@@ -69,15 +69,28 @@ const schema = defineSchema({
     nextProjectNumber: v.number(),
   }).index("by_userId", ["userId"]),
 
+  chats: defineTable({
+    projectId: v.string(),
+    userId: v.id("users"),
+    title: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_project_updatedAt", ["projectId", "updatedAt"]),
+
   chatTurns: defineTable({
     projectId: v.string(),
+    chatId: v.optional(v.string()),
     turnId: v.string(),
     prompt: v.string(),
     response: v.string(),
     timestamp: v.number(),
     urls: v.optional(v.array(v.string())),
     imageStorageIds: v.optional(v.array(v.string())),
-  }).index('by_project', ['projectId']),
+  })
+    .index('by_project', ['projectId'])
+    .index('by_chat', ['chatId']),
 
   generatedui_snapshots: defineTable({
     projectId: v.string(),

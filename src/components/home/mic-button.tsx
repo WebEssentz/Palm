@@ -222,30 +222,35 @@ export function MicButton({ onTranscript, onRecordingChange, onStateChange, disa
             <button
                 onClick={start}
                 disabled={disabled}
+                type="button"
+                aria-label="Voice input"
                 style={{
-                    width: 30, height: 30, borderRadius: '50%', border: 'none',
-                    background: 'transparent',
+                    width: 32, height: 32, borderRadius: '50%',
+                    border: `1px solid ${isLight ? 'rgba(0,0,0,0.07)' : 'rgba(255,255,255,0.08)'}`,
+                    background: isLight ? 'rgba(0,0,0,0.03)' : 'rgba(255,255,255,0.04)',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                     cursor: disabled ? 'default' : 'pointer',
-                    color: muted,
-                    transition: 'background 0.12s, color 0.12s',
-                    opacity: disabled ? 0.4 : 1,
+                    color: isLight ? 'rgba(0,0,0,0.52)' : 'rgba(255,255,255,0.55)',
+                    transition: 'all 0.15s ease',
+                    opacity: disabled ? 0.35 : 1,
                     flexShrink: 0,
                 }}
                 onMouseEnter={e => {
                     if (!disabled) {
-                        e.currentTarget.style.background = isLight ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.06)'
-                        e.currentTarget.style.color = text
+                        e.currentTarget.style.background = isLight ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.08)'
+                        e.currentTarget.style.borderColor = isLight ? 'rgba(0,0,0,0.14)' : 'rgba(255,255,255,0.16)'
+                        e.currentTarget.style.color = isLight ? '#0a0a0a' : '#ffffff'
                     }
                 }}
                 onMouseLeave={e => {
                     if (!disabled) {
-                        e.currentTarget.style.background = 'transparent'
-                        e.currentTarget.style.color = muted
+                        e.currentTarget.style.background = isLight ? 'rgba(0,0,0,0.03)' : 'rgba(255,255,255,0.04)'
+                        e.currentTarget.style.borderColor = isLight ? 'rgba(0,0,0,0.07)' : 'rgba(255,255,255,0.08)'
+                        e.currentTarget.style.color = isLight ? 'rgba(0,0,0,0.52)' : 'rgba(255,255,255,0.55)'
                     }
                 }}
             >
-                <Mic style={{ width: 14, height: 14 }} />
+                <Mic style={{ width: 15, height: 15, strokeWidth: 1.9 }} />
             </button>
         )
     }
