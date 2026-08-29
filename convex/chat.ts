@@ -160,18 +160,12 @@ export const saveTurn = mutation({
             await ctx.db.insert('chatTurns', args)
         }
 
-        // If chatId is provided, update chat's updatedAt and set title if default
+        // If chatId is provided, update chat's updatedAt
         if (args.chatId) {
             try {
                 const chatDoc = await ctx.db.get(args.chatId as Id<'chats'>)
                 if (chatDoc) {
-                    const updatePayload: { updatedAt: number; title?: string } = {
-                        updatedAt: Date.now(),
-                    }
-                    if (chatDoc.title === 'New chat' && args.prompt.trim()) {
-                        updatePayload.title = args.prompt.trim().slice(0, 50)
-                    }
-                    await ctx.db.patch(chatDoc._id, updatePayload)
+                    await ctx.db.patch(chatDoc._id, { updatedAt: Date.now() })
                 }
             } catch {
                 // Ignore if chatId is not a valid Convex ID

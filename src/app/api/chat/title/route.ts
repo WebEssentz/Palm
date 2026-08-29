@@ -1,14 +1,12 @@
 import { NextRequest } from 'next/server'
 import { generateText } from 'ai'
 import { google } from '@ai-sdk/google'
-import { fetchMutation } from 'convex/nextjs'
-import { api } from '../../../../../convex/_generated/api'
 
 export async function POST(req: NextRequest) {
-    const { chatId, prompt } = await req.json()
+    const { prompt } = await req.json()
 
-    if (!chatId || !prompt) {
-        return new Response('Missing chatId or prompt', { status: 400 })
+    if (!prompt) {
+        return new Response('Missing prompt', { status: 400 })
     }
 
     try {
@@ -22,14 +20,7 @@ export async function POST(req: NextRequest) {
 
         const title = text.replace(/^["']|["']$/g, '').trim().slice(0, 50)
 
-        if (title) {
-            await fetchMutation(api.chat.renameChat, {
-                chatId: chatId as any,
-                title,
-            })
-        }
-
-        return Response.json({ title })
+        return Response.json({ title: title || null })
     } catch (err) {
         console.error('Title generation failed:', err)
         return Response.json({ title: null })

@@ -93,12 +93,19 @@ const InfiniteCanvas = () => {
   ) ?? []
   const createChatMutation = useMutation(api.chat.createChat)
   const deleteChatMutation = useMutation(api.chat.deleteChat)
+  const renameChatMutation = useMutation(api.chat.renameChat)
   const migrateInitialChatMutation = useMutation(api.chat.getOrMigrateInitialChat)
 
   // Instant local activeChatId state (initialized from URL)
   const [activeChatId, setActiveChatId] = useState<string | null>(urlChatId)
+  const [deletedChatIds, setDeletedChatIds] = useState<Set<string>>(new Set())
   const pendingChatPromiseRef = useRef<Promise<string> | null>(null)
   const knownEmptyChatIdsRef = useRef<Set<string>>(new Set())
+
+  // Optimistically filtered chats list (0ms instant removal on delete)
+  const visibleChats = useMemo(() => {
+    return projectChats.filter((c) => !deletedChatIds.has(c._id))
+  }, [projectChats, deletedChatIds])
 
   useEffect(() => {
     setActiveChatId(urlChatId)
@@ -192,11 +199,19 @@ const InfiniteCanvas = () => {
 
     // Auto-generate title ONLY on first message in background
     if (isFirstMessage && targetChatId) {
+      const chatIdForTitle = targetChatId
       fetch('/api/chat/title', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chatId: targetChatId, prompt: msg }),
-      }).catch((err) => console.error('Auto-title generation failed', err))
+        body: JSON.stringify({ prompt: msg }),
+      })
+        .then((r) => r.json())
+        .then(({ title }) => {
+          if (title) {
+            renameChatMutation({ chatId: chatIdForTitle as any, title }).catch(() => {})
+          }
+        })
+        .catch((err) => console.error('Auto-title generation failed', err))
     }
   }
 
@@ -246,16 +261,26 @@ const InfiniteCanvas = () => {
     window.history.pushState(null, '', `${pathname}?${params.toString()}`)
   }
 
-  // Handle deleting a chat thread
-  const handleDeleteChat = async (chatId: string) => {
-    try {
-      await deleteChatMutation({ chatId: chatId as any })
-      if (activeChatId === chatId) {
-        handleBackToList()
-      }
-    } catch (e) {
-      console.error('Failed to delete chat', e)
+  // Handle deleting a chat thread (Optimistic 0ms UI)
+  const handleDeleteChat = (chatId: string) => {
+    // 1. Immediately remove from visible list (0ms instant removal)
+    setDeletedChatIds((prev) => new Set(prev).add(chatId))
+
+    // 2. If user is currently looking at this deleted chat, instantly exit to list
+    if (activeChatId === chatId) {
+      handleBackToList()
     }
+
+    // 3. Fire delete mutation in background (non-blocking)
+    deleteChatMutation({ chatId: chatId as any }).catch((e) => {
+      console.error('Failed to delete chat', e)
+      // Revert if error
+      setDeletedChatIds((prev) => {
+        const next = new Set(prev)
+        next.delete(chatId)
+        return next
+      })
+    })
   }
 
   useEffect(() => {
@@ -339,7 +364,7 @@ const InfiniteCanvas = () => {
         <div className={`pointer-events-auto flex flex-col ${sidebarOpen ? 'h-full' : ''}`}>
           <ChatPanel
             turns={turns}
-            chats={projectChats}
+            chats={visibleChats}
             activeChatId={activeChatId}
             activeChatTitle={activeChatTitle}
             isLoadingTurns={isLoadingTurns}

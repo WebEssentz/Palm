@@ -68,6 +68,86 @@ function MenuDotIcon({ className = "w-4 h-4" }: { className?: string }) {
     )
 }
 
+function formatMessageTime(timestamp?: number): string {
+    if (!timestamp) return ''
+    const date = new Date(timestamp)
+    return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true })
+}
+
+let activeScrollRaf: number | null = null
+
+function animateScrollToBottom(element: HTMLElement, duration = 850, retryCount = 3) {
+    if (activeScrollRaf) {
+        cancelAnimationFrame(activeScrollRaf)
+    }
+
+    const start = element.scrollTop
+    const target = Math.max(0, element.scrollHeight - element.clientHeight)
+    const distance = target - start
+
+    if (distance <= 5) {
+        // If content height hasn't settled yet, retry up to retryCount times
+        if (retryCount > 0) {
+            setTimeout(() => {
+                animateScrollToBottom(element, duration, retryCount - 1)
+            }, 100)
+        }
+        return
+    }
+
+    const startTime = performance.now()
+
+    function step(now: number) {
+        const elapsed = now - startTime
+        const progress = Math.min(elapsed / duration, 1)
+        // easeInOutCubic: smooth acceleration and deceleration
+        const ease = progress < 0.5
+            ? 4 * progress * progress * progress
+            : 1 - Math.pow(-2 * progress + 2, 3) / 2
+
+        element.scrollTop = start + distance * ease
+
+        if (progress < 1) {
+            activeScrollRaf = requestAnimationFrame(step)
+        } else {
+            element.scrollTop = target
+            activeScrollRaf = null
+        }
+    }
+
+    activeScrollRaf = requestAnimationFrame(step)
+}
+
+function smoothScrollTo(element: HTMLElement, targetTop: number, duration = 380) {
+    if (activeScrollRaf) {
+        cancelAnimationFrame(activeScrollRaf)
+    }
+
+    const start = element.scrollTop
+    const distance = targetTop - start
+    if (Math.abs(distance) <= 2) return
+
+    const startTime = performance.now()
+
+    function step(now: number) {
+        const elapsed = now - startTime
+        const progress = Math.min(elapsed / duration, 1)
+        // easeOutCubic: snappy deceleration
+        const ease = 1 - Math.pow(1 - progress, 3)
+
+        element.scrollTop = start + distance * ease
+
+        if (progress < 1) {
+            activeScrollRaf = requestAnimationFrame(step)
+        } else {
+            element.scrollTop = targetTop
+            activeScrollRaf = null
+        }
+    }
+
+    activeScrollRaf = requestAnimationFrame(step)
+}
+
 export function ChatThread({
     turns,
     activeChatTitle,
@@ -80,15 +160,133 @@ export function ChatThread({
     const { theme, systemTheme } = useTheme()
     const isLight = (theme === 'system' ? systemTheme : theme) === 'light'
     const [copiedId, setCopiedId] = useState<string | null>(null)
-    const messagesEndRef = useRef<HTMLDivElement>(null)
+    const [bottomPadding, setBottomPadding] = useState<number>(0)
     const scrollContainerRef = useRef<HTMLDivElement>(null)
+    const innerContentRef = useRef<HTMLDivElement>(null)
+    const lastAnchoredTurnIdRef = useRef<string | null>(null)
+    const prevTurnsLengthRef = useRef<number>(turns.length)
+    const hasInitialScrolledRef = useRef<boolean>(false)
 
-    // Auto-scroll to bottom on incoming turns or turn updates
+    const latestTurn = turns[turns.length - 1]
+    const latestTurnId = latestTurn?.id
+    const isLatestTurnLoading = latestTurn?.isLoading
+
+    // Adaptive padding calculation: keeps the latest turn anchored without dropping
+    const updateAdaptivePadding = () => {
+        if (!scrollContainerRef.current || !latestTurnId) return
+        const container = scrollContainerRef.current
+        const turnEl = document.getElementById(`chat-turn-${latestTurnId}`)
+        if (!turnEl) return
+
+        const containerHeight = container.clientHeight
+        const turnHeight = turnEl.offsetHeight
+
+        // Runway needed so latest turn can sit right at top of viewport
+        const runway = Math.max(0, containerHeight - turnHeight - 28)
+        setBottomPadding(runway)
+    }
+
+    // Trigger autoscroll to bottom when entering an existing chat
+    const triggerEntryScroll = () => {
+        if (!scrollContainerRef.current || hasInitialScrolledRef.current) return
+        hasInitialScrolledRef.current = true
+        setTimeout(() => {
+            if (scrollContainerRef.current) {
+                animateScrollToBottom(scrollContainerRef.current, 850)
+            }
+        }, 60)
+    }
+
+    // Reset when switching chats
+    const firstTurnId = turns[0]?.id || ''
+    const activeChatKey = activeChatTitle || ''
     useEffect(() => {
-        if (messagesEndRef.current) {
-            messagesEndRef.current.scrollIntoView({ behavior: 'smooth' })
+        hasInitialScrolledRef.current = false
+        lastAnchoredTurnIdRef.current = null
+        prevTurnsLengthRef.current = turns.length
+        setBottomPadding(0)
+        if (scrollContainerRef.current) {
+            scrollContainerRef.current.scrollTop = 0
         }
-    }, [turns, turns.map((t) => t.response).join('')])
+    }, [activeChatKey, firstTurnId])
+
+    // Watch DOM height on initial load to scroll to bottom when entering chat
+    const chatKey = turns.map((t) => t.id).join('-')
+    useEffect(() => {
+        if (!innerContentRef.current || isLoading || turns.length === 0) return
+        if (isLatestTurnLoading) return // Don't trigger entry bottom scroll if we are actively sending a new message
+
+        const ro = new ResizeObserver((entries) => {
+            for (const entry of entries) {
+                if (entry.contentRect.height > 50) {
+                    triggerEntryScroll()
+                }
+            }
+        })
+
+        ro.observe(innerContentRef.current)
+        return () => ro.disconnect()
+    }, [isLoading, chatKey, isLatestTurnLoading])
+
+    // Dynamic prompt anchoring when a user sends a NEW message
+    useEffect(() => {
+        if (!scrollContainerRef.current || !latestTurn) return
+
+        const isNewTurn = latestTurn.id !== lastAnchoredTurnIdRef.current && (latestTurn.isLoading || turns.length > prevTurnsLengthRef.current)
+        prevTurnsLengthRef.current = turns.length
+
+        if (isNewTurn) {
+            hasInitialScrolledRef.current = true // Disable entry scroll so prompt anchoring takes priority
+            lastAnchoredTurnIdRef.current = latestTurn.id
+
+            // Measure initial runway after DOM paint
+            requestAnimationFrame(() => {
+                const container = scrollContainerRef.current
+                if (!container) return
+
+                const turnEl = document.getElementById(`chat-turn-${latestTurn.id}`)
+                if (!turnEl) return
+
+                const userBubble = turnEl.querySelector('.user-bubble') as HTMLElement | null
+                const promptHeight = userBubble ? userBubble.offsetHeight : turnEl.offsetHeight
+                const containerHeight = container.clientHeight
+
+                // Initial runway for prompt
+                const runway = Math.max(0, containerHeight - promptHeight - 28)
+                setBottomPadding(runway)
+
+                // Smoothly scroll the container so this turn aligns right at the top
+                requestAnimationFrame(() => {
+                    if (!scrollContainerRef.current) return
+                    const targetTop = Math.max(0, turnEl.offsetTop - 12)
+                    smoothScrollTo(scrollContainerRef.current, targetTop, 380)
+                })
+            })
+        }
+    }, [latestTurn?.id, latestTurn?.isLoading, turns.length])
+
+    // Dynamically adapt padding as AI response streams or completes (never drops!)
+    useEffect(() => {
+        if (!latestTurnId) return
+        const turnEl = document.getElementById(`chat-turn-${latestTurnId}`)
+        if (!turnEl) return
+
+        const ro = new ResizeObserver(() => {
+            updateAdaptivePadding()
+
+            // If response becomes taller than viewport while streaming, follow the bottom so newest tokens are visible
+            if (isLatestTurnLoading && scrollContainerRef.current) {
+                const container = scrollContainerRef.current
+                const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 140
+                if (isNearBottom && turnEl.offsetHeight > container.clientHeight) {
+                    container.scrollTop = container.scrollHeight
+                }
+            }
+        })
+
+        ro.observe(turnEl)
+        return () => ro.disconnect()
+    }, [latestTurnId, isLatestTurnLoading])
 
     const handleCopy = (e: React.MouseEvent, text: string, id: string) => {
         e.stopPropagation()
@@ -171,10 +369,16 @@ export function ChatThread({
                         </motion.div>
                     ) : (
                         <motion.div
+                            ref={innerContentRef}
                             key="turns-stream"
                             initial={{ opacity: 0 }}
                             animate={{ opacity: 1 }}
                             exit={{ opacity: 0 }}
+                            onAnimationComplete={triggerEntryScroll}
+                            style={{
+                                paddingBottom: bottomPadding,
+                                transition: 'padding-bottom 0.25s ease',
+                            }}
                             className="flex flex-col gap-5"
                         >
                             {turns.map((turn, index) => {
@@ -184,13 +388,14 @@ export function ChatThread({
                                 return (
                                     <motion.div
                                         key={turn.id}
+                                        id={`chat-turn-${turn.id}`}
                                         initial={{ opacity: 0, y: 10 }}
                                         animate={{ opacity: 1, y: 0 }}
                                         transition={{ duration: 0.22, ease: 'easeOut' }}
                                         className="flex flex-col gap-3"
                                     >
                                         {/* ── User bubble ── */}
-                                        <div className="rounded-2xl overflow-hidden border border-black/10 bg-neutral-100 dark:border-white/10 dark:bg-neutral-800/80 p-3">
+                                        <div className="user-bubble rounded-2xl overflow-hidden border border-black/10 bg-neutral-100 dark:border-white/10 dark:bg-neutral-800/80 p-3">
                                             <div className="flex items-start gap-2.5">
                                                 <Avatar className="size-5 flex-shrink-0 mt-0.5">
                                                     <AvatarImage src={profile?.image || ''} alt={profile?.name} />
@@ -290,9 +495,13 @@ export function ChatThread({
                                                 )}
                                             </AnimatePresence>
 
-                                            {/* Copy Button */}
+                                            {/* Footer with Timestamp on Left & Copy Button on Right */}
                                             {turn.response && (
-                                                <div className="flex justify-end pt-0.5">
+                                                <div className="flex items-center justify-between pt-1">
+                                                    <span className="text-[10px] text-muted-foreground/50 select-none pl-0.5">
+                                                        {formatMessageTime(turn.timestamp)}
+                                                    </span>
+
                                                     <button
                                                         type="button"
                                                         onClick={(e) => handleCopy(e, turn.response, turn.id)}
@@ -332,7 +541,6 @@ export function ChatThread({
                         </motion.div>
                     )}
                 </AnimatePresence>
-                <div ref={messagesEndRef} />
             </div>
         </div>
     )
