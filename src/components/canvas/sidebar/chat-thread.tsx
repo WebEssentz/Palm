@@ -14,6 +14,7 @@ interface Props {
     turns: ChatTurn[]
     activeChatTitle?: string
     isLoading?: boolean
+    isSending?: boolean
     onBack: () => void
     onCollapse: () => void
     profile?: { name?: string; image?: string | null } | null
@@ -152,6 +153,7 @@ export function ChatThread({
     turns,
     activeChatTitle,
     isLoading = false,
+    isSending = false,
     onBack,
     onCollapse,
     profile,
@@ -392,10 +394,10 @@ export function ChatThread({
                                         initial={{ opacity: 0, y: 10 }}
                                         animate={{ opacity: 1, y: 0 }}
                                         transition={{ duration: 0.22, ease: 'easeOut' }}
-                                        className="flex flex-col gap-3"
+                                        className="flex flex-col gap-3.5"
                                     >
                                         {/* ── User bubble ── */}
-                                        <div className="user-bubble rounded-2xl overflow-hidden border border-black/10 bg-neutral-100 dark:border-white/10 dark:bg-neutral-800/80 p-3">
+                                        <div className="user-bubble rounded-2xl overflow-hidden border border-black/10 bg-neutral-100 dark:border-white/10 dark:bg-neutral-800/80 p-3.5 shadow-2xs">
                                             <div className="flex items-start gap-2.5">
                                                 <Avatar className="size-5 flex-shrink-0 mt-0.5">
                                                     <AvatarImage src={profile?.image || ''} alt={profile?.name} />
@@ -405,7 +407,7 @@ export function ChatThread({
                                                 </Avatar>
 
                                                 <div className="flex-1 min-w-0 space-y-1.5">
-                                                    <p className="text-xs text-foreground font-normal leading-relaxed break-words whitespace-pre-wrap">
+                                                    <p className="text-[12.5px] text-foreground font-normal leading-[1.6] break-words whitespace-pre-wrap">
                                                         {turn.prompt}
                                                     </p>
 
@@ -449,15 +451,129 @@ export function ChatThread({
                                         </div>
 
                                         {/* ── AI response ── */}
-                                        <div className="space-y-2 px-1">
-                                            {/* Tool Status */}
+                                        <div className="space-y-2.5 px-2">
+                                            {/* Markdown Content vs StreamingDot */}
+                                            <AnimatePresence mode="wait">
+                                                {turn.response ? (
+                                                    <motion.div
+                                                        key={`response-${turn.id}`}
+                                                        initial={{ opacity: 0 }}
+                                                        animate={{ opacity: 1 }}
+                                                        transition={{ duration: 0.15 }}
+                                                        className="max-w-none text-[12.5px] leading-[1.7] text-foreground/85"
+                                                    >
+                                                        <ReactMarkdown
+                                                            components={{
+                                                                p: ({ children }) => (
+                                                                    <p className="text-[12.5px] leading-[1.7] text-foreground/85 font-normal my-2.5 first:mt-0 last:mb-0 break-words tracking-[-0.01em]">
+                                                                        {children}
+                                                                    </p>
+                                                                ),
+                                                                strong: ({ children }) => (
+                                                                    <strong className="font-semibold text-foreground">
+                                                                        {children}
+                                                                    </strong>
+                                                                ),
+                                                                em: ({ children }) => (
+                                                                    <em className="italic text-foreground/90">
+                                                                        {children}
+                                                                    </em>
+                                                                ),
+                                                                h1: ({ children }) => (
+                                                                    <h1 className="text-[13.5px] font-semibold text-foreground tracking-tight mt-3.5 mb-1.5 first:mt-0">
+                                                                        {children}
+                                                                    </h1>
+                                                                ),
+                                                                h2: ({ children }) => (
+                                                                    <h2 className="text-[12.5px] font-semibold text-foreground tracking-tight mt-3 mb-1 first:mt-0">
+                                                                        {children}
+                                                                    </h2>
+                                                                ),
+                                                                h3: ({ children }) => (
+                                                                    <h3 className="text-xs font-semibold text-foreground/90 mt-2.5 mb-1 first:mt-0">
+                                                                        {children}
+                                                                    </h3>
+                                                                ),
+                                                                ul: ({ children }) => (
+                                                                    <ul className="my-2.5 pl-4 space-y-1.5 list-disc text-[12.5px] leading-[1.65] text-foreground/85 marker:text-muted-foreground/50">
+                                                                        {children}
+                                                                    </ul>
+                                                                ),
+                                                                ol: ({ children }) => (
+                                                                    <ol className="my-2.5 pl-4 space-y-1.5 list-decimal text-[12.5px] leading-[1.65] text-foreground/85 marker:text-muted-foreground/50">
+                                                                        {children}
+                                                                    </ol>
+                                                                ),
+                                                                li: ({ children }) => (
+                                                                    <li className="leading-[1.65] pl-0.5">
+                                                                        {children}
+                                                                    </li>
+                                                                ),
+                                                                blockquote: ({ children }) => (
+                                                                    <blockquote className="my-3 pl-3.5 border-l-2 border-primary/40 text-muted-foreground italic text-xs leading-[1.65]">
+                                                                        {children}
+                                                                    </blockquote>
+                                                                ),
+                                                                code: ({ className, children, ...props }: any) => {
+                                                                    const isInline = !className
+                                                                    if (isInline) {
+                                                                        return (
+                                                                            <code className="px-1.5 py-0.5 rounded-md bg-neutral-100 dark:bg-neutral-800 text-[11px] font-mono text-foreground font-medium border border-black/5 dark:border-white/5">
+                                                                                {children}
+                                                                            </code>
+                                                                        )
+                                                                    }
+                                                                    return (
+                                                                        <code className={className} {...props}>
+                                                                            {children}
+                                                                        </code>
+                                                                    )
+                                                                },
+                                                                pre: ({ children }) => (
+                                                                    <pre className="my-3 p-3 rounded-xl bg-neutral-100/80 dark:bg-neutral-900/80 border border-black/5 dark:border-white/5 overflow-x-auto text-[11px] font-mono leading-relaxed text-foreground">
+                                                                        {children}
+                                                                    </pre>
+                                                                ),
+                                                                a: ({ href, children }) => (
+                                                                    <a
+                                                                        href={href}
+                                                                        target="_blank"
+                                                                        rel="noreferrer"
+                                                                        className="text-foreground font-medium underline underline-offset-3 decoration-muted-foreground/40 hover:decoration-foreground transition-colors"
+                                                                    >
+                                                                        {children}
+                                                                    </a>
+                                                                ),
+                                                                hr: () => <hr className="my-3.5 border-black/5 dark:border-white/5" />
+                                                            }}
+                                                        >
+                                                            {turn.response}
+                                                        </ReactMarkdown>
+                                                    </motion.div>
+                                                ) : (
+                                                    turn.isLoading && !toolStatus && (
+                                                        <motion.div
+                                                            key={`loading-${turn.id}`}
+                                                            initial={{ opacity: 0, scale: 0.8 }}
+                                                            animate={{ opacity: 1, scale: 1 }}
+                                                            exit={{ opacity: 0, scale: 0.8 }}
+                                                            transition={{ duration: 0.15 }}
+                                                            className="py-1"
+                                                        >
+                                                            <StreamingDot isLight={isLight} />
+                                                        </motion.div>
+                                                    )
+                                                )}
+                                            </AnimatePresence>
+
+                                            {/* Tool Status - Under the AI text */}
                                             <AnimatePresence>
                                                 {isLatest && toolStatus && (
                                                     <motion.div
                                                         initial={{ opacity: 0, height: 0 }}
                                                         animate={{ opacity: 1, height: 'auto' }}
                                                         exit={{ opacity: 0, height: 0 }}
-                                                        className="pt-0.5 overflow-hidden"
+                                                        className={`${turn.response ? 'pt-3 pb-1' : 'pt-0.5 pb-1'} overflow-hidden`}
                                                     >
                                                         <ToolStatusBubble
                                                             label={toolStatus.label}
@@ -468,44 +584,17 @@ export function ChatThread({
                                                 )}
                                             </AnimatePresence>
 
-                                            {/* Markdown Content vs StreamingDot */}
-                                            <AnimatePresence mode="wait">
-                                                {turn.response ? (
-                                                    <motion.div
-                                                        key={`response-${turn.id}`}
-                                                        initial={{ opacity: 0 }}
-                                                        animate={{ opacity: 1 }}
-                                                        transition={{ duration: 0.15 }}
-                                                        className="prose prose-xs dark:prose-invert max-w-none text-xs text-foreground/90 leading-relaxed break-words [&>p]:mb-2 [&>ul]:my-1.5 [&>ol]:my-1.5 [&>li]:my-0.5 [&_pre]:p-2.5 [&_pre]:rounded-xl [&_pre]:bg-neutral-100 dark:[&_pre]:bg-neutral-800 [&_code]:text-[11px]"
-                                                    >
-                                                        <ReactMarkdown>{turn.response}</ReactMarkdown>
-                                                    </motion.div>
-                                                ) : (
-                                                    turn.isLoading && (
-                                                        <motion.div
-                                                            key={`loading-${turn.id}`}
-                                                            initial={{ opacity: 0, scale: 0.8 }}
-                                                            animate={{ opacity: 1, scale: 1 }}
-                                                            exit={{ opacity: 0, scale: 0.8 }}
-                                                            transition={{ duration: 0.15 }}
-                                                        >
-                                                            <StreamingDot isLight={isLight} />
-                                                        </motion.div>
-                                                    )
-                                                )}
-                                            </AnimatePresence>
-
-                                            {/* Footer with Timestamp on Left & Copy Button on Right */}
-                                            {turn.response && (
-                                                <div className="flex items-center justify-between pt-1">
-                                                    <span className="text-[10px] text-muted-foreground/50 select-none pl-0.5">
+                                            {/* Footer with Timestamp on Left & Copy Button on Right - strictly hidden until everything is completely finished */}
+                                            {turn.response && !turn.isLoading && !isSending && !isLoading && !(isLatest && toolStatus?.state === 'running') && (
+                                                <div className="flex items-center justify-between pt-2 mt-1.5">
+                                                    <span className="text-[10px] font-medium text-muted-foreground/50 select-none pl-0.5 tracking-tight">
                                                         {formatMessageTime(turn.timestamp)}
                                                     </span>
 
                                                     <button
                                                         type="button"
                                                         onClick={(e) => handleCopy(e, turn.response, turn.id)}
-                                                        className="p-1 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors cursor-pointer"
+                                                        className="p-1 rounded-lg text-muted-foreground/60 hover:text-foreground hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors cursor-pointer"
                                                         title="Copy response"
                                                     >
                                                         <AnimatePresence mode="wait" initial={false}>

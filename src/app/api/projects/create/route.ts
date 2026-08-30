@@ -76,7 +76,7 @@ export async function POST(req: NextRequest) {
         let projectName = prompt.split(' ').slice(0, 4).join(' ')
         try {
             const generatePromise = generateText({
-                model: google('gemini-3.5-flash-lite'),
+                model: google('gemini-3.6-flash'),
                 prompt: `Generate a short 2-4 word project name for this UI prompt. 
                 Return ONLY the name, no quotes, no punctuation: "${prompt}"`,
                 providerOptions: {

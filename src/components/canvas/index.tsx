@@ -99,13 +99,19 @@ const InfiniteCanvas = () => {
   // Instant local activeChatId state (initialized from URL)
   const [activeChatId, setActiveChatId] = useState<string | null>(urlChatId)
   const [deletedChatIds, setDeletedChatIds] = useState<Set<string>>(new Set())
+  const [optimisticTitles, setOptimisticTitles] = useState<Record<string, string>>({})
   const pendingChatPromiseRef = useRef<Promise<string> | null>(null)
   const knownEmptyChatIdsRef = useRef<Set<string>>(new Set())
 
-  // Optimistically filtered chats list (0ms instant removal on delete)
+  // Optimistically filtered & renamed chats list (0ms instant updates)
   const visibleChats = useMemo(() => {
-    return projectChats.filter((c) => !deletedChatIds.has(c._id))
-  }, [projectChats, deletedChatIds])
+    return projectChats
+      .filter((c) => !deletedChatIds.has(c._id))
+      .map((c) => ({
+        ...c,
+        title: optimisticTitles[c._id] ?? c.title,
+      }))
+  }, [projectChats, deletedChatIds, optimisticTitles])
 
   useEffect(() => {
     setActiveChatId(urlChatId)
@@ -153,8 +159,8 @@ const InfiniteCanvas = () => {
     }
   }, [projectId, migrateInitialChatMutation])
 
-  // Active chat title derived from projectChats
-  const activeChatDoc = projectChats.find(c => c._id === activeChatId)
+  // Active chat title derived from visibleChats (reflects optimistic renames in 0ms)
+  const activeChatDoc = visibleChats.find(c => c._id === activeChatId)
   const activeChatTitle = activeChatDoc?.title || 'New chat'
 
   // Sidebar open state
@@ -283,6 +289,23 @@ const InfiniteCanvas = () => {
     })
   }
 
+  // Handle renaming a chat thread (Optimistic 0ms UI)
+  const handleRenameChat = (chatId: string, newTitle: string) => {
+    // 1. Immediately update in memory (0ms)
+    setOptimisticTitles((prev) => ({ ...prev, [chatId]: newTitle }))
+
+    // 2. Fire mutation in background (non-blocking)
+    renameChatMutation({ chatId: chatId as any, title: newTitle }).catch((e) => {
+      console.error('Failed to rename chat', e)
+      // Revert on error
+      setOptimisticTitles((prev) => {
+        const next = { ...prev }
+        delete next[chatId]
+        return next
+      })
+    })
+  }
+
   useEffect(() => {
     if (isLoadingHistory) return
     if (!promptFromUrl || !projectId) return
@@ -354,23 +377,19 @@ const InfiniteCanvas = () => {
         <TextSidebar isOpen={isSidebarOpen && hasSelectedText} />
 
       {/* ── ChatPanel ── */}
-      <div
-        className='fixed left-3 top-14 bottom-24 z-50 pointer-events-none'
-        style={{
-          width: sidebarOpen ? 296 : 40,
-          transition: 'width 0.35s cubic-bezier(0.32, 0.72, 0, 1)',
-        }}
-      >
-        <div className={`pointer-events-auto flex flex-col ${sidebarOpen ? 'h-full' : ''}`}>
+      <div className='fixed left-3 top-14 bottom-24 z-50 pointer-events-none'>
+        <div className='pointer-events-auto h-full flex flex-col'>
           <ChatPanel
             turns={turns}
             chats={visibleChats}
             activeChatId={activeChatId}
             activeChatTitle={activeChatTitle}
             isLoadingTurns={isLoadingTurns}
+            isSending={chat.isSending}
             onSelectChat={handleSelectChat}
             onNewChat={handleNewChat}
             onDeleteChat={handleDeleteChat}
+            onRenameChat={handleRenameChat}
             onBack={handleBackToList}
             profile={profile}
             isOpen={sidebarOpen}

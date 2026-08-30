@@ -12,6 +12,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar'
 import { combinedSlug, cn } from '@/lib/utils'
 import { Logo } from '@/components/logo'
 import { motion } from 'framer-motion'
+import AutoSave from '../canvas/autosave'
 
 const Navbar = () => {
     const params = useSearchParams()
@@ -187,6 +188,7 @@ const Navbar = () => {
 
             {/* Right: Avatar (standalone, not inside pill) */}
             <div className='pointer-events-auto flex items-center gap-3'>
+                {hasCanvas && <AutoSave />}
                 <Avatar className='size-7'>
                     <AvatarImage src={me?.image || ''} />
                     <AvatarFallback>

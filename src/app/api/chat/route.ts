@@ -183,9 +183,7 @@ export async function POST(req: NextRequest) {
         }
     }
 
-    // ── Status event channel ────────────────────────────────
-    // Tool execute() pushes status labels into this controller.
-    // It merges into the same response stream as text + HTML.
+    // ── Status channel ───────────────────────────────────────
     let statusController: ReadableStreamDefaultController<Uint8Array> | null = null
     const statusStream = new ReadableStream<Uint8Array>({
         start(c) { statusController = c }
@@ -197,9 +195,9 @@ export async function POST(req: NextRequest) {
 
     // ── LLM call ────────────────────────────────────────────
     const result = streamText({
-        model: google('gemini-3.5-flash-lite'),
+        model: google('gemini-3.7-flash'),
         maxOutputTokens: !hasEnoughCredits ? 120 : undefined,
-system: `You are Palm by Rhinestone, a helpful and intelligent UI design assistant.
+        system: `You are Palm by Rhinestone, a helpful and intelligent UI design assistant.
 
 USER CREDITS & ACCOUNT STATUS:
 - Current credit balance: ${userBalance} credits.
@@ -243,14 +241,14 @@ ${editType === 'surgical'
                 { role: 'user' as const, content: turn.prompt },
                 { role: 'assistant' as const, content: turn.response },
             ]),
-            { 
-                role: 'user' as const, 
+            {
+                role: 'user' as const,
                 content: [
                     ...referenceImageBytes,
                     {
                         type: 'text' as const,
-                        text: imageDNAContext 
-                            ? `${prompt}\n\n[Reference image design analysis]\n${imageDNAContext}` 
+                        text: imageDNAContext
+                            ? `${prompt}\n\n[Reference image design analysis]\n${imageDNAContext}`
                             : prompt
                     }
                 ]
@@ -296,18 +294,15 @@ ${editType === 'surgical'
 
                         if (editType === 'surgical' && currentHTML) {
                             pushStatus(TOOL_LABELS[2], 'running')
-
                             let diffJson = ''
                             for await (const chunk of generateUIDiffStream({ prompt: uiPrompt, projectId, currentHTML, styleTokens })) {
                                 diffJson += chunk
                             }
-
                             pushStatus(TOOL_LABELS[3], 'running')
                             const cleaned = diffJson.replace(/```json|```/g, '').trim()
                             const diff = JSON.parse(cleaned) as UIDiff
                             html = applyDiffPatch(currentHTML, diff)
                             console.log(`[route] Surgical patch applied (${diff.patches.length} patches)`)
-
                         } else {
                             pushStatus(TOOL_LABELS[2], 'running')
                             for await (const chunk of generateUIStream({ prompt: uiPrompt, projectId, currentHTML, styleTokens })) {
@@ -319,7 +314,6 @@ ${editType === 'surgical'
                         return { success: true, html, styleTokens: styleGuideWasGenerated ? styleTokens : null }
 
                     } catch (err) {
-                        // Surgical fallback → full regen
                         if (editType === 'surgical' && currentHTML) {
                             console.warn('[route] Surgical failed, falling back:', err)
                             pushStatus('Retrying...', 'running')
@@ -340,7 +334,6 @@ ${editType === 'surgical'
                                 return { success: false, error: fallbackErr instanceof Error ? fallbackErr.message : 'Fallback failed' }
                             }
                         }
-
                         await RefundCreditsQuery({ amount: creditCost }).catch(() => {})
                         pushStatus('Failed', 'done')
                         return { success: false, error: err instanceof Error ? err.message : 'Failed' }
@@ -352,7 +345,7 @@ ${editType === 'surgical'
         stopWhen: isStepCount(3),
     })
 
-    // ── Merge LLM stream + status stream concurrently ───────
+    // ── Merge LLM stream + status stream ────────────────────
     const merged = new ReadableStream<Uint8Array>({
         async start(controller) {
             let llmDone = false
@@ -364,7 +357,6 @@ ${editType === 'surgical'
             const enqueue = (v: Uint8Array) => { try { controller.enqueue(v) } catch {} }
             const tryClose = () => { if (llmDone && statusDone) { try { controller.close() } catch {} } }
 
-            // Pump status events (pushed from tool execute)
             const pumpStatus = async () => {
                 try {
                     while (true) {
@@ -378,7 +370,6 @@ ${editType === 'surgical'
                 }
             }
 
-            // Pump LLM chunks — emits `done` BEFORE the finally block closes the controller
             const pumpLLM = async () => {
                 try {
                     while (true) {
@@ -409,27 +400,21 @@ ${editType === 'surgical'
                                 enqueue(encode({ type: 'error', text: output.error }))
                             }
                         } else if (chunk.type === 'tool-error') {
-                            enqueue(encode({ type: 'error', text: String(chunk.error ?? 'Tool execution error') }))
+                            enqueue(encode({ type: 'error', text: String(chunk.error ?? 'Tool error') }))
                         } else if (chunk.type === 'error') {
-                            enqueue(encode({ type: 'error', text: String(chunk.error ?? 'LLM stream error') }))
+                            enqueue(encode({ type: 'error', text: String(chunk.error ?? 'LLM error') }))
                         }
                     }
-
-                    // ✅ Emit `done` here — controller is still open, status stream still pumping
                     enqueue(encode({ type: 'done' }))
-
                 } catch (streamErr) {
-                    console.error('[route] Stream error in pumpLLM:', streamErr)
                     enqueue(encode({ type: 'error', text: streamErr instanceof Error ? streamErr.message : 'Stream failed' }))
                 } finally {
-                    // Close status stream so pumpStatus can finish
                     try { statusController?.close() } catch {}
                     llmDone = true
                     tryClose()
                 }
             }
 
-            // ✅ Single call each — no more duplicate pumpLLM()
             await Promise.all([pumpStatus(), pumpLLM()])
         }
     })

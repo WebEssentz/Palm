@@ -164,7 +164,7 @@ export async function POST(req: NextRequest) {
             Please generate a professional ${selectedPageType} that maintains complete desing consistency with the main page while serving its specific functional purpose. Be creative and contexually consistent.            
         `
         const result = streamText({
-            model: google('gemini-3.5-flash-lite'),
+            model: google('gemini-3.7-flash'),
             messages: [
                 {
                     role: 'user',
@@ -181,11 +181,11 @@ export async function POST(req: NextRequest) {
                 }
             ],
             system: prompts.generativeUi.system,
-            temperature: 0.7,
+            temperature: 0.35,
             providerOptions: {
                 google: {
                     thinkingConfig: {
-                        thinkingLevel: 'medium',
+                        thinkingLevel: 'high',
                         includeThoughts: false,
                     }
                 }

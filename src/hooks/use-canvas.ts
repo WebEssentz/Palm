@@ -427,12 +427,13 @@ export const useInfiniteCanvas = () => {
         if (touchMapRef.current.size <= 1) {
             canvasRef.current?.setPointerCapture?.(e.pointerId)
             const isPanButton = e.button === 1 || e.button === 2
-            const panByShift = isSpacedPressed.current && e.button === 0
+            const panBySpace = isSpacedPressed.current && e.button === 0
             const isPanTool = currentTool === 'pan' && e.button === 0
 
-            if (isPanButton || panByShift || isPanTool) {
+            if (isPanButton || panBySpace || isPanTool) {
                 const mode = isSpacedPressed.current ? 'shiftPanning' : 'panning'
                 dispatch(panStart({ screen: local, mode }))
+                return
             }
 
             if (e.button === 0) {
@@ -1015,19 +1016,22 @@ export const useInfiniteCanvas = () => {
         const handleKeyDown = (e: KeyboardEvent) => {
             if (e.repeat) return
 
-            // ── Check isTyping FIRST, before any Shift handling ──
             const activeElement = document.activeElement
             const isTyping =
                 activeElement?.tagName === 'INPUT' ||
                 activeElement?.tagName === 'TEXTAREA' ||
                 (activeElement as HTMLElement)?.isContentEditable
 
-            if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') {
-                isShiftPressedRef.current = true
-                if (!isTyping) {                    // ← only enable hand tool when NOT in an input
+            if (e.code === 'Space') {
+                if (!isTyping) {
+                    e.preventDefault()
                     isSpacedPressed.current = true
                     dispatch(handToolEnable())
                 }
+            }
+
+            if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') {
+                isShiftPressedRef.current = true
             }
 
             if (isTyping) return
@@ -1126,11 +1130,20 @@ export const useInfiniteCanvas = () => {
         }
 
         const handleKeyUp = (e: KeyboardEvent) => {
-            if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') {
-                isShiftPressedRef.current = false
+            if (e.code === 'Space') {
                 isSpacedPressed.current = false
                 dispatch(handToolDisable())
             }
+            if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') {
+                isShiftPressedRef.current = false
+            }
+        }
+
+        const handleWindowBlur = () => {
+            isSpacedPressed.current = false
+            isShiftPressedRef.current = false
+            dispatch(handToolDisable())
+            dispatch(panEnd())
         }
 
         // Nuke any previously registered handlers before adding new ones
@@ -1142,10 +1155,12 @@ export const useInfiniteCanvas = () => {
 
         document.addEventListener('keydown', _keydownHandler, { capture: true })
         document.addEventListener('keyup', _keyupHandler, { capture: true })
+        window.addEventListener('blur', handleWindowBlur)
 
         return () => {
             if (_keydownHandler) document.removeEventListener('keydown', _keydownHandler, { capture: true })
             if (_keyupHandler) document.removeEventListener('keyup', _keyupHandler, { capture: true })
+            window.removeEventListener('blur', handleWindowBlur)
             _keydownHandler = null
             _keyupHandler = null
             if (freehandRafRef.current) window.cancelAnimationFrame(freehandRafRef.current)
@@ -1778,8 +1793,7 @@ interface ChatStreamEvent {
 }
 
 /**
- * Parses multiplexed SSE stream from /api/chat.
- * Each line is "data: {...}" with a complete event.
+ * Parses Vercel AI SDK 7 Data Stream Protocol & multiplexed SSE streams from /api/chat.
  */
 async function consumeChatStream(
     res: Response,
@@ -1801,42 +1815,74 @@ async function consumeChatStream(
         onDone()
     }
 
-    while (true) {
-        const { done, value } = await reader.read()
-        if (done) {
-            const trimmed = buffer.trim()
-            if (trimmed.startsWith('data: ')) {
-                try {
-                    const event = JSON.parse(trimmed.slice(6)) as ChatStreamEvent
-                    if (event.type === 'text') onText(event.text ?? '')
-                    else if (event.type === 'html') onHTML(event.text ?? '')
-                    else if (event.type === 'error') onError(event.text ?? '')
-                    else if (event.type === 'styleguide' && event.tokens && onStyleGuide) {
-                        onStyleGuide(event.tokens, event.designMD)
-                    }
-                    else if (event.type === 'tool-status' && event.label && onToolStatus) {
-                        onToolStatus(event.label, event.state ?? 'running')
-                    }
-                    else if (event.type === 'done') callDone()
-                } catch {
-                    // Ignore an incomplete or malformed final event.
-                }
-            }
-            // ✅ Fallback: server closed stream without sending `done` event
-            callDone()
-            break
+    const processLine = (line: string) => {
+        const trimmed = line.trim()
+        if (!trimmed) return
+
+        // 1. Data Stream Protocol: Text Delta (0:"...")
+        if (trimmed.startsWith('0:')) {
+            try {
+                const text = JSON.parse(trimmed.slice(2))
+                if (typeof text === 'string') onText(text)
+            } catch {}
+            return
         }
 
-        buffer += decoder.decode(value, { stream: true })
+        // 2. Data Stream Protocol: Message Annotations (2:[...])
+        if (trimmed.startsWith('2:')) {
+            try {
+                const annotations = JSON.parse(trimmed.slice(2))
+                if (Array.isArray(annotations)) {
+                    for (const ann of annotations) {
+                        if (ann?.type === 'tool-status' && ann.label && onToolStatus) {
+                            onToolStatus(ann.label, ann.state ?? 'running')
+                        } else if (ann?.type === 'styleguide' && ann.tokens && onStyleGuide) {
+                            onStyleGuide(ann.tokens, ann.designMD)
+                        } else if (ann?.type === 'html' && ann.text) {
+                            onHTML(ann.text)
+                        }
+                    }
+                }
+            } catch {}
+            return
+        }
 
-        // Split on newlines, each "data: {...}" is one line
-        const lines = buffer.split('\n')
-        buffer = lines.pop() ?? '' // keep incomplete last line
+        // 3. Data Stream Protocol: Tool Results (a:{...} or 8:{...})
+        if (trimmed.startsWith('a:') || trimmed.startsWith('8:')) {
+            try {
+                const payload = JSON.parse(trimmed.slice(2))
+                const output = payload?.result ?? payload?.output ?? payload
+                if (output?.success && output?.html) {
+                    onHTML(output.html)
+                    if (output.styleTokens && onStyleGuide) {
+                        onStyleGuide(output.styleTokens, output.designMD)
+                    }
+                } else if (output?.error) {
+                    onError(output.error)
+                }
+            } catch {}
+            return
+        }
 
-        for (const line of lines) {
-            const trimmed = line.trim()
-            if (!trimmed || !trimmed.startsWith('data: ')) continue
+        // 4. Data Stream Protocol: Errors (3:"..." or e:"...")
+        if (trimmed.startsWith('3:') || trimmed.startsWith('e:')) {
+            try {
+                const err = JSON.parse(trimmed.slice(2))
+                onError(typeof err === 'string' ? err : JSON.stringify(err))
+            } catch {
+                onError(trimmed.slice(2))
+            }
+            return
+        }
 
+        // 5. Data Stream Protocol: Finish (d:{...})
+        if (trimmed.startsWith('d:')) {
+            callDone()
+            return
+        }
+
+        // 6. SSE Fallback (data: {...})
+        if (trimmed.startsWith('data: ')) {
             try {
                 const event = JSON.parse(trimmed.slice(6)) as ChatStreamEvent
                 if (event.type === 'text') onText(event.text ?? '')
@@ -1848,10 +1894,27 @@ async function consumeChatStream(
                 else if (event.type === 'tool-status' && event.label && onToolStatus) {
                     onToolStatus(event.label, event.state ?? 'running')
                 }
-                else if (event.type === 'done') callDone()  // ← use guard here too
-            } catch {
-                // malformed chunk, skip
+                else if (event.type === 'done') callDone()
+            } catch {}
+        }
+    }
+
+    while (true) {
+        const { done, value } = await reader.read()
+        if (done) {
+            if (buffer.trim()) {
+                processLine(buffer.trim())
             }
+            callDone()
+            break
+        }
+
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() ?? '' // keep incomplete last line
+
+        for (const line of lines) {
+            processLine(line)
         }
     }
 }
@@ -2103,6 +2166,7 @@ export const useGlobalChat = () => {
      */
     const loadChatTurns = React.useCallback(async (chatId: string) => {
         setChatTurns([])
+        setToolStatus(null)
         setIsLoadingHistory(true)
         try {
             const res = await fetch(`/api/chat/turns?chatId=${chatId}`)
@@ -2194,6 +2258,7 @@ export const useGlobalChat = () => {
             if (isSendingRef.current) return
             isSendingRef.current = true
             setIsSending(true)
+            setToolStatus(null)
 
             const turnId = crypto.randomUUID()
             const targetId = opts?.targetShapeId ?? activeGeneratedUIId
@@ -2380,13 +2445,9 @@ export const useGlobalChat = () => {
                             })
                         )
                     },
-                    // onToolStatus — track tool execution status
+                    // onToolStatus — track tool execution status (keep UI state on completion)
                     (label, state) => {
                         setToolStatus({ label, state })
-                        // Auto-clear after done
-                        if (state === 'done') {
-                            setTimeout(() => setToolStatus(null), 2000)
-                        }
                     }
                 )
             } catch (err) {

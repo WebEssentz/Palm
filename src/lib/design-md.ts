@@ -188,7 +188,7 @@ export function parseDesignMD(markdown: string): DesignMDData {
  */
 export async function generateDesignMDFromPrompt(prompt: string): Promise<DesignMDData> {
     const { text } = await generateText({
-        model: google('gemini-3.5-flash-lite'),
+        model: google('gemini-3.7-flash'),
         system: `You are an expert design systems architect following the Google Stitch DESIGN.md open standard.
 Your job is to generate a comprehensive, production-grade DESIGN.md specification for the requested interface.
 

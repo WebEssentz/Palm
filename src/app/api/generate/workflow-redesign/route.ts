@@ -111,7 +111,7 @@ export async function POST(req: Request) {
         `
 
         const result = streamText({
-            model: google('gemini-3.5-flash-lite'),
+            model: google('gemini-3.7-flash'),
             system: prompts.generativeUi.system,
             messages: [
                 { 
@@ -124,11 +124,11 @@ export async function POST(req: Request) {
                     ],
                 },
             ],
-            temperature: 0.7,
+            temperature: 0.35,
             providerOptions: {
                 google: {
                     thinkingConfig: {
-                        thinkingLevel: 'medium',
+                        thinkingLevel: 'high',
                         includeThoughts: false,
                     }
                 }

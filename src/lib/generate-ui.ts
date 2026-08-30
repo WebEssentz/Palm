@@ -106,7 +106,7 @@ export interface GenerateUIOptions {
 }
 
 // Model used for actual UI generation
-const UI_GENERATION_MODEL = 'gemini-3.5-flash-lite'
+const UI_GENERATION_MODEL = 'gemini-3.7-flash'
 
 export async function* generateUIStream(opts: GenerateUIOptions): AsyncGenerator<string> {
     const { prompt, projectId, currentHTML } = opts
@@ -202,11 +202,11 @@ export async function* generateUIStream(opts: GenerateUIOptions): AsyncGenerator
                 content: [{ type: 'text', text: userPrompt }],
             },
         ],
-        temperature: 0.7,
+        temperature: 0.35,
         providerOptions: {
             google: {
                 thinkingConfig: {
-                    thinkingLevel: 'medium',
+                    thinkingLevel: 'high',
                     includeThoughts: false,
                 },
             },
@@ -315,11 +315,11 @@ export async function* generateUIDiffStream(opts: GenerateUIOptions): AsyncGener
                 content: [{ type: 'text', text: userPrompt }],
             },
         ],
-        temperature: 0.7,
+        temperature: 0.35,
         providerOptions: {
             google: {
                 thinkingConfig: {
-                    thinkingLevel: 'medium',
+                    thinkingLevel: 'high',
                     includeThoughts: false,
                 },
             },
@@ -346,7 +346,7 @@ export async function classifyEditIntent(prompt: string, currentHTML?: string): 
     if (!currentHTML) return 'full'
 
     const { text } = await generateText({
-        model: google('gemini-3.5-flash-lite'),
+        model: google('gemini-3.7-flash'),
         system: 'You are classifying UI design intents. Return ONLY "surgical" or "full".\n\nSurgical: small tweaks, color changes, button edits, spacing fixes, text updates\nFull: complete redesign, new layout, different aesthetic, major restructuring',
         prompt: `User request: "${prompt}"\n\nCurrent HTML: ${currentHTML.slice(0, 2000)}\n\nClassify this intent as "surgical" or "full".`,
     })

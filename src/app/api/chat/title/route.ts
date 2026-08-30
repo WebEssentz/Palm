@@ -11,7 +11,7 @@ export async function POST(req: NextRequest) {
 
     try {
         const { text } = await generateText({
-            model: google('gemini-3.5-flash-lite'),
+            model: google('gemini-3.6-flash'),
             system: 'You generate short, 3-4 word descriptive titles for design chat threads. Return ONLY the title in Title Case, no quotes, no trailing punctuation.',
             prompt: `User message: "${prompt.slice(0, 300)}"`,
             maxOutputTokens: 20,

@@ -177,7 +177,7 @@ export async function POST(req: NextRequest) {
             const { full, crops } = await recursiveCrop(inspirationBuffer.buffer as ArrayBuffer)
 
             const structurePass = await generateText({
-                model: google('gemini-3.5-flash-lite'),
+                model: google('gemini-3.7-flash'),
                 messages: [{
                     role: 'user',
                     content: [
@@ -216,7 +216,7 @@ export async function POST(req: NextRequest) {
                 providerOptions: {
                     google: {
                         thinkingConfig: {
-                            thinkingLevel: 'medium',
+                            thinkingLevel: 'high',
                             includeThoughts: false,
                         }
                     }
@@ -286,7 +286,7 @@ ${layoutTokens}
             : []
 
         const result = streamText({
-            model: google('gemini-3.5-flash-lite'),
+            model: google('gemini-3.7-flash'),
             system: uiSkill,
             messages: [{
                 role: 'user',
@@ -296,11 +296,11 @@ ${layoutTokens}
                     ...imageUrls.map(url => ({ type: 'image' as const, image: url }))
                 ]
             }],
-            temperature: 0.7,
+            temperature: 0.35,
             providerOptions: {
                 google: {
                     thinkingConfig: {
-                        thinkingLevel: 'medium',
+                        thinkingLevel: 'high',
                         includeThoughts: false,
                     }
                 }
