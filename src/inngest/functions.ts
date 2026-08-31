@@ -1,8 +1,10 @@
-import { fetchMutation, fetchQuery } from "convex/nextjs";
+import { ConvexHttpClient } from "convex/browser";
 import { inngest } from "./client";
 import { api } from "../../convex/_generated/api";
 import { extractOrderLike, extractSubscriptionLike, grantKey, isEntitledStatus, isPolarWebhookEvent, PolarOrder, PolarSubscription, ReceivedEvent, toMs } from "@/types/polar";
 import { Id } from "../../convex/_generated/dataModel";
+
+const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
 
 export const autosaveProjectWorkflow = inngest.createFunction(
     {
@@ -12,7 +14,7 @@ export const autosaveProjectWorkflow = inngest.createFunction(
     async ({ event }) => {
         const { projectId, shapesData, viewportData } = event.data
         try {
-            await fetchMutation(api.projects.updateProjectSketches, {
+            await convex.mutation(api.projects.updateProjectSketches, {
                 projectId,
                 sketchesData: shapesData,
                 viewportData
@@ -62,7 +64,7 @@ export const handlePolarEvent = inngest.createFunction(
 
                 if (email) {
                     try {
-                        const foundUserId = await fetchQuery(api.user.getUserIdByEmail, {
+                        const foundUserId = await convex.query(api.user.getUserIdByEmail, {
                             email,
                         })
 
@@ -112,14 +114,14 @@ export const handlePolarEvent = inngest.createFunction(
             'upsert-subscription',
             async () => {
                 try {
-                    const existingByPolar = await fetchQuery(
+                    const existingByPolar = await convex.query(
                         api.subscription.getByPolarId,
                         {
                             polarSubscriptionId: payload.polarSubscriptionId
                         }
                     )
 
-                    const exisitingByUser = await fetchQuery(
+                    const exisitingByUser = await convex.query(
                         api.subscription.getSubscriptionsForUser,
                         {
                             userId: payload.userId
@@ -136,12 +138,12 @@ export const handlePolarEvent = inngest.createFunction(
                         console.warn('  - By User ID: ', exisitingByUser._id)
                     } 
 
-                    const result = await fetchMutation(
+                    const result = await convex.mutation(
                         api.subscription.upsertFromPolar,
                         payload
                     )
 
-                    const allUserSubs = await fetchQuery(
+                    const allUserSubs = await convex.query(
                         api.subscription.getAllForUser,
                         {
                             userId: payload.userId
@@ -174,13 +176,13 @@ export const handlePolarEvent = inngest.createFunction(
 
         if (
             entitled &&
-            (looksCreate || looksRenew || true) 
+            (looksCreate || looksRenew)
         ) {
             const grant = await step.run(
                 'grant-credits',
                 async () => {
                     try {
-                        const result = await fetchMutation(
+                        const result = await convex.mutation(
                             api.subscription.grantCreditsIfNeeded,
                             {
                                 subscriptionId,
@@ -246,7 +248,7 @@ export const handlePolarEvent = inngest.createFunction(
                 'check-entitlement',
                 async () => {
                     try {
-                        const result = await fetchQuery(
+                        const result = await convex.query(
                             api.subscription.hasEntitlement,
                             {
                                 userId
