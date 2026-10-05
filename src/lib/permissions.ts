@@ -5,6 +5,7 @@ export const isPublicRoutes = [
 
 export const isProtectedRoutes = [
     '/dashboard(.*)',
+    '/projects(.*)',
 ]
 
 export const isBypassRoutes = [

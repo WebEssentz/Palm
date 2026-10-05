@@ -1,6 +1,6 @@
 import { FrameShape } from "@/redux/slice/shapes";
 import { LiquidGlassButton } from "@/components/buttons/liquid-glass";
-import { Brush, Monitor } from "lucide-react";
+import { Brush, Monitor, Palette } from "lucide-react";
 import { useFrame } from "@/hooks/use-canvas";
 import { useAppSelector } from "@/redux/store";
 

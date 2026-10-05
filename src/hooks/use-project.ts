@@ -84,7 +84,7 @@ export const useProjectCreation = (): UseProjectCreationReturn => {
           shapes: shapesState.shapes,
           tool: shapesState.tool,
           selected: shapesState.selected,
-          framerCounter: shapesState.framerCounter,
+          frameCounter: shapesState.frameCounter,
         },
         thumbnail: storageId,
       })

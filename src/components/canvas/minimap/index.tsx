@@ -9,48 +9,27 @@ import { motion } from 'framer-motion'
 import { Maximize2, Minimize2 } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 
-function getShapeBounds(shape: Shape): { x: number; y: number; w: number; h: number } {
-    if (shape.type === 'freedraw') {
-        if (!shape.points || shape.points.length === 0) return { x: 0, y: 0, w: 0, h: 0 }
-        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
-        for (const p of shape.points) {
-            if (p.x < minX) minX = p.x
-            if (p.y < minY) minY = p.y
-            if (p.x > maxX) maxX = p.x
-            if (p.y > maxY) maxY = p.y
-        }
-        return { x: minX, y: minY, w: Math.max(maxX - minX, 4), h: Math.max(maxY - minY, 4) }
-    }
-    if (shape.type === 'line' || shape.type === 'arrow') {
-        const minX = Math.min(shape.startX, shape.endX)
-        const minY = Math.min(shape.startY, shape.endY)
-        const w = Math.max(Math.abs(shape.endX - shape.startX), 4)
-        const h = Math.max(Math.abs(shape.endY - shape.startY), 4)
-        return { x: minX, y: minY, w, h }
-    }
-    if (shape.type === 'text') {
-        const textLen = shape.text?.length || 1
-        const fontSize = shape.fontSize || 16
-        return {
-            x: shape.x ?? 0,
-            y: shape.y ?? 0,
-            w: Math.max(textLen * fontSize * 0.6, 20),
-            h: Math.max(fontSize * 1.2, 16),
-        }
-    }
-    const s = shape as { x?: number; y?: number; w?: number; h?: number }
-    return {
-        x: s.x ?? 0,
-        y: s.y ?? 0,
-        w: Math.max(s.w ?? 4, 4),
-        h: Math.max(s.h ?? 4, 4),
-    }
+import { getShapeBounds } from '@/lib/canvas-bounds'
+
+interface MinimapProps {
+    isVisible?: boolean
+    onClose?: () => void
+    isHovered?: boolean
+    isExpanded?: boolean
+    onToggleExpand?: () => void
 }
 
-export default function Minimap() {
+export default function Minimap({
+    isVisible = true,
+    onClose,
+    isHovered,
+    isExpanded: controlledExpanded,
+    onToggleExpand,
+}: MinimapProps) {
     const dispatch = useDispatch()
     const containerRef = useRef<HTMLDivElement>(null)
-    const [isExpanded, setIsExpanded] = useState(false)
+    const [internalExpanded, setInternalExpanded] = useState(false)
+    const isExpanded = controlledExpanded !== undefined ? controlledExpanded : internalExpanded
     const [windowSize, setWindowSize] = useState({ w: 1200, h: 800 })
     const isDraggingRef = useRef(false)
 
@@ -184,14 +163,16 @@ export default function Minimap() {
         window.addEventListener('pointerup', onPointerUp)
     }
 
+    if (!isVisible) return null
+
     return (
         <motion.div
             ref={containerRef}
             animate={{ width: mapWidth, height: mapHeight }}
             transition={{ type: 'spring', damping: 28, stiffness: 320 }}
-            style={{ transformOrigin: 'bottom right' }}
+            style={{ transformOrigin: 'bottom left' }}
             onPointerDown={handlePointerDown}
-            className="rounded-2xl border border-black/10 dark:border-white/10 bg-white/95 dark:bg-neutral-900/95 backdrop-blur-md shadow-sm relative overflow-hidden cursor-crosshair select-none origin-bottom-right"
+            className="rounded-2xl border border-black/10 dark:border-white/10 bg-white/95 dark:bg-[#1a1a1c]/95 backdrop-blur-md shadow-xl relative overflow-hidden cursor-crosshair select-none origin-bottom-left"
         >
             {/* Subtle Canvas Dot Pattern */}
             <div className="absolute inset-0 bg-[radial-gradient(#00000010_1px,transparent_1px)] dark:bg-[radial-gradient(#ffffff15_1px,transparent_1px)] [background-size:8px_8px] pointer-events-none" />
@@ -256,7 +237,11 @@ export default function Minimap() {
                         }}
                         onClick={(e) => {
                             e.stopPropagation()
-                            setIsExpanded((v) => !v)
+                            if (onToggleExpand) {
+                                onToggleExpand()
+                            } else {
+                                setInternalExpanded((v) => !v)
+                            }
                         }}
                         className="absolute bottom-1.5 right-1.5 w-5 h-5 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors cursor-pointer z-20"
                     >

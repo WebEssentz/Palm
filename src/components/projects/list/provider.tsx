@@ -9,6 +9,8 @@ type Project = {
     lastModified: number
     createdAt: number
     isPublic?: boolean
+    isPinned?: boolean
+    folderId?: string
 }
 
 const ProjectsContext = createContext<Project[]>([])

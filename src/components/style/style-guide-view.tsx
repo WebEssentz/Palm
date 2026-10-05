@@ -43,7 +43,7 @@ export function StyleGuideView({ projectId: propProjectId }: Props) {
     const projectId = propProjectId ?? searchParams.get('project')
     const [activeTab, setActiveTab] = useState<TabValue>('colours')
 
-    const isValidProjectId = projectId && projectId.length === 32 && projectId !== "null" && projectId !== "undefined"
+    const isValidProjectId = Boolean(projectId && projectId !== "null" && projectId !== "undefined")
 
     const styleGuideDoc = useQuery(
         api.projects.getProjectStyleGuide,

@@ -12,13 +12,17 @@ import type * as auth from "../auth.js";
 import type * as chat from "../chat.js";
 import type * as crons from "../crons.js";
 import type * as files from "../files.js";
+import type * as folders from "../folders.js";
 import type * as http from "../http.js";
 import type * as inspiration from "../inspiration.js";
+import type * as migrations from "../migrations.js";
 import type * as moodboard from "../moodboard.js";
+import type * as permissions from "../permissions.js";
 import type * as projects from "../projects.js";
 import type * as snapshots from "../snapshots.js";
 import type * as subscription from "../subscription.js";
 import type * as user from "../user.js";
+import type * as workspaces from "../workspaces.js";
 
 import type {
   ApiFromModules,
@@ -31,13 +35,17 @@ declare const fullApi: ApiFromModules<{
   chat: typeof chat;
   crons: typeof crons;
   files: typeof files;
+  folders: typeof folders;
   http: typeof http;
   inspiration: typeof inspiration;
+  migrations: typeof migrations;
   moodboard: typeof moodboard;
+  permissions: typeof permissions;
   projects: typeof projects;
   snapshots: typeof snapshots;
   subscription: typeof subscription;
   user: typeof user;
+  workspaces: typeof workspaces;
 }>;
 
 /**

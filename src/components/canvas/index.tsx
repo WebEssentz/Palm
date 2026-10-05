@@ -8,7 +8,9 @@ import { cn } from '@/lib/utils'
 import ShapeRenderer from './shapes'
 import { useSearchParams, useRouter, usePathname } from 'next/navigation'
 import { useTheme } from 'next-themes'
+import { useCanvasPrefs } from '@/hooks/use-canvas-prefs'
 import { useAppSelector } from '@/redux/store'
+import { selectShapeIds } from '@/redux/slice/shapes'
 import { useQuery, useMutation } from 'convex/react'
 import { api } from '../../../convex/_generated/api'
 import { RectanglePreview } from './shapes/rectangle/preview'
@@ -29,6 +31,7 @@ import StyleGuideView from '@/components/style/style-guide-view'
 const InfiniteCanvas = () => {
   // Initialize ALL hooks at the top level in a consistent order
   const { theme, systemTheme } = useTheme()
+  const { showDotGrid } = useCanvasPrefs()
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const profile = useQuery(api.user.getCurrentUser)
@@ -84,7 +87,7 @@ const InfiniteCanvas = () => {
     : []
 
   // Check if shapes already exist from Convex load
-  const existingShapes = useAppSelector((s) => s.shapes.shapes?.ids ?? [])
+  const existingShapes = useAppSelector(selectShapeIds)
 
   // Project chats query & mutations
   const projectChats = useQuery(
@@ -377,7 +380,7 @@ const InfiniteCanvas = () => {
         <TextSidebar isOpen={isSidebarOpen && hasSelectedText} />
 
       {/* ── ChatPanel ── */}
-      <div className='fixed left-3 top-14 bottom-24 z-50 pointer-events-none'>
+      <div className='fixed right-3 top-14 bottom-24 z-50 pointer-events-none'>
         <div className='pointer-events-auto h-full flex flex-col'>
           <ChatPanel
             turns={turns}
@@ -431,7 +434,7 @@ const InfiniteCanvas = () => {
             onContextMenu={(e) => e.preventDefault()}
             draggable={false}
           >
-            <DotParticleBackground isLight={isLight} />
+            {showDotGrid && <DotParticleBackground isLight={isLight} />}
 
             <div
               className='absolute origin-top-left pointer-events-none z-10'

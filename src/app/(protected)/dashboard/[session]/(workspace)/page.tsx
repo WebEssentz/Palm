@@ -1,22 +1,14 @@
 'use client'
-import { useQuery } from 'convex/react'
-import { api } from '../../../../../../convex/_generated/api'
-import { Id } from '../../../../../../convex/_generated/dataModel'
-import ProjectsProvider from '@/components/projects/list/provider'
-import HomeShell from '@/components/home/shell'
+/**
+ * This page is now unreachable — next.config.ts permanently redirects
+ * /dashboard/:session → /projects before Next.js even looks at this file.
+ * Kept as a no-op fallback in case the redirect is ever removed.
+ */
+import { useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 
 export default function Page() {
-    const me = useQuery(api.user.getCurrentUser)
-    const projects = useQuery(
-        api.projects.getUserProjects,
-        me?._id ? { userId: me._id as Id<'users'> } : 'skip'
-    )
-
-    if (!me || projects === undefined) return null
-
-    return (
-        <ProjectsProvider initialProjects={projects}>
-            <HomeShell profile={{ name: me.name || '', image: me.image }} />
-        </ProjectsProvider>
-    )
+    const router = useRouter()
+    useEffect(() => { router.replace('/projects') }, [router])
+    return null
 }

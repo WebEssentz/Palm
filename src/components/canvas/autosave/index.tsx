@@ -9,96 +9,192 @@ import { api } from '../../../../convex/_generated/api'
 import { Id } from '../../../../convex/_generated/dataModel'
 import { Cloud, CloudUpload, CloudOff, Check } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { toPng } from 'html-to-image'
+
+const serializeCanvas = (shapes: any, frameCounter: number, viewport: any) => {
+    return JSON.stringify({
+        shapes: shapes ?? { ids: [], entities: {} },
+        frameCounter: frameCounter ?? 0,
+        viewport: {
+            scale: Math.round((viewport?.scale ?? 1) * 1000) / 1000,
+            x: Math.round((viewport?.translate?.x ?? 0) * 10) / 10,
+            y: Math.round((viewport?.translate?.y ?? 0) * 10) / 10,
+        }
+    })
+}
 
 const AutoSave = () => {
     const searchParams = useSearchParams()
     const projectId = searchParams.get('project')
     const me = useQuery(api.user.getCurrentUser)
-    const isValidProjectId = projectId && projectId.length === 32
-    const project = useQuery(
-        api.projects.getProject,
-        isValidProjectId ? { projectId: projectId as Id<'projects'> } : 'skip'
-    )
+    const isValidProjectId = Boolean(projectId && projectId !== 'null' && projectId !== 'undefined')
     const shapesState = useAppSelector((state) => state.shapes)
     const viewportState = useAppSelector((state) => state.viewport)
     const updateProjectSketches = useMutation(api.projects.updateProjectSketches)
+    const generateUploadUrl = useMutation(api.files.generateUploadUrl)
+    const updateProjectThumbnail = useMutation(api.projects.updateProjectThumbnail)
     const { theme, systemTheme } = useTheme()
     const isLight = (theme === 'system' ? systemTheme : theme) === 'light'
 
-    const isInitializedRef = React.useRef(false)
     const debounceRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
-    const lastSaveTimeRef = React.useRef<string>('')
+    const thumbTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+    const isCapturingThumbRef = React.useRef(false)
+    const lastSavedStringRef = React.useRef<string | null>(null)
     const latestStateRef = React.useRef({ shapesState, viewportState })
     const [saveStatus, setSaveStatus] = React.useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
 
     latestStateRef.current = { shapesState, viewportState }
 
-    // Ensure we don't autosave until project is loaded from Convex
-    React.useEffect(() => {
-        if (project !== undefined && !isInitializedRef.current) {
-            isInitializedRef.current = true
-            lastSaveTimeRef.current = JSON.stringify({
-                shapes: project.sketchesData || shapesState,
-                viewport: project.viewportData || { scale: viewportState.scale, translate: viewportState.translate }
+    const captureThumbnail = React.useCallback(async (targetProjectId: string) => {
+        if (isCapturingThumbRef.current) return
+        const node = document.querySelector('[aria-label="Infinite drawing canvas"]') as HTMLElement | null
+        if (!node) return
+
+        isCapturingThumbRef.current = true
+        try {
+            const dataUrl = await toPng(node, {
+                pixelRatio: 0.4,
+                cacheBust: true,
+                skipFonts: true,
             })
+            const res = await fetch(dataUrl)
+            const blob = await res.blob()
+
+            const uploadUrl = await generateUploadUrl()
+            const uploadRes = await fetch(uploadUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'image/png' },
+                body: blob,
+            })
+            const { storageId } = await uploadRes.json()
+
+            if (storageId) {
+                await updateProjectThumbnail({
+                    projectId: targetProjectId as Id<'projects'>,
+                    storageId,
+                })
+            }
+        } catch (err) {
+            console.warn('[Thumbnail] Auto-capture skipped:', err)
+        } finally {
+            isCapturingThumbRef.current = false
         }
-    }, [project, shapesState, viewportState])
+    }, [generateUploadUrl, updateProjectThumbnail])
 
-    const isReady = Boolean(isValidProjectId && me?._id && isInitializedRef.current)
-
+    // When the project is first loaded into Redux, establish the baseline state
+    // so we don't immediately trigger a redundant save of what was just loaded
     React.useEffect(() => {
-        if (!isReady || !projectId) return
-        const stateString = JSON.stringify({
-            shapes: shapesState,
-            viewport: { scale: viewportState.scale, translate: viewportState.translate }
-        })
-        if (stateString === lastSaveTimeRef.current) return
+        if (shapesState.isLoaded && lastSavedStringRef.current === null) {
+            lastSavedStringRef.current = serializeCanvas(
+                shapesState.shapes,
+                shapesState.frameCounter,
+                viewportState
+            )
+        }
+    }, [shapesState.isLoaded, shapesState.shapes, shapesState.frameCounter, viewportState])
+
+    // Reset baseline if project changes
+    React.useEffect(() => {
+        lastSavedStringRef.current = null
+        if (debounceRef.current) {
+            clearTimeout(debounceRef.current)
+            debounceRef.current = null
+        }
+    }, [projectId])
+
+    // Detect actual canvas changes and debounce save
+    React.useEffect(() => {
+        if (!isValidProjectId || !projectId || !shapesState.isLoaded) return
+        if (lastSavedStringRef.current === null) return
+
+        const currentString = serializeCanvas(
+            shapesState.shapes,
+            shapesState.frameCounter,
+            viewportState
+        )
+
+        if (currentString === lastSavedStringRef.current) return
+
         if (debounceRef.current) clearTimeout(debounceRef.current)
 
         debounceRef.current = setTimeout(async () => {
-            lastSaveTimeRef.current = stateString
+            lastSavedStringRef.current = currentString
             setSaveStatus('saving')
 
             try {
                 await updateProjectSketches({
                     projectId: projectId as Id<'projects'>,
-                    sketchesData: shapesState,
-                    viewportData: { scale: viewportState.scale, translate: viewportState.translate }
+                    sketchesData: {
+                        shapes: shapesState.shapes,
+                        tool: shapesState.tool,
+                        selected: shapesState.selected,
+                        frameCounter: shapesState.frameCounter,
+                    },
+                    viewportData: {
+                        scale: viewportState.scale,
+                        translate: viewportState.translate,
+                    }
                 })
                 setSaveStatus('saved')
                 setTimeout(() => setSaveStatus('idle'), 2000)
+
+                // Silently capture canvas thumbnail in background a few seconds after editing
+                if (thumbTimeoutRef.current) clearTimeout(thumbTimeoutRef.current)
+                thumbTimeoutRef.current = setTimeout(() => {
+                    captureThumbnail(projectId)
+                }, 2500)
             } catch (error) {
                 console.error('Autosave error:', error)
                 setSaveStatus('error')
                 setTimeout(() => setSaveStatus('idle'), 3000)
             }
         }, 1000)
-    }, [isReady, projectId, shapesState, viewportState, updateProjectSketches])
+    }, [isValidProjectId, projectId, shapesState, viewportState, updateProjectSketches, captureThumbnail])
 
-    // Flush any pending save on unmount or beforeunload
+    // Flush any pending save on beforeunload or unmount
     React.useEffect(() => {
         const handleBeforeUnload = () => {
-            if (!projectId || !isInitializedRef.current) return
-            const stateString = JSON.stringify({
-                shapes: latestStateRef.current.shapesState,
-                viewport: { scale: latestStateRef.current.viewportState.scale, translate: latestStateRef.current.viewportState.translate }
-            })
-            if (stateString !== lastSaveTimeRef.current) {
-                navigator.sendBeacon?.('/api/project', JSON.stringify({
+            if (!projectId || !latestStateRef.current.shapesState.isLoaded) return
+            const currentString = serializeCanvas(
+                latestStateRef.current.shapesState.shapes,
+                latestStateRef.current.shapesState.frameCounter,
+                latestStateRef.current.viewportState
+            )
+            if (lastSavedStringRef.current !== null && currentString !== lastSavedStringRef.current) {
+                const payload = JSON.stringify({
                     projectId,
                     userId: me?._id,
-                    shapesData: latestStateRef.current.shapesState,
-                    viewportData: { scale: latestStateRef.current.viewportState.scale, translate: latestStateRef.current.viewportState.translate }
-                }))
+                    shapesData: {
+                        shapes: latestStateRef.current.shapesState.shapes,
+                        tool: latestStateRef.current.shapesState.tool,
+                        selected: latestStateRef.current.shapesState.selected,
+                        frameCounter: latestStateRef.current.shapesState.frameCounter,
+                    },
+                    viewportData: {
+                        scale: latestStateRef.current.viewportState.scale,
+                        translate: latestStateRef.current.viewportState.translate,
+                    }
+                })
+                const blob = new Blob([payload], { type: 'application/json' })
+                navigator.sendBeacon?.('/api/project', blob)
             }
         }
 
         window.addEventListener('beforeunload', handleBeforeUnload)
         return () => {
-            if (debounceRef.current) clearTimeout(debounceRef.current)
+            if (debounceRef.current) {
+                clearTimeout(debounceRef.current)
+                handleBeforeUnload()
+            }
+            if (thumbTimeoutRef.current) {
+                clearTimeout(thumbTimeoutRef.current)
+            }
+            if (projectId && latestStateRef.current.shapesState.shapes?.ids?.length > 0) {
+                captureThumbnail(projectId)
+            }
             window.removeEventListener('beforeunload', handleBeforeUnload)
         }
-    }, [projectId, me?._id])
+    }, [projectId, me?._id, captureThumbnail])
 
     if (!isValidProjectId) return null
 

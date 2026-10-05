@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { getAuthUserId } from "@convex-dev/auth/server";
+import { assertProjectAccess } from "./permissions";
 
 export const generateUploadUrl = mutation({
     handler: async (ctx) => {
@@ -18,13 +19,13 @@ export const getInspirationImages = query({
         projectId: v.id('projects')
     },
     handler: async (ctx, { projectId }) => {
-        const userId = await getAuthUserId(ctx)
-        if (!userId) return []
-
-        const project = await ctx.db.get(projectId)
-        if (!project) return []
-
-        if (project.userId !== userId) return []
+        let project;
+        try {
+            const result = await assertProjectAccess(ctx, projectId);
+            project = result.project;
+        } catch {
+            return [];
+        }
 
         const storageIds = project.inspirationImages || []
 
@@ -61,19 +62,7 @@ export const addInspirationImage = mutation({
         storageId: v.id('_storage'),
     },
     handler: async (ctx, { projectId, storageId }) => {
-        const userId = await getAuthUserId(ctx)
-        if (!userId) {
-            throw new Error('Unauthorized')
-        }
-
-        const project = await ctx.db.get(projectId)
-        if (!project) {
-            throw new Error('Project not found')
-        }
-
-        if (project.userId !== userId) {
-            throw new Error('Unauthorized')
-        }
+        const { project } = await assertProjectAccess(ctx, projectId, true);
 
         const currentImages = project.inspirationImages || []
         
@@ -106,19 +95,7 @@ export const removeInspirationImage = mutation({
         storageId: v.id('_storage'),
     },
     handler: async (ctx, { projectId, storageId }) => {
-        const userId = await getAuthUserId(ctx)
-        if (!userId) {
-            throw new Error('Unauthorized')
-        }
-
-        const project = await ctx.db.get(projectId)
-        if (!project) {
-            throw new Error('Project not found')
-        }
-
-        if (project.userId !== userId) {
-            throw new Error('Unauthorized')
-        }
+        const { project } = await assertProjectAccess(ctx, projectId, true);
 
         const currentImages = project.inspirationImages || []
         const updatedImages = currentImages.filter((id) => id !== storageId)

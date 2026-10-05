@@ -55,7 +55,7 @@ export function ChatPanel({
                     animate={{ opacity: 1, scale: 1 }}
                     exit={{ opacity: 0, scale: 0.85, transition: { duration: 0.1 } }}
                     transition={{ duration: 0.15, ease: 'easeOut' }}
-                    className="origin-top-left"
+                    className="origin-top-right flex justify-end"
                 >
                     <Tooltip>
                         <TooltipTrigger asChild>
@@ -68,7 +68,7 @@ export function ChatPanel({
                                 <span>Chats</span>
                             </button>
                         </TooltipTrigger>
-                        <TooltipContent side="right" sideOffset={8}>
+                        <TooltipContent side="left" sideOffset={8}>
                             Open chats
                         </TooltipContent>
                     </Tooltip>
@@ -89,7 +89,7 @@ export function ChatPanel({
                         damping: 32,
                         mass: 0.45,
                     }}
-                    className="relative flex flex-col overflow-hidden rounded-2xl border border-black/10 bg-white dark:border-white/10 dark:bg-neutral-900 h-full w-[296px] shadow-lg dark:shadow-2xl origin-top-left"
+                    className="relative flex flex-col overflow-hidden rounded-2xl border border-black/10 bg-white dark:border-white/10 dark:bg-neutral-900 h-full w-[296px] shadow-lg dark:shadow-2xl origin-top-right"
                 >
                     <AnimatePresence mode="wait" initial={false}>
                         {view === 'list' ? (

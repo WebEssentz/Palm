@@ -23,12 +23,12 @@ import {
     groupSelected,
     ungroupSelected,
     duplicateSelected,
-    deleteSelected,
     FrameShape,
     GeneratedUIShape,
     addGeneratedUI,
     undo,
-    redo
+    redo,
+    selectAllShapes
 } from "@/redux/slice/shapes"
 import { handToolDisable, handToolEnable, panEnd, panMove, panStart, Point, screenToWorld, wheelPan, wheelZoom } from "@/redux/slice/viewport"
 import { AppDispatch, useAppDispatch, useAppSelector } from "@/redux/store"
@@ -1489,11 +1489,7 @@ export const useFrame = (shape: FrameShape) => {
     const [isGenerating, setIsGenerating] = React.useState(false);
     const dispatch = useAppDispatch()
 
-    const allShapes = useAppSelector((state) =>
-        Object.values(state.shapes.shapes?.entities || {}).filter(
-            (shape): shape is Shape => shape !== undefined
-        )
-    )
+    const allShapes = useAppSelector(selectAllShapes)
 
     const handleGenerateDesign = async () => {
         try {
@@ -1632,11 +1628,7 @@ export const useWorkflowGeneration = () => {
     const dispatch = useAppDispatch()
     const [, { isLoading: isGeneratingWorkflow }] = useGenerateWorkflowMutation()
 
-    const allShapes = useAppSelector((state) =>
-        Object.values(state.shapes.shapes?.entities || {}).filter(
-            (shape): shape is Shape => shape !== undefined
-        )
-    )
+    const allShapes = useAppSelector(selectAllShapes)
 
     const generateWorkflow = async (generatedUIId: string) => {
         try {
@@ -2096,11 +2088,7 @@ export const useGlobalChat = () => {
     const [attachedFrameName, setAttachedFrameName] = React.useState<string | null>(null)
 
 
-    const allShapes = useAppSelector((state) =>
-        Object.values(state.shapes.shapes?.entities || {}).filter(
-            (s): s is Shape => s !== undefined
-        )
-    )
+    const allShapes = useAppSelector(selectAllShapes)
 
     const allShapesRef = React.useRef(allShapes)
     React.useEffect(() => {

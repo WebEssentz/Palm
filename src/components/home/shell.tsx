@@ -2,18 +2,17 @@
 
 import React, { useRef, useState } from 'react'
 import { useTheme } from 'next-themes'
-import { motion, AnimatePresence } from 'framer-motion'
-import Link from 'next/link'
+import { motion } from 'framer-motion'
 import { useRouter } from 'next/navigation'
 import { useAppSelector, useAppDispatch } from '@/redux/store'
-import { toggleSidebar, setSidebarOpen } from '@/redux/slice/ui'
+import { setSidebarOpen } from '@/redux/slice/ui'
 import { useProjects } from '@/components/projects/list/provider'
 import { usePersistentInput } from '@/hooks/use-persistent-input'
-import { useQuery } from 'convex/react'
+import { useQuery, useMutation } from 'convex/react'
 import { api } from '../../../convex/_generated/api'
 import { Id } from '../../../convex/_generated/dataModel'
 import { formatDistanceToNow } from 'date-fns'
-import { Home, LayoutGrid, Trash2, ArrowUp, Globe, X, PanelLeft, Loader, LayoutDashboard, Smartphone, ShoppingBag, Shuffle } from 'lucide-react'
+import { ArrowUp, Globe, X, PanelLeft, Loader, Search } from 'lucide-react'
 import { ThemeToggle } from '@/components/theme/toggle'
 import { AvatarDropdown } from '@/components/avatar-dropdown'
 import { GlassTooltip } from '@/components/ui/glass-tooltip'
@@ -22,23 +21,16 @@ import DotParticleBackground from '@/components/home/dot-particle-background'
 import { MicButton } from '@/components/home/mic-button'
 import { AttachmentMenu } from '@/components/home/attachment-menu'
 import { ImagePreview, type ImageItem } from '@/components/home/image-preview'
+import Sidebar, { thumbnailToSrc } from '@/components/home/sidebar'
 import ProjectsList from '@/components/projects/list'
 import TrashList from '@/components/projects/trash-list'
 import { usePalmToast } from '@/hooks/use-palmtoast'
 import { combinedSlug } from '@/lib/utils'
+import { getGreeting } from '@/lib/greeting'
+import ProjectToolbar, { ProjectVisibilityTab } from '@/components/home/project-toolbar'
+import ProjectSections from '@/components/home/project-sections'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-function thumbnailToSrc(thumbnail: string | undefined): string | null {
-    if (!thumbnail) return null
-    if (thumbnail.startsWith('linear-gradient')) {
-        const colors = thumbnail.match(/#[a-fA-F0-9]{6}/g) || ['#888', '#444']
-        const [c1, c2] = colors.length >= 2 ? [colors[0], colors[1]] : [colors[0] || '#888', '#444']
-        const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20"><defs><linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="${c1}"/><stop offset="100%" stop-color="${c2}"/></linearGradient></defs><rect width="20" height="20" rx="4" fill="url(#g)"/></svg>`
-        return `data:image/svg+xml,${encodeURIComponent(svg)}`
-    }
-    return null
-}
-
 function isColorDark(color: string | undefined): boolean {
     const hex = (color?.match(/#[a-fA-F0-9]{6}/) || [])[0]
     if (!hex) return true
@@ -47,28 +39,6 @@ function isColorDark(color: string | undefined): boolean {
     const b = parseInt(hex.slice(5, 7), 16)
     return (0.299 * r + 0.587 * g + 0.114 * b) / 255 < 0.35
 }
-
-function getGreeting(name: string) {
-    const h = new Date().getHours()
-    const time = h < 12 ? 'morning' : h < 17 ? 'afternoon' : 'evening'
-    const first = name.split(' ')[0]
-    return `Good ${time}, ${first}.`
-}
-
-// ─── Prompts ──────────────────────────────────────────────────────────────────
-const ALL_PROMPTS = [
-    { short: 'Landing page for a coffee roastery', long: "Build a modern landing page for an artisan coffee roastery called 'Bean Canvas'. Include a hero section, featured blends with tasting notes, about section, testimonials, and newsletter signup. Use warm earth tones." },
-    { short: 'Fitness tracker dashboard', long: 'Create a comprehensive fitness tracking dashboard with step count, calories, heart rate trends, workout history, weekly goals, and achievements. Energetic color scheme.' },
-    { short: 'E-commerce product listing', long: 'Design an e-commerce product listing page with filtering, grid view, sidebar filters, sorting options, quick-view cards, and a cart indicator.' },
-    { short: 'Task management app', long: 'Build a task management interface with a sidebar, Kanban columns (To Do, In Progress, Done), task cards with assignee and due date, and a detail panel.' },
-    { short: 'SaaS analytics dashboard', long: 'Create a professional analytics dashboard with KPI cards, line charts, heatmaps, sortable data tables. Clean minimal design.' },
-    { short: 'Hotel booking interface', long: 'Design a luxury hotel booking platform with hero search, property cards, photo galleries, room options, and checkout. Elegant typography.' },
-    { short: 'Music streaming app', long: 'Build a music streaming interface with sidebar playlists, album artwork, waveform viz, playback controls, and search. Dark theme.' },
-    { short: 'Social media feed', long: 'Create a social feed with story avatars, post cards, engagement metrics, nested comments, and trending sidebar.' },
-    { short: 'Weather application', long: 'Build a weather app with large temp display, hourly and 7-day forecast, metrics (humidity, UV, wind), radar map, location search.' },
-    { short: 'Project management board', long: 'Design a Kanban board with Backlog → Done columns, draggable cards with avatars and priority, and team/filter sidebar.' },
-]
-const getRandomPrompts = () => [...ALL_PROMPTS].sort(() => Math.random() - 0.5).slice(0, 3)
 
 // ─── HomeShell ────────────────────────────────────────────────────────────────
 interface Props {
@@ -99,21 +69,29 @@ export default function HomeShell({ profile, view = 'home' }: Props) {
     const [isDragging, setIsDragging] = useState(false)
     const [urlMode, setUrlMode] = useState(false)
     const [urlInputValue, setUrlInputValue] = useState('')
-    const CATEGORIES = [
-        { icon: <LayoutDashboard style={{ width: 13, height: 13 }} />, label: 'Dashboard', prompt: 'Create a professional SaaS analytics dashboard with KPI cards, line charts, user activity heatmap, and sortable data tables. Clean minimal design with a sidebar nav.' },
-        { icon: <Globe style={{ width: 13, height: 13 }} />, label: 'Landing page', prompt: 'Build a bold, modern landing page for a tech startup. Hero section with headline and CTA, features grid, testimonials, and a pricing section.' },
-        { icon: <Smartphone style={{ width: 13, height: 13 }} />, label: 'Mobile app', prompt: 'Design a clean mobile app UI with onboarding screens, a home feed, bottom nav bar, and a profile page. iOS-style, minimal.' },
-        { icon: <ShoppingBag style={{ width: 13, height: 13 }} />, label: 'E-commerce', prompt: 'Design an e-commerce product page with image gallery, size selector, reviews, related products, and add-to-cart. Premium fashion aesthetic.' },
-        { icon: <Shuffle style={{ width: 13, height: 13 }} />, label: 'Surprise me', prompt: ALL_PROMPTS[Math.floor(Math.random() * ALL_PROMPTS.length)].long },
-    ]
 
     const [selectedProject, setSelectedProject] = useState<{ _id: string; name: string } | null>(null)
+    const [activeTab, setActiveTab] = useState<ProjectVisibilityTab>('all')
+    const [projectSearchQuery, setProjectSearchQuery] = useState('')
 
     const textareaRef = useRef<HTMLTextAreaElement>(null)
+    const searchInputRef = useRef<HTMLInputElement>(null)
     const dragCounter = useRef(0)
     const pendingSendRef = useRef(false)
     const uploadAbortControllers = useRef<Map<string, AbortController>>(new Map())
     const uploadedImagesRef = useRef<ImageItem[]>([])
+
+    // Focus search on Ctrl+K / Cmd+K
+    React.useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+                e.preventDefault()
+                searchInputRef.current?.focus()
+            }
+        }
+        window.addEventListener('keydown', handleKeyDown)
+        return () => window.removeEventListener('keydown', handleKeyDown)
+    }, [])
 
     // Auto-resize textarea when persisted prompt loads
     React.useEffect(() => {
@@ -263,172 +241,45 @@ export default function HomeShell({ profile, view = 'home' }: Props) {
     const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSubmit() } }
 
     // ── Render ────────────────────────────────────────────────────────────────
+    const spinnerColor = isLight
+        ? (prompt.trim() ? '#fff' : 'rgba(0,0,0,0.3)')
+        : (prompt.trim() ? '#000' : 'rgba(255,255,255,0.3)')
+
+    const createProjectMutation = useMutation(api.projects.createProject)
+
+    const handleNew = async (visibility?: ProjectVisibilityTab) => {
+        try {
+            setSelectedProject(null)
+            const targetVisibility = visibility || activeTab || 'workspace'
+            const res = await createProjectMutation({
+                visibility: targetVisibility === 'private' ? 'private' : 'workspace',
+            })
+            if (res?._id) {
+                router.push(`/dashboard/${userSlug}/canvas?project=${res._id}`)
+            }
+        } catch (e) {
+            console.error('Failed to create new project', e)
+        }
+    }
+
     return (
         <>
-            <div style={{ display: 'flex', minHeight: '100dvh', background: isLight ? '#fafafa' : '#0a0a0a', position: 'relative', overflow: 'hidden' }}>
-                <DotParticleBackground isLight={isLight} />
+            <div style={{ display: 'flex', height: '100vh', width: '100vw', background: isLight ? '#ffffff' : '#0a0a0a', position: 'relative', overflow: 'hidden' }}>
+                {/* <DotParticleBackground isLight={isLight} /> */}
 
-                {/* ── Sidebar — only shown on projects/trash views ── */}
-                <AnimatePresence>
-                    {sideOpen && (
-                        <motion.aside
-                            initial={{ width: 0, opacity: 0 }}
-                            animate={{ width: 240, opacity: 1 }}
-                            exit={{ width: 0, opacity: 0 }}
-                            transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
-                            style={{
-                                flexShrink: 0, height: '100vh', position: 'fixed', top: 0, left: 0,
-                                borderRight: `1px solid ${border}`,
-                                background: isLight ? '#f0f0f0' : 'rgba(10,10,10,0.9)',
-                                backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)',
-                                display: 'flex', flexDirection: 'column', zIndex: 20, overflow: 'hidden',
-                            }}
-                        >
-                            {/* ── Logo + collapse ── */}
-                            <div style={{
-                                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                                padding: '18px 18px 0', flexShrink: 0,
-                            }}>
-                                <Link href={`/dashboard/${userSlug}`} style={{ display: 'flex', alignItems: 'center', gap: 8, textDecoration: 'none' }}>
-                                    <div style={{ width: 20, height: 20, borderRadius: 5, background: text, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                                        <div style={{ width: 7, height: 7, borderRadius: '50%', background: isLight ? '#fff' : '#0a0a0a' }} />
-                                    </div>
-                                    <span style={{ fontSize: 13, fontWeight: 600, color: text, letterSpacing: '-0.015em' }}>Palm</span>
-                                </Link>
-                                <button
-                                    onClick={() => dispatch(toggleSidebar())}
-                                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: muted, padding: 4, display: 'flex', borderRadius: 6, transition: 'color 0.12s' }}
-                                    onMouseEnter={e => e.currentTarget.style.color = text}
-                                    onMouseLeave={e => e.currentTarget.style.color = muted}
-                                >
-                                    <PanelLeft style={{ width: 14, height: 14 }} />
-                                </button>
-                            </div>
-
-                            {/* ── Nav ── */}
-                            <div style={{ padding: '28px 10px 0', flexShrink: 0 }}>
-                                {[
-                                    { icon: <Home style={{ width: 13, height: 13 }} />, label: 'Home', v: 'home' },
-                                    { icon: <LayoutGrid style={{ width: 13, height: 13 }} />, label: 'Projects', v: 'projects' },
-                                    ...((hasDeleted || hasDeletedOptimistic) ? [{ icon: <Trash2 style={{ width: 13, height: 13 }} />, label: 'Trash', v: 'trash' }] : []),
-                                ].map(({ icon, label, v }) => {
-                                    const active = view === v
-                                    return (
-                                        <button
-                                            key={v}
-                                            onClick={() => router.push(v === 'home' ? `/dashboard/${userSlug}` : `/dashboard/${userSlug}/${v}`)}
-                                            style={{
-                                                display: 'flex', alignItems: 'center', gap: 9, width: '100%',
-                                                padding: '8px 10px', borderRadius: 8, border: 'none',
-                                                background: active ? (isLight ? 'rgba(0,0,0,0.055)' : 'rgba(255,255,255,0.07)') : 'transparent',
-                                                color: active ? text : muted,
-                                                fontSize: 13, fontWeight: active ? 500 : 400,
-                                                cursor: 'pointer', textAlign: 'left',
-                                                letterSpacing: '-0.012em',
-                                                transition: 'background 0.12s, color 0.12s',
-                                                marginBottom: 1,
-                                            }}
-                                            onMouseEnter={e => {
-                                                if (!active) {
-                                                    e.currentTarget.style.background = isLight ? 'rgba(0,0,0,0.035)' : 'rgba(255,255,255,0.04)'
-                                                    e.currentTarget.style.color = text
-                                                }
-                                            }}
-                                            onMouseLeave={e => {
-                                                if (!active) {
-                                                    e.currentTarget.style.background = 'transparent'
-                                                    e.currentTarget.style.color = muted
-                                                }
-                                            }}
-                                        >
-                                            {icon}{label}
-                                        </button>
-                                    )
-                                })}
-                            </div>
-
-                            {/* ── Divider + Recent label / Empty state ── */}
-                            {projects.length > 0 ? (
-                                <>
-                                    <div style={{ padding: '28px 18px 10px', flexShrink: 0 }}>
-                                        <div style={{ height: 1, background: border, marginBottom: 16 }} />
-                                        <p style={{
-                                            fontSize: 10, letterSpacing: '0.12em', textTransform: 'uppercase',
-                                            color: muted, margin: 0,
-                                        }}>
-                                            Recent
-                                        </p>
-                                    </div>
-
-                                    {/* ── Project list ── */}
-                                    <div style={{ flex: 1, overflowY: 'auto', padding: '0 10px 20px', scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch' }}>
-                                        {projects.map(p => {
-                                            const src = thumbnailToSrc(p.thumbnail)
-                                            return (
-                                                <Link
-                                                    key={p._id}
-                                                    href={`/dashboard/${userSlug}/canvas?project=${p._id}`}
-                                                    style={{
-                                                        display: 'flex', alignItems: 'center', gap: 10,
-                                                        padding: '7px 10px', borderRadius: 8,
-                                                        textDecoration: 'none',
-                                                        transition: 'background 0.12s',
-                                                        marginBottom: 1,
-                                                    }}
-                                                    onMouseEnter={e => e.currentTarget.style.background = isLight ? 'rgba(0,0,0,0.04)' : 'rgba(255,255,255,0.04)'}
-                                                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                                                >
-                                                    {/* Thumbnail */}
-                                                    <div style={{
-                                                        width: 30, height: 30, borderRadius: 7, overflow: 'hidden',
-                                                        flexShrink: 0, border: `1px solid ${border}`,
-                                                    }}>
-                                                        {src
-                                                            ? <img src={src} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="" />
-                                                            : <div style={{ width: '100%', height: '100%', background: p.thumbnail || '#888' }} />
-                                                        }
-                                                    </div>
-
-                                                    {/* Text */}
-                                                    <div style={{ minWidth: 0 }}>
-                                                        <p style={{
-                                                            fontSize: 12, fontWeight: 400, margin: 0, color: text,
-                                                            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                                                            letterSpacing: '-0.01em', lineHeight: 1.35,
-                                                        }}>
-                                                            {p.name}
-                                                        </p>
-                                                        <p style={{
-                                                            fontSize: 10, margin: '2px 0 0', color: muted,
-                                                            opacity: 0.55, letterSpacing: '0em',
-                                                        }}>
-                                                            {formatDistanceToNow(new Date(p.lastModified), { addSuffix: true })}
-                                                        </p>
-                                                    </div>
-                                                </Link>
-                                            )
-                                        })}
-                                    </div>
-                                </>
-                            ) : (
-                                <div style={{ padding: '24px 18px', flexShrink: 0 }}>
-                                    <div style={{ height: 1, background: border, marginBottom: 14 }} />
-                                    <p style={{
-                                        fontSize: 12,
-                                        color: muted,
-                                        margin: 0,
-                                        letterSpacing: '-0.01em',
-                                    }}>
-                                        No projects yet
-                                    </p>
-                                </div>
-                            )}
-                        </motion.aside>
-                    )}
-                </AnimatePresence>
+                <Sidebar
+                    userSlug={userSlug}
+                    isLight={isLight}
+                    text={text}
+                    muted={muted}
+                    border={border}
+                    view={view}
+                    hasDeleted={!!(hasDeleted || hasDeletedOptimistic)}
+                    onNewProject={handleNew}
+                />
 
                 {/* ── Main ── */}
-                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, position: 'relative', zIndex: 10, marginLeft: sideOpen ? 240 : 0, transition: 'margin-left 0.22s ease' }}>
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, height: '100vh', position: 'relative', zIndex: 10, overflow: 'hidden' }}>
 
                     {/* Topbar */}
                     <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 20px', flexShrink: 0 }}>
@@ -438,91 +289,28 @@ export default function HomeShell({ profile, view = 'home' }: Props) {
                             <button className="md:hidden" onClick={() => setIsMobileDrawerOpen(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: muted, padding: 4 }}>
                                 <PanelLeft style={{ width: 16, height: 16 }} />
                             </button>
-
-                            {/* Sidebar toggle */}
-                            {!sideOpen && (
-                                <GlassTooltip content="Open sidebar" side="right">
-                                    <button
-                                        onClick={() => dispatch(toggleSidebar())}
-                                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: muted, padding: 4, alignItems: 'center' }}
-                                        className="hidden md:flex"
-                                    >
-                                        <PanelLeft style={{ width: 15, height: 15 }} />
-                                    </button>
-                                </GlassTooltip>
-                            )}
-
-                            {/* Logo — only on home when sidebar is closed */}
-                            {!sideOpen && (
-                                <Link href={`/dashboard/${userSlug}`} style={{ display: 'flex', alignItems: 'center', gap: 7, textDecoration: 'none' }}>
-                                    <div style={{ width: 20, height: 20, borderRadius: 5, background: text, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                        <div style={{ width: 7, height: 7, borderRadius: '50%', background: isLight ? '#fff' : '#0a0a0a' }} />
-                                    </div>
-                                    <span style={{ fontSize: 13, fontWeight: 600, color: text, letterSpacing: '-0.01em' }}>Palm</span>
-                                </Link>
-                            )}
                         </div>
 
                         {/* Right */}
                         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                            {creditBalance !== undefined && (
-                                <Link
-                                    href={`/billing/${userSlug}`}
-                                    title="View credits & billing"
-                                    style={{
-                                        display: 'inline-flex',
-                                        alignItems: 'center',
-                                        gap: 6,
-                                        height: 30,
-                                        padding: '0 10px 0 9px',
-                                        borderRadius: 9999,
-                                        border: `1px solid ${isLight ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.09)'}`,
-                                        background: isLight ? 'rgba(0,0,0,0.035)' : 'rgba(255,255,255,0.05)',
-                                        boxShadow: isLight ? '0 1px 2px rgba(0,0,0,0.02)' : '0 1px 2px rgba(0,0,0,0.2)',
-                                        textDecoration: 'none',
-                                        cursor: 'pointer',
-                                        transition: 'all 0.15s ease',
-                                    }}
-                                    onMouseEnter={e => {
-                                        e.currentTarget.style.background = isLight ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.08)'
-                                        e.currentTarget.style.borderColor = isLight ? 'rgba(0,0,0,0.15)' : 'rgba(255,255,255,0.18)'
-                                        e.currentTarget.style.transform = 'translateY(-0.5px)'
-                                    }}
-                                    onMouseLeave={e => {
-                                        e.currentTarget.style.background = isLight ? 'rgba(0,0,0,0.035)' : 'rgba(255,255,255,0.05)'
-                                        e.currentTarget.style.borderColor = isLight ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.09)'
-                                        e.currentTarget.style.transform = 'translateY(0)'
-                                    }}
-                                >
-                                    <PalmLeafIcon color={isLight ? '#0a0a0a' : '#ffffff'} />
-                                    <span style={{
-                                        fontSize: 12,
-                                        fontWeight: 600,
-                                        color: text,
-                                        fontVariantNumeric: 'tabular-nums',
-                                        letterSpacing: '-0.01em',
-                                    }}>
-                                        {creditBalance}
-                                    </span>
-                                    <span style={{
-                                        fontSize: 11,
-                                        fontWeight: 450,
-                                        color: isLight ? 'rgba(0,0,0,0.45)' : 'rgba(255,255,255,0.45)',
-                                        letterSpacing: '-0.01em',
-                                    }}>
-                                        credits
-                                    </span>
-                                </Link>
-                            )}
-                            <AvatarDropdown creditBalance={creditBalance ?? 0} />
+                            {/* <AvatarDropdown creditBalance={creditBalance ?? 0} /> */}
                         </div>
                     </header>
 
                     {/* Content */}
-                    <main style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: view === 'home' ? 'center' : 'flex-start', padding: view === 'home' ? '0 24px 80px' : '32px 24px 80px' }}>
+                    <main style={{
+                        flex: 1,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        justifyContent: 'flex-start',
+                        overflowY: 'auto',
+                        width: '100%',
+                    }}>
+                        <div style={{ width: '100%', maxWidth: 1400, margin: '0 auto', padding: '12px 32px 80px' }}>
 
                         {view === 'projects' ? (
-                            <div style={{ width: '100%', maxWidth: 1200 }}>
+                            <div style={{ width: '100%' }}>
                                 <ProjectsList onProjectDelete={() => setHasDeletedOptimistic(true)} />
                             </div>
                         ) : view === 'trash' ? (
@@ -532,82 +320,119 @@ export default function HomeShell({ profile, view = 'home' }: Props) {
                                 initial={{ opacity: 0, y: 16 }}
                                 animate={{ opacity: 1, y: 0 }}
                                 transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
-                                style={{ width: '100%', maxWidth: 640, display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}
+                                style={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}
                             >
-                                {/* Greeting */}
-                                <p style={{ fontSize: 13, color: muted, margin: '0 0 4px', letterSpacing: '-0.01em' }}>
-                                    Hi, {me.name?.split(' ')[0] ?? 'there'}.
-                                </p>
-                                <h1 style={{ fontSize: 28, fontWeight: 600, color: text, margin: '0 0 20px', letterSpacing: '-0.03em', lineHeight: 1.15 }}>
-                                    What will you build today?
-                                </h1>
+                                {/* ── Greeting & Search Row ── */}
+                                <div
+                                    style={{
+                                        width: '100%',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'space-between',
+                                        gap: 16,
+                                        margin: '-6px 0 16px',
+                                        flexWrap: 'wrap',
+                                    }}
+                                >
+                                    <h1 style={{ fontSize: 24, fontWeight: 600, color: text, margin: 0, letterSpacing: '-0.025em', lineHeight: 1.2 }}>
+                                        {getGreeting(me?.name ?? profile?.name)}
+                                    </h1>
 
-                                {/* Jump back in — recent projects row */}
-                                {projects.length > 0 && (
-                                    <div style={{ width: '100%', maxWidth: 640, marginBottom: 14 }}>
-                                        <p style={{
-                                            fontSize: 11, color: muted, letterSpacing: '0.08em',
-                                            textTransform: 'uppercase', margin: '0 0 8px',
-                                        }}>
-                                            Jump back in
-                                        </p>
-
-                                        {/* Scroll container */}
-                                        <div style={{ position: 'relative' }}>
-                                            <div style={{
-                                                display: 'flex', gap: 6, overflowX: 'auto',
-                                                scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch',
-                                                paddingBottom: 2,
-                                            }}>
-                                                {projects.slice(0, 3).map(p => {
-                                                    const src = thumbnailToSrc(p.thumbnail)
-                                                    const isSelected = selectedProject?._id === p._id
-                                                    return (
-                                                        <button
-                                                            key={p._id}
-                                                            onClick={() => setSelectedProject(isSelected ? null : { _id: p._id, name: p.name })}
-                                                            style={{
-                                                                display: 'flex', alignItems: 'center', gap: 7, flexShrink: 0,
-                                                                padding: '5px 10px 5px 7px', borderRadius: 20,
-                                                                border: `1px solid ${isSelected
-                                                                    ? (isLight ? 'rgba(0,0,0,0.28)' : 'rgba(255,255,255,0.28)')
-                                                                    : border}`,
-                                                                background: isSelected
-                                                                    ? (isLight ? 'rgba(0,0,0,0.07)' : 'rgba(255,255,255,0.09)')
-                                                                    : (isLight ? 'rgba(0,0,0,0.03)' : 'rgba(255,255,255,0.04)'),
-                                                                color: isSelected ? text : muted,
-                                                                fontSize: 12, fontWeight: isSelected ? 500 : 400,
-                                                                cursor: 'pointer', letterSpacing: '-0.01em',
-                                                                whiteSpace: 'nowrap',
-                                                                transition: 'all 0.15s ease',
-                                                            }}
-                                                        >
-                                                            {src
-                                                                ? <img src={src} style={{ width: 16, height: 16, borderRadius: 4, flexShrink: 0 }} alt="" />
-                                                                : <div style={{ width: 16, height: 16, borderRadius: 4, flexShrink: 0, background: p.thumbnail || '#888' }} />
-                                                            }
-                                                            {p.name}
-                                                            {isSelected && (
-                                                                <X
-                                                                    style={{ width: 11, height: 11, marginLeft: 2, opacity: 0.5 }}
-                                                                    onClick={e => { e.stopPropagation(); setSelectedProject(null) }}
-                                                                />
-                                                            )}
-                                                        </button>
-                                                    )
-                                                })}
+                                    {/* Top-Right Search Input */}
+                                    <div
+                                        style={{
+                                            position: 'relative',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            width: '100%',
+                                            maxWidth: 270,
+                                            minWidth: 190,
+                                        }}
+                                    >
+                                        <Search
+                                            style={{
+                                                position: 'absolute',
+                                                left: 11,
+                                                width: 14,
+                                                height: 14,
+                                                color: muted,
+                                                pointerEvents: 'none',
+                                            }}
+                                        />
+                                        <input
+                                            ref={searchInputRef}
+                                            type="text"
+                                            value={projectSearchQuery}
+                                            onChange={(e) => setProjectSearchQuery(e.target.value)}
+                                            placeholder="Search projects"
+                                            style={{
+                                                width: '100%',
+                                                height: 35,
+                                                padding: '0 56px 0 33px',
+                                                fontSize: 13,
+                                                borderRadius: 10,
+                                                border: `1px solid ${border}`,
+                                                background: isLight ? '#ffffff' : 'rgba(255,255,255,0.04)',
+                                                color: text,
+                                                outline: 'none',
+                                                transition: 'border-color 0.15s ease, box-shadow 0.15s ease',
+                                            }}
+                                            onFocus={(e) => {
+                                                e.currentTarget.style.borderColor = isLight ? '#000000' : 'rgba(255,255,255,0.4)'
+                                            }}
+                                            onBlur={(e) => {
+                                                e.currentTarget.style.borderColor = border
+                                            }}
+                                        />
+                                        {projectSearchQuery ? (
+                                            <button
+                                                onClick={() => {
+                                                    setProjectSearchQuery('')
+                                                    searchInputRef.current?.focus()
+                                                }}
+                                                type="button"
+                                                style={{
+                                                    position: 'absolute',
+                                                    right: 8,
+                                                    width: 18,
+                                                    height: 18,
+                                                    borderRadius: '50%',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'center',
+                                                    background: isLight ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.1)',
+                                                    border: 'none',
+                                                    color: muted,
+                                                    cursor: 'pointer',
+                                                    padding: 0,
+                                                }}
+                                            >
+                                                <X style={{ width: 11, height: 11 }} />
+                                            </button>
+                                        ) : (
+                                            <div
+                                                style={{
+                                                    position: 'absolute',
+                                                    right: 8,
+                                                    padding: '2px 5px',
+                                                    borderRadius: 4,
+                                                    fontSize: 10,
+                                                    fontWeight: 500,
+                                                    letterSpacing: '0.02em',
+                                                    background: isLight ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.08)',
+                                                    color: muted,
+                                                    pointerEvents: 'none',
+                                                    userSelect: 'none',
+                                                }}
+                                            >
+                                                ⌘K
                                             </div>
-
-                                            {/* Fade-out right edge */}
-                                            <div style={{
-                                                position: 'absolute', right: 0, top: 0, bottom: 0, width: 32, pointerEvents: 'none',
-                                                background: `linear-gradient(to right, transparent, ${isLight ? '#fafafa' : '#0a0a0a'})`,
-                                            }} />
-                                        </div>
+                                        )}
                                     </div>
-                                )}
+                                </div>
 
-                                {/* ── Input Card ── */}
+                                {/* ── Input Card (Commented out) ── */}
+                                {/*
                                 <div className={`palm-input-wrapper${isLight ? ' is-light' : ''}`} style={{ width: '100%', maxWidth: 640 }}>
                                     <motion.div
                                         layout
@@ -628,7 +453,7 @@ export default function HomeShell({ profile, view = 'home' }: Props) {
                                     >
                                         <div style={{ padding: '14px 14px 10px' }}>
 
-                                            {/* Selected project tag */}
+                                            // Selected project tag
                                             <AnimatePresence>
                                                 {selectedProject && (
                                                     <motion.div
@@ -658,10 +483,10 @@ export default function HomeShell({ profile, view = 'home' }: Props) {
                                                 )}
                                             </AnimatePresence>
 
-                                            {/* Image previews */}
+                                            // Image previews
                                             <ImagePreview images={uploadedImages} onRemove={handleRemoveImage} isLight={isLight} />
 
-                                            {/* URL tags */}
+                                            // URL tags
                                             <AnimatePresence>
                                                 {urlTags.length > 0 && (
                                                     <motion.div
@@ -692,7 +517,7 @@ export default function HomeShell({ profile, view = 'home' }: Props) {
                                                 )}
                                             </AnimatePresence>
 
-                                            {/* Textarea */}
+                                            // Textarea
                                             <textarea
                                                 ref={textareaRef}
                                                 value={prompt}
@@ -723,10 +548,10 @@ export default function HomeShell({ profile, view = 'home' }: Props) {
                                                 }}
                                             />
 
-                                            {/* Toolbar */}
+                                            // Toolbar
                                             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10 }}>
 
-                                                {/* Attachment */}
+                                                // Attachment
                                                 <AttachmentMenu
                                                     onUpload={handleUpload}
                                                     onUrl={() => setUrlMode(true)}
@@ -736,7 +561,7 @@ export default function HomeShell({ profile, view = 'home' }: Props) {
                                                     isLight={isLight}
                                                 />
 
-                                                {/* URL input mode */}
+                                                // URL input mode
                                                 <AnimatePresence mode="wait">
                                                     {urlMode ? (
                                                         <motion.div
@@ -774,7 +599,7 @@ export default function HomeShell({ profile, view = 'home' }: Props) {
                                                             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
                                                             style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8 }}
                                                         >
-                                                            {/* Mic */}
+                                                            // Mic
                                                             <MicButton
                                                                 onTranscript={t => {
                                                                     console.log('[STT] received:', t)
@@ -785,7 +610,7 @@ export default function HomeShell({ profile, view = 'home' }: Props) {
                                                                 disabled={isLoading}
                                                             />
 
-                                                            {/* Send — always visible */}
+                                                            // Send — always visible
                                                             <button
                                                                 onClick={handleSubmit}
                                                                 disabled={!prompt.trim() || isLoading}
@@ -800,7 +625,7 @@ export default function HomeShell({ profile, view = 'home' }: Props) {
                                                                 }}
                                                             >
                                                                 {(isLoading || pendingSend)
-                                                                    ? <div style={{ width: 13, height: 13, borderTop: '2px solid transparent', borderRight: `2px solid ${isLight ? (prompt.trim() ? '#fff' : 'rgba(0,0,0,0.3)') : (prompt.trim() ? '#000' : 'rgba(255,255,255,0.3)')}`, borderBottom: `2px solid ${isLight ? (prompt.trim() ? '#fff' : 'rgba(0,0,0,0.3)') : (prompt.trim() ? '#000' : 'rgba(255,255,255,0.3)')}`, borderLeft: `2px solid ${isLight ? (prompt.trim() ? '#fff' : 'rgba(0,0,0,0.3)') : (prompt.trim() ? '#000' : 'rgba(255,255,255,0.3)')}`, borderRadius: '50%', animation: 'spin 0.6s linear infinite' }} />
+                                                                    ? <div style={{ width: 13, height: 13, border: `2px solid ${spinnerColor}`, borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.6s linear infinite' }} />
                                                                     : <ArrowUp style={{ width: 15, height: 15, strokeWidth: 2, color: prompt.trim() ? (isLight ? '#fff' : '#000') : (isLight ? 'rgba(0,0,0,0.28)' : 'rgba(255,255,255,0.28)') }} />
                                                                 }
                                                             </button>
@@ -811,55 +636,33 @@ export default function HomeShell({ profile, view = 'home' }: Props) {
                                         </div>
                                     </motion.div>
                                 </div>
+                                */}
 
-                                {/* Category chips */}
-                                <div style={{
-                                    position: 'relative', width: '100%', maxWidth: 640, marginTop: 14,
-                                }}>
-                                    <div style={{
-                                        display: 'flex', gap: 6, overflowX: 'auto',
-                                        scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch',
-                                        paddingBottom: 2,
-                                    }}>
-                                        {CATEGORIES.map((c, i) => (
-                                            <button
-                                                key={i}
-                                                onClick={() => setPrompt(c.prompt)}
-                                                style={{
-                                                    display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0,
-                                                    padding: '6px 12px', borderRadius: 8,
-                                                    border: `1px solid ${border}`,
-                                                    background: isLight ? 'rgba(0,0,0,0.03)' : 'rgba(255,255,255,0.04)',
-                                                    color: isLight ? 'rgba(0,0,0,0.55)' : 'rgba(255,255,255,0.55)',
-                                                    fontSize: 13, cursor: 'pointer', letterSpacing: '-0.01em',
-                                                    whiteSpace: 'nowrap',
-                                                    transition: 'background 0.12s, color 0.12s, border-color 0.12s',
-                                                }}
-                                                onMouseEnter={e => {
-                                                    e.currentTarget.style.background = isLight ? 'rgba(0,0,0,0.07)' : 'rgba(255,255,255,0.08)'
-                                                    e.currentTarget.style.color = text
-                                                    e.currentTarget.style.borderColor = isLight ? 'rgba(0,0,0,0.18)' : 'rgba(255,255,255,0.18)'
-                                                }}
-                                                onMouseLeave={e => {
-                                                    e.currentTarget.style.background = isLight ? 'rgba(0,0,0,0.03)' : 'rgba(255,255,255,0.04)'
-                                                    e.currentTarget.style.color = isLight ? 'rgba(0,0,0,0.55)' : 'rgba(255,255,255,0.55)'
-                                                    e.currentTarget.style.borderColor = border
-                                                }}
-                                            >
-                                                <span style={{ opacity: 0.55, display: 'flex', alignItems: 'center' }}>{c.icon}</span>
-                                                {c.label}
-                                            </button>
-                                        ))}
-                                    </div>
+                                {/* ── Project Filter Toolbar ── */}
+                                <ProjectToolbar
+                                    activeTab={activeTab}
+                                    onTabChange={setActiveTab}
+                                    isLight={isLight}
+                                    text={text}
+                                    muted={muted}
+                                    border={border}
+                                />
 
-                                    {/* Fade-out right edge */}
-                                    <div style={{
-                                        position: 'absolute', right: 0, top: 0, bottom: 0, width: 32, pointerEvents: 'none',
-                                        background: `linear-gradient(to right, transparent, ${isLight ? '#fafafa' : '#0a0a0a'})`,
-                                    }} />
-                                </div>
+                                {/* ── Project Sections: Folders + Filtered Projects Grid ── */}
+                                <ProjectSections
+                                    projects={projects}
+                                    activeTab={activeTab}
+                                    searchQuery={projectSearchQuery}
+                                    userSlug={userSlug}
+                                    isLight={isLight}
+                                    text={text}
+                                    muted={muted}
+                                    border={border}
+                                    onNewProject={handleNew}
+                                />
                             </motion.div>
                         )}
+                        </div>
                     </main>
                 </div>
             </div>
@@ -906,6 +709,18 @@ export default function HomeShell({ profile, view = 'home' }: Props) {
                     );
                 }
                 .palm-input-wrapper > * { position: relative; z-index: 1; }
+
+                .palm-grid {
+                    display: grid;
+                    grid-template-columns: repeat(3, minmax(0, 1fr));
+                    gap: 12px;
+                }
+                .palm-feature { grid-column: span 2; }
+                @media (max-width: 640px) {
+                    .palm-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+                    .palm-feature { grid-column: span 2; }
+                }
+
                 @keyframes circuit { to { --angle: 360deg; } }
                 @keyframes spin { to { transform: rotate(360deg) } }
                 @keyframes pulse-dot {
@@ -933,18 +748,5 @@ export default function HomeShell({ profile, view = 'home' }: Props) {
                 isColorDark={isColorDark}
             />
         </>
-    )
-}
-
-function PalmLeafIcon({ color, size = 13 }: { color: string; size?: number }) {
-    return (
-        <svg width={size} height={size} viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0, opacity: 0.9 }}>
-            <path d="M8 14.5V7.5" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
-            <path d="M8 7.5C8 7.5 3.8 6.5 2.8 3.5C5.3 3 8 4.8 8 7.5Z" fill={color} fillOpacity="0.85" />
-            <path d="M8 7.5C8 7.5 12.2 6.5 13.2 3.5C10.7 3 8 4.8 8 7.5Z" fill={color} fillOpacity="0.85" />
-            <path d="M8 7.5C8 7.5 6.8 3.5 9 1.5C10.5 3 10 5.5 8 7.5Z" fill={color} fillOpacity="0.95" />
-            <path d="M8 8.8C8 8.8 4.8 9.3 3.8 7.2C5.8 6.2 8 7.8 8 8.8Z" fill={color} fillOpacity="0.7" />
-            <path d="M8 8.8C8 8.8 11.2 9.3 12.2 7.2C10.2 6.2 8 7.8 8 8.8Z" fill={color} fillOpacity="0.7" />
-        </svg>
     )
 }

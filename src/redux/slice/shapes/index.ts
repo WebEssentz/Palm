@@ -128,6 +128,7 @@ interface ShapesState {
   frameCounter: number;
   past: Array<EntityState<Shape, string>>;
   future: Array<EntityState<Shape, string>>;
+  isLoaded: boolean;
 }
 
 const initialState: ShapesState = {
@@ -137,6 +138,7 @@ const initialState: ShapesState = {
   frameCounter: 0,
   past: [],
   future: [],
+  isLoaded: false,
 };
 
 const MAX_HISTORY = 40;
@@ -424,6 +426,7 @@ const shapesSlice = createSlice({
       shapesAdapter.removeAll(state.shapes);
       state.selected = {};
       state.frameCounter = 0;
+      state.isLoaded = false;
     },
 
     undo(state) {
@@ -643,31 +646,41 @@ const shapesSlice = createSlice({
     },
     loadProject(
       state,
-      action: PayloadAction<{
-        shapes: EntityState<Shape, string>;
-        tool: Tool;
-        selected: SelectionMap;
-        frameCounter: number;
-      }>
+      action: PayloadAction<
+        | {
+            shapes?: EntityState<Shape, string>;
+            tool?: Tool;
+            selected?: SelectionMap;
+            frameCounter?: number;
+          }
+        | undefined
+      >
     ) {
-      // Guard — new projects have no shapes data yet
-      const incoming = action.payload.shapes
+      const payload = action.payload ?? {};
+      const incoming = (payload as any)?.shapes?.ids
+        ? (payload as any).shapes
+        : (payload as any)?.ids
+          ? payload
+          : null;
+
       if (!incoming || !incoming.ids) {
-        state.shapes = shapesAdapter.getInitialState()
-        state.tool = action.payload.tool ?? 'select'
-        state.selected = action.payload.selected ?? {}
-        state.frameCounter = action.payload.frameCounter ?? 0
-        state.past = []
-        state.future = []
-        return
+        state.shapes = shapesAdapter.getInitialState();
+        state.tool = (payload as any)?.tool ?? "select";
+        state.selected = (payload as any)?.selected ?? {};
+        state.frameCounter = (payload as any)?.frameCounter ?? 0;
+        state.past = [];
+        state.future = [];
+        state.isLoaded = true;
+        return;
       }
 
-      state.shapes = incoming
-      state.tool = action.payload.tool
-      state.selected = action.payload.selected
-      state.frameCounter = action.payload.frameCounter ?? 0
-      state.past = []
-      state.future = []
+      state.shapes = incoming;
+      state.tool = (payload as any)?.tool ?? "select";
+      state.selected = (payload as any)?.selected ?? {};
+      state.frameCounter = (payload as any)?.frameCounter ?? 0;
+      state.past = [];
+      state.future = [];
+      state.isLoaded = true;
 
       // Heal any existing NaN frameNumbers
       let maxFrameNumber = state.frameCounter;
@@ -711,5 +724,19 @@ export const {
   duplicateSelected,
   loadProject,
 } = shapesSlice.actions;
+
+const emptyShapes = shapesAdapter.getInitialState();
+
+export const shapesSelectors = shapesAdapter.getSelectors<{ shapes?: ShapesState }>(
+  (state) => state.shapes?.shapes ?? emptyShapes
+);
+
+export const {
+  selectAll: selectAllShapes,
+  selectById: selectShapeById,
+  selectIds: selectShapeIds,
+  selectEntities: selectShapeEntities,
+  selectTotal: selectTotalShapes,
+} = shapesSelectors;
 
 export default shapesSlice.reducer;

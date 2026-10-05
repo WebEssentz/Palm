@@ -8,10 +8,10 @@ const Page = async () => {
     if (!profileName || !profileId) redirect('/auth/sign-in')
     const slug = combinedSlug(profileName, profileId)
     if (!entitlement) redirect(`/billing/${slug}`)
-    redirect(`/dashboard/${slug}`)
+    redirect(`/projects`)
   } catch {
     // SSR fetch failed (network/socket issue) — let client handle it
-    redirect(`/dashboard/me`)
+    redirect(`/projects`)
   }
 }
 

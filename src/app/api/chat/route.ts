@@ -195,7 +195,7 @@ export async function POST(req: NextRequest) {
 
     // ── LLM call ────────────────────────────────────────────
     const result = streamText({
-        model: google('gemini-3.7-flash'),
+        model: google('gemini-3.1-flash-lite'),
         maxOutputTokens: !hasEnoughCredits ? 120 : undefined,
         system: `You are Palm by Rhinestone, a helpful and intelligent UI design assistant.
 

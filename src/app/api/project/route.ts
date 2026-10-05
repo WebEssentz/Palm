@@ -10,25 +10,33 @@ interface UpdateProjectRequest {
         shapes: Record<string, unknown>
         tool: string
         selected: Record<string, unknown>
+        frameCounter?: number
     }
-    viewportData: {
+    viewportData?: {
         scale: number
-        translate: {x: number; y: number}
+        translate: { x: number; y: number }
     }
     userId?: string
     isPro?: boolean
 }
 
-export async function PATCH(req: NextRequest) {
+async function handleUpdate(req: NextRequest) {
     try {
-        const body: UpdateProjectRequest = await req.json()
+        let body: UpdateProjectRequest
+        try {
+            body = await req.json()
+        } catch {
+            const rawText = await req.text()
+            body = JSON.parse(rawText)
+        }
+
         const { projectId, shapesData, viewportData, userId, isPro } = body
 
-        if (!projectId || !userId || !shapesData) {
+        if (!projectId || !shapesData) {
             return new Response('Missing required fields', { status: 400 })
         }
 
-        if (isPro) {
+        if (isPro && userId) {
             try {
                 // Pro path — Inngest handles it (retries, monitoring, guaranteed)
                 const eventResult = await inngest.send({
@@ -60,4 +68,12 @@ export async function PATCH(req: NextRequest) {
         console.error('Error saving project:', error)
         return new Response(JSON.stringify({ success: false }), { status: 500 })
     }
+}
+
+export async function POST(req: NextRequest) {
+    return handleUpdate(req)
+}
+
+export async function PATCH(req: NextRequest) {
+    return handleUpdate(req)
 }

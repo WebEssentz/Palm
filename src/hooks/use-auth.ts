@@ -52,7 +52,7 @@ export const useAuth = (): UseAuthReturn => {
         password: data.password,
         flow: 'signIn',
       })
-      router.push("/dashboard");
+      router.push("/projects");
     } catch (error) {
       console.error(error);
       signInForm.setError("password", { message: "Invalid email or password" });
@@ -70,7 +70,7 @@ export const useAuth = (): UseAuthReturn => {
         name: `${data.firstName} ${data.lastName}`,
         flow: 'signUp',
       })
-      router.push("/dashboard");
+      router.push("/projects");
     } catch (error) {
       console.error(error);
       signUpForm.setError("root", { message: "Email already exists" });

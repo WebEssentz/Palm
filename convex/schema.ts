@@ -40,8 +40,47 @@ const schema = defineSchema({
     .index('by_userId', ['userId'])
     .index('by_idempotencyKey', ['idempotencyKey']),
 
+  // Workspaces
+  workspaces: defineTable({
+    name: v.string(),
+    slug: v.string(),
+    ownerId: v.id("users"),
+    isPersonal: v.optional(v.boolean()),
+    createdAt: v.optional(v.number()),
+  })
+    .index("by_slug", ["slug"])
+    .index("by_ownerId", ["ownerId"]),
+
+  // Workspace membership join table
+  workspaceMembers: defineTable({
+    workspaceId: v.id("workspaces"),
+    userId: v.id("users"),
+    role: v.union(v.literal("owner"), v.literal("admin"), v.literal("member")),
+    joinedAt: v.optional(v.number()),
+  })
+    .index("by_userId", ["userId"])
+    .index("by_workspaceId", ["workspaceId"])
+    .index("by_workspaceId_and_userId", ["workspaceId", "userId"]),
+
+  // Folders within workspaces
+  folders: defineTable({
+    workspaceId: v.id("workspaces"),
+    name: v.string(),
+    createdBy: v.id("users"),
+    visibility: v.union(v.literal("workspace"), v.literal("private")),
+    color: v.optional(v.string()),
+    emoji: v.optional(v.string()),
+    createdAt: v.optional(v.number()),
+  })
+    .index("by_workspaceId", ["workspaceId"])
+    .index("by_workspaceId_and_createdBy", ["workspaceId", "createdBy"]),
+
   projects: defineTable({
     userId: v.id("users"),
+    workspaceId: v.optional(v.id("workspaces")),
+    visibility: v.optional(v.union(v.literal("workspace"), v.literal("private"))),
+    createdBy: v.optional(v.id("users")),
+    folderId: v.optional(v.id("folders")),
     name: v.string(),
     description: v.optional(v.string()),
     prompt: v.optional(v.string()),
@@ -50,6 +89,8 @@ const schema = defineSchema({
     viewportData: v.optional(v.any()),
     generatedDesignData: v.optional(v.any()),
     thumbnail: v.optional(v.string()),
+    thumbnailStorageId: v.optional(v.id("_storage")),
+    lastEditedBy: v.optional(v.id("users")),
     moodBoardImages: v.optional(v.array(v.string())),
     inspirationImages: v.optional(v.array(v.string())),
     referenceUrls: v.optional(v.array(v.string())),
@@ -58,11 +99,15 @@ const schema = defineSchema({
     isPublic: v.optional(v.boolean()),
     tags: v.optional(v.array(v.string())),
     projectNumber: v.number(),
+    isPinned: v.optional(v.boolean()),
     is_deleted: v.optional(v.boolean()),
     deleted_at: v.optional(v.number()),
   })
     .index("by_userId", ["userId"])
-    .index("by_userId_lastModified", ["userId", "lastModified"]),
+    .index("by_userId_lastModified", ["userId", "lastModified"])
+    .index("by_workspaceId", ["workspaceId"])
+    .index("by_workspaceId_and_lastModified", ["workspaceId", "lastModified"])
+    .index("by_folderId", ["folderId"]),
 
   project_counters: defineTable({
     userId: v.id("users"),

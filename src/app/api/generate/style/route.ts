@@ -137,7 +137,7 @@ export async function POST(req: NextRequest) {
                Return ONLY the JSON object matching the schema.`
 
         const result = await generateObject({
-            model: google('gemini-3.7-flash'),
+            model: google('gemini-3.1-flash-lite'),
             schema: StyleGuideSchema,
             temperature: 0,
             providerOptions: {

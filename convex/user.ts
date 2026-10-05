@@ -1,6 +1,7 @@
 import { getAuthUserId } from "@convex-dev/auth/server"
-import { query } from "./_generated/server"
+import { query, mutation } from "./_generated/server"
 import { v } from "convex/values"
+import { ensurePersonalWorkspace } from "./workspaces"
 
 export const getCurrentUser = query({
     args: {},
@@ -19,5 +20,14 @@ export const getUserIdByEmail = query({
             .withIndex('email', (q) => q.eq('email', email))
             .first()
         return user?._id ?? null
+    }
+})
+
+export const ensureUserPersonalWorkspace = mutation({
+    args: {},
+    handler: async (ctx) => {
+        const userId = await getAuthUserId(ctx)
+        if (!userId) throw new Error("Unauthenticated")
+        return await ensurePersonalWorkspace(ctx, userId)
     }
 })

@@ -11,7 +11,7 @@ export default function MePage() {
 
     useEffect(() => {
         if (me?.name && me?._id) {
-            router.push(`/dashboard/${combinedSlug(me.name, me._id)}`)
+            router.push(`/projects`)
         }
     }, [me, router])
     return null

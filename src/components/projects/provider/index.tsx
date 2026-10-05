@@ -17,9 +17,7 @@ const ProjectProvider = ({ children, initialProject }: Props) => {
         if (initialProject) {
             const projectData = initialProject._valueJSON || initialProject
 
-            if (projectData.sketchesData) {
-                dispatch(loadProject(projectData.sketchesData))
-            }
+            dispatch(loadProject(projectData.sketchesData ?? {}))
 
             if (projectData.viewportData) {
                 dispatch(restoreViewport(projectData.viewportData))

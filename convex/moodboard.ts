@@ -1,19 +1,20 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { getAuthUserId } from "@convex-dev/auth/server";
+import { assertProjectAccess } from "./permissions";
 
 export const getMoodBoardImages = query({
     args: {
         projectId: v.id('projects')
     },
     handler: async (ctx, { projectId }) => {
-        const userId = await getAuthUserId(ctx)
-        if (!userId) return []
-
-        const project = await ctx.db.get(projectId)
-        if (!project) return []
-
-        if (!project || project.userId !== userId) return []
+        let project;
+        try {
+            const result = await assertProjectAccess(ctx, projectId);
+            project = result.project;
+        } catch {
+            return [];
+        }
 
         const storageIds = project.moodBoardImages || []
 
@@ -57,12 +58,7 @@ export const removeMoodBoardImage = mutation({
         storageId: v.id('_storage'),
     },
     handler: async (ctx, { projectId, storageId }) => {
-        const userId = await getAuthUserId(ctx)
-        if (!userId) throw new Error("Unauthorized")
-
-        const project = await ctx.db.get(projectId)
-        if (!project) throw new Error("Project not found")
-        if (project.userId !== userId) throw new Error("Unauthorized")
+        const { project } = await assertProjectAccess(ctx, projectId, true)
 
         const currentImages = project.moodBoardImages || []
         const updatedImages = currentImages.filter((id) => id !== storageId)
@@ -88,12 +84,7 @@ export const addMoodBoardImage = mutation({
         storageId: v.id('_storage'),
     },
     handler: async (ctx, { projectId, storageId }) => {
-        const userId = await getAuthUserId(ctx)
-        if (!userId) throw new Error("Unauthorized")
-
-        const project = await ctx.db.get(projectId)
-        if (!project) throw new Error("Project not found")
-        if (project.userId !== userId) throw new Error("Unauthorized")
+        const { project } = await assertProjectAccess(ctx, projectId, true)
 
         const currentImages = project.moodBoardImages || []
         if (currentImages.length >= 5) {

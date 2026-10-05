@@ -12,14 +12,16 @@ export default function Page() {
     const rawProjectId = params.get('project')
     const projectId = Array.isArray(rawProjectId) ? rawProjectId[0] : rawProjectId
 
+    const isValidProjectId = Boolean(projectId && projectId !== 'null' && projectId !== 'undefined')
+
     const project = useQuery(
         api.projects.getProject,
-        projectId && projectId.length === 32
+        isValidProjectId
             ? { projectId: projectId as Id<'projects'> }
             : 'skip'
     )
 
-    if (!projectId || projectId.length !== 32) {
+    if (!isValidProjectId) {
         return (
             <div className="w-full h-screen flex items-center justify-center">
                 <p className="text-muted-foreground">No valid project selected</p>

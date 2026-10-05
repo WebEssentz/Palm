@@ -8,11 +8,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 
 export default function HistoryBar() {
     const dispatch = useDispatch()
-    const past = useAppSelector((state) => (state.shapes as any).past ?? [])
-    const future = useAppSelector((state) => (state.shapes as any).future ?? [])
-
-    const canUndo = past.length > 0
-    const canRedo = future.length > 0
+    const canUndo = useAppSelector((state) => ((state.shapes as any).past?.length ?? 0) > 0)
+    const canRedo = useAppSelector((state) => ((state.shapes as any).future?.length ?? 0) > 0)
 
     return (
         <div className="h-8 px-1 rounded-full flex items-center gap-0.5 border border-black/10 dark:border-white/10 bg-white dark:bg-neutral-900 text-black/70 dark:text-white/70 shadow-sm">
